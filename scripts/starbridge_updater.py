@@ -134,12 +134,12 @@ class Updater:
         script="""const s=require('./.runtime/platform-secrets.json');
         async function get(p){const r=await fetch('http://127.0.0.1:3211/api/v1/'+p,{headers:{authorization:'Bearer '+s.internal},signal:AbortSignal.timeout(7000)});if(!r.ok)throw Error('health');return r.json()}
         (async()=>{const h=await get('health'),r=await get('robots?compact=1'),b=await get('rebind/status'),m=await get('maintenance-status');
-        const busy=Boolean(m.pendingWrites||m.operations||m.chainsBusy||m.linkopsStarting||h.activeRunIds?.length||Object.values(h.taskCapacity||{}).some(x=>x.running||x.starting)||b.running||b.starting||r.robots?.some(x=>x.enabled||x.pendingRun||['running','stopping','waiting'].includes(x.status)));
+        const busy=Boolean(m.pendingWrites||m.operations||m.chainsBusy||m.linkopsStarting||h.activeRunIds?.length||Object.values(h.taskCapacity||{}).some(x=>x.running||x.starting)||b.running||b.starting||r.robots?.some(x=>(x.enabled&&x.id!=='proxy-refresh')||x.pendingRun||['running','stopping','waiting'].includes(x.status)));
         console.log(busy?'busy':'idle')})().catch(()=>{process.exitCode=1});"""
         return self.run(['docker','exec','starbridge-registration-worker','node','-e',script],timeout=35)=='idle'
 
     def wait_idle(self):
-        self.publish('waiting',message='正在等待在途任务结束；自动任务需处于暂停状态')
+        self.publish('waiting',message='正在等待在途任务结束；业务自动任务需处于暂停状态')
         query="""SELECT (SELECT count(*) FROM orders WHERE deleted_at IS NULL AND status IN ('queued','processing','review'))+
          (SELECT count(*) FROM renewal_tasks WHERE status IN ('queued','processing','checking'))+
          (SELECT count(*) FROM platform_items WHERE status IN ('queued','running','oauth_pending','review'))+
