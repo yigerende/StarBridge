@@ -8,7 +8,7 @@ import {
   Download,
   RefreshCw,
 } from "lucide-react";
-import { Link } from "../router";
+import { Link, useRouter } from "../router";
 import { ApiError, call, copy, download, type Row } from "./client";
 import { Modal } from "./Workspace";
 import { Filters, Pagination } from "./Insights";
@@ -223,9 +223,10 @@ function OrderAccounts({
 
 export default function CustomerAccounts({ userId }: { userId: string }) {
   const q = useQueryClient();
+  const { search } = useRouter();
   const [view, setView] = useState<"orders" | "accounts">("orders");
   const [filters, setFilters] = useState<Row>(() => {
-    const order = new URLSearchParams(location.search).get("order_id");
+    const order = new URLSearchParams(search).get("order_id");
     return order ? { order_id: order } : {};
   });
   const [offset, setOffset] = useState(0);

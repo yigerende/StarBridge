@@ -505,7 +505,8 @@
     },
     {
       "path": "web/src/portal/AdminPlatform.tsx",
-      "sha256": "c223123619ceb724926820e225c4305e95c4170ea22a2462acc2b87b1debb41d"
+      "sha256": "c1578d15845e789b78523a4ea979a2b6f593428bc39ce13ecc7c2276c6dbcb7d",
+      "reason": "Pass native route search parameters and correct unified link hrefs; registration engine core unchanged"
     },
     {
       "path": "web/src/portal/AdminSiteControls.tsx",
@@ -521,7 +522,8 @@
     },
     {
       "path": "web/src/portal/Workspace.tsx",
-      "sha256": "af4dd9b37eccf83042cec249618e372fd2eff424659cf7b71f215ffe892ab280"
+      "sha256": "270610dcdbd4a6d90580bdbae9bd8ddac30d0941132e5b969ef8793974ce0a56",
+      "reason": "Pass native route search parameters and correct unified link hrefs; registration engine core unchanged"
     },
     {
       "path": "web/src/portal/client.ts",
@@ -530,8 +532,8 @@
     },
     {
       "path": "web/src/router.tsx",
-      "sha256": "b25ef7ba72181d911e5cb9e170c27021f6a76205b82620488c845544e777ce58",
-      "reason": "Unified native UI and deployment lifecycle adapter; engine core unchanged"
+      "sha256": "d75730ba52e550162b48650eff8f6c189247a2fd8a69b9d3f514b4464c9b284b",
+      "reason": "Pass native route search parameters and correct unified link hrefs; registration engine core unchanged"
     },
     {
       "path": "web/vite.config.ts",
@@ -561,6 +563,11 @@
       "path": "web/src/portal/AdminFinance.tsx",
       "sha256": "49f936d4172e90086e20991e5e8042b919746d2bfcb02be381caf9ebb6a132dd",
       "reason": "Embed registration finance under shared wallet overview and date filters; preserve cost and profit reports."
+    },
+    {
+      "path": "web/src/portal/CustomerAccounts.tsx",
+      "sha256": "9b0c35988e3454375586d7cf8ca19af3d99a71b37249e0f31fcdddf63f6b03c4",
+      "reason": "Pass native route search parameters and correct unified link hrefs; registration engine core unchanged"
     }
   ],
   "hashing": "sha256; text normalized to LF, binary exact"

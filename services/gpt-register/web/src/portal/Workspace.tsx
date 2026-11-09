@@ -10,7 +10,7 @@ import {
   orderPending,
   type Row,
 } from "./client";
-import { Link } from "../router";
+import { Link, useRouter } from "../router";
 import ServiceFeatures from "./ServiceFeatures";
 import { useOrderSubmission } from "./orderSubmission";
 import { registrationRegionName } from "./registrationRegion";
@@ -259,9 +259,10 @@ export default function Workspace({
       "credentials:read",
     ]);
   const q = useQueryClient();
+  const { search } = useRouter();
   const submission = useOrderSubmission(
     user.id,
-    new URLSearchParams(location.search).get("oauth") === "1",
+    new URLSearchParams(search).get("oauth") === "1",
     (id) => {
       setDetail(id);
       void q.invalidateQueries({ queryKey: ["me"] });

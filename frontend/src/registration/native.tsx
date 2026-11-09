@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-quer
 import { NativeRouter } from '../../../services/gpt-register/web/src/router'
 import { call, type Row } from '../../../services/gpt-register/web/src/portal/client'
 import { unifiedRoute } from '../../../services/gpt-register/web/src/integration'
+import { splitRoute } from '../registrationNavigation'
 import Workspace from '../../../services/gpt-register/web/src/portal/Workspace'
 import '../../../services/gpt-register/web/src/portal/portal.css'
 import '../../../services/gpt-register/web/src/portal/workspace.css'
@@ -17,10 +18,17 @@ const Orders=lazy(()=>import('../../../services/gpt-register/web/src/portal/Cust
 const Admin=lazy(()=>import('../../../services/gpt-register/web/src/portal/AdminPlatform'))
 const Suppliers=lazy(()=>import('../../../services/gpt-register/web/src/portal/AdminSuppliers'))
 const Finance=lazy(()=>import('../../../services/gpt-register/web/src/portal/AdminFinance'))
-type Props={route:string;user:Row;pub:Row;financeFilter?:Row;navigate:(path:string)=>void;expired:()=>void}
+type Props={route:string;search?:string;user:Row;pub:Row;financeFilter?:Row;navigate:(path:string)=>void;expired:()=>void}
 const cache=new QueryClient({defaultOptions:{queries:{staleTime:30000,retry:false,refetchOnWindowFocus:false}}})
 let owner=''
 export function clearRegistrationCache(){owner='';cache.clear()}
+function unifiedTarget(to:string){const {path,search}=splitRoute(to);return (unifiedRoute(path)||path)+search}
+function nativeHref(to:string){
+ const target=unifiedTarget(to)
+ if(target.startsWith('/admin/engine'))return '/registration'+target
+ if(splitRoute(target).path==='/docs')return target
+ return (target.startsWith('/admin')?'/admin':'/')+'?business=registration#'+target
+}
 function Page(props:Props){
  const me=useQuery({queryKey:['me'],queryFn:()=>call('/api/user/v1/me'),staleTime:60000})
  const pub=useQuery({queryKey:['public'],queryFn:()=>call('/api/public'),staleTime:60000})
@@ -32,8 +40,8 @@ function Page(props:Props){
  if(path.startsWith('/admin/')&&user.role!=='admin')return <div className="p-alert">此页面仅对管理员开放</div>
  const feature=path==='/register'?'register':path==='/accounts'?'accounts':path==='/orders'?'orders':null
  if(feature&&user.role!=='admin'&&pub.data.features?.[feature]===false)return <div className="p-card"><h2>此功能暂未开放</h2></div>
- return <NativeRouter path={path} navigate={to=>{if(to.startsWith('/admin/engine'))location.assign('/registration'+to);else props.navigate(unifiedRoute(to)||to)}}>
-  <Suspense fallback={<div className="p-loading" role="status">正在加载…</div>}>
+ return <NativeRouter path={path} search={props.search} hrefFor={nativeHref} navigate={to=>{if(to.startsWith('/admin/engine'))location.assign('/registration'+to);else props.navigate(unifiedTarget(to))}}>
+  <Suspense key={path+(props.search||'')} fallback={<div className="p-loading" role="status">正在加载…</div>}>
    {path==='/register'?<Workspace page="register" user={user} pub={pub.data}/>:
     path==='/accounts'?<Accounts userId={user.id}/>:
     path==='/orders'?<Orders user={user} pub={pub.data}/>:

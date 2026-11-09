@@ -13,6 +13,7 @@ type RouterValue = {
   search: string;
   path: string;
   navigate: (to: string, options?: { replace?: boolean }) => void;
+  hrefFor?: (to: string) => string;
 };
 
 import { integrated, embedded, servicePath, openUnified, unifiedRoute } from './integration';
@@ -92,10 +93,10 @@ export function Link({
   children,
   ...props
 }: Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href"> & { to: string }) {
-  const { navigate, base } = useRouter();
+  const { navigate, base, hrefFor } = useRouter();
   return (
     <a
-      href={`${base}${to}`}
+      href={hrefFor ? hrefFor(to) : `${base}${to}`}
       {...props}
       onClick={(event) => {
         onClick?.(event);
@@ -138,4 +139,4 @@ export function NavLink({
   );
 }
 
-export function NativeRouter({children,path,navigate}:{children:ReactNode;path:string;navigate:RouterValue["navigate"]}){return <RouterContext.Provider value={{base:"",path,search:"",navigate}}>{children}</RouterContext.Provider>;}
+export function NativeRouter({children,path,search='',navigate,hrefFor}:{children:ReactNode;path:string;search?:string;navigate:RouterValue["navigate"];hrefFor:RouterValue["hrefFor"]}){return <RouterContext.Provider value={{base:"",path,search,navigate,hrefFor}}>{children}</RouterContext.Provider>;}

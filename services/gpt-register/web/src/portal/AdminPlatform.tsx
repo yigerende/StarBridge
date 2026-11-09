@@ -23,10 +23,12 @@ import AdminCodes from "./AdminCodes";
 import AdminAccounts from "./AdminAccounts";
 import { ResourceCostSummary } from "./AdminCosts";
 import { integrated, openUnified } from '../integration';
+import { useRouter } from '../router';
 export default function AdminPlatform({ tab = "overview" }: { tab?: string }) {
+  const { search } = useRouter();
   const [offset, setOffset] = useState(0),
     [filters, setFilters] = useState<Row>(() => ({
-      status: new URLSearchParams(location.search).get("status") || "",
+      status: new URLSearchParams(search).get("status") || "",
     })),
     [days, setDays] = useState(7),
     [settingTab, setSettingTab] = useState("features"),
