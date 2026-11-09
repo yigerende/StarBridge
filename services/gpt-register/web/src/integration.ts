@@ -17,6 +17,13 @@ if (integrated) {
     if(root){new ResizeObserver(report).observe(root);new MutationObserver(report).observe(root,{childList:true,subtree:true})}
   }
   const originalFetch = window.fetch.bind(window);
+  document.documentElement.classList.add('starbridge-integrated');
+  originalFetch('/api/public').then(r => r.ok ? r.json() : null).then(data => {
+    const site = data?.site;
+    if (!site) return;
+    document.title = `${site.name || '星桥'} · ${site.english_name || 'StarBridge'}`;
+    document.documentElement.style.setProperty('--unified-brand-name', JSON.stringify(site.english_name || 'StarBridge'));
+  }).catch(() => {});
   window.fetch = (input, init) => originalFetch(typeof input === 'string' ? servicePath(input) : input, init);
   const OriginalEventSource = window.EventSource;
   window.EventSource = class extends OriginalEventSource {

@@ -50,6 +50,9 @@ services:
 networks:
   private:
     name: starbridge_private
+    ipam:
+      config:
+        - subnet: ${STARBRIDGE_SUBNET:-10.87.60.0/24}
 volumes:
   postgres_data:
     name: ${POSTGRES_VOLUME_NAME:-starbridge_postgres_data}

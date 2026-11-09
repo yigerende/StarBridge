@@ -28,3 +28,5 @@
 后续更新保留本项目的 `.env`、`.registration-runtime`、`starbridge_postgres_data` 和主密钥；只更新经过验证的目标应用镜像。备份集中在 `/opt/1panel/apps/codex-release-backups/starbridge`，验证成功后保留最近三份完整备份。不得执行 `down -v` 或全局 prune。
 
 历史业务迁移能力保留于整合文档，仅在后续明确要求迁移时使用；本次不执行迁移和停用旧队列。
+
+本服务器 Docker 自动地址池已用尽；经现有网络和路由核对，新独立网络使用 `10.87.60.0/24`（`STARBRIDGE_SUBNET`）。此配置仅作用于 StarBridge，不修改 Docker 全局设置或其他网络。原注册管理台的标识和网页标题通过接入层统一，不改原管理台组件或引擎源码。
