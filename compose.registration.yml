@@ -8,8 +8,6 @@ services:
       REGISTRATION_GATEWAY_SECRET: ${REGISTRATION_GATEWAY_SECRET:?Set a separate registration gateway secret}
     volumes:
       - ./.registration-runtime:/app/registration/.runtime
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,size=128m
     cap_drop: [ALL]
   registration-worker:
     image: starbridge-registration:${APP_VERSION:-local}

@@ -119,6 +119,7 @@ class Updater:
             tar.extractall(source)
         archive.unlink()
         if read_json(source/'deploy/update-policy.json')!={'schema_epoch':1,'project':'starbridge','services':SERVICES}:raise UpdateError('此版本需要人工升级，不能自动切换')
+        self.run(self.compose(source)+['config','--quiet'])
         self.publish('building',message='正在准备新版本，网站继续运行',target_version=sha)
         for name,context in [('starbridge-app',source),('starbridge-registration',source/'services/gpt-register')]:
             self.run(['docker','build','--build-arg','VCS_REF='+sha,'-t',name+':'+sha,str(context)],timeout=2400,capture=False)
