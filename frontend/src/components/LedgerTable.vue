@@ -9,7 +9,7 @@ const registration=computed(()=>props.business==='registration')
 const searchLabel=computed(()=>registration.value?'注册订单号 / 流水说明':'订单号 / 邮箱 / 流水说明')
 defineEmits<{order:[row:Row]}>()
 const q=ref(''),kind=ref(''),start=ref(''),end=ref('')
-const kinds=['topup','redeem','freeze','unfreeze','charge','refund','adjustment','invite_reward','invite_reversal','migration']
+const kinds=['topup','redeem','freeze','unfreeze','charge','refund','adjustment','invite_reward','invite_reversal']
 const invalidDates=computed(()=>!!(start.value&&end.value&&start.value>end.value))
 const hasFilters=computed(()=>!!(q.value||kind.value||start.value||end.value))
 const filtered=computed(()=>{
@@ -46,7 +46,7 @@ const columns=computed(()=>[{key:'kind',label:'流水类型'},{key:'source',labe
   <div class="ledger-totals"><div><span><ArrowDownLeft :size="15"/>充值入账</span><b>{{cash(totals.credit)}} <em>积分</em></b></div><div><span><Outgoing :size="15"/>服务扣费</span><b>{{cash(totals.spent)}} <em>积分</em></b></div><div><span><LockKeyhole :size="15"/>累计冻结</span><b>{{cash(totals.held)}} <em>积分</em></b></div><div><span><RotateCcw :size="15"/>解冻 / 退费</span><b>{{cash(totals.returned)}} <em>积分</em></b></div></div>
   <div class="records-filters">
    <label class="records-search"><span class="sr-only">{{searchLabel}}</span><Search :size="16"/><input v-model="q" type="search" :placeholder="searchLabel"/></label>
-   <label><span class="sr-only">流水类型</span><select v-model="kind" aria-label="流水类型"><option value="">全部流水类型</option><option v-for="k in kinds" :key="k" :value="k">{{labels[k]||(k==='migration'?'历史余额迁入':k)}}</option></select></label>
+   <label><span class="sr-only">流水类型</span><select v-model="kind" aria-label="流水类型"><option value="">全部流水类型</option><option v-for="k in kinds" :key="k" :value="k">{{labels[k]||k}}</option></select></label>
    <div class="records-date-range"><label><span class="sr-only">开始日期</span><input v-model="start" type="date" aria-label="开始日期" :max="end||undefined"/></label><span>至</span><label><span class="sr-only">结束日期</span><input v-model="end" type="date" aria-label="结束日期" :min="start||undefined"/></label></div>
    <button v-if="hasFilters" class="text-btn records-reset" @click="reset">重置</button>
   </div>

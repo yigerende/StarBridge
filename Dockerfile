@@ -2,7 +2,7 @@
 FROM node:22-bookworm-slim AS frontend
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+RUN npm ci && ln -s /build/frontend/node_modules /build/node_modules
 COPY frontend/ ./
 COPY services/gpt-register/web/src/ /build/services/gpt-register/web/src/
 RUN npm run build
