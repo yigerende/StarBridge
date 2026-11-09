@@ -5027,6 +5027,11 @@
                 }
               }
             }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "星桥账户创建时间，带时区。"
           }
         }
       },
@@ -5274,8 +5279,28 @@
                 "description": "已确认付款的币种；未确认时为空字符串。"
               }
             }
+          },
+          "business": {
+            "type": "string",
+            "enum": [
+              "shared",
+              "subscription",
+              "registration"
+            ],
+            "description": "shared 为共用钱包充值、兑换、运营调整及伙伴奖励；subscription / registration 为对应订单的冻结、结算和退回。共用流水只计一次，不归入订阅或注册。"
+          },
+          "registration_order_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "注册业务关联的订单编号；共用或订阅流水为空。"
           }
-        }
+        },
+        "required": [
+          "business",
+          "registration_order_id"
+        ]
       },
       "OrderPage": {
         "type": "object",

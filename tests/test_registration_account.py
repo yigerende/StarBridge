@@ -104,6 +104,22 @@ class RegistrationAccountTests(unittest.TestCase):
         with db.transaction() as q:credit(q,self.request,'u','adjustment','test-adjust','test',-700)
         self.assertEqual(db.one("SELECT balance,frozen FROM users WHERE id='u'"),{'balance':300,'frozen':300})
 
+    def test_shared_wallet_credits_do_not_appear_as_subscription_or_registration_spend(self):
+        from backend.customer_api import ledger
+        kinds=['adjustment','topup','redeem','invite_reward','invite_reversal']
+        for i,kind in enumerate(kinds):
+            db.execute("INSERT INTO ledger(user_id,kind,amount,balance_after,frozen_after,reference,business,description) VALUES('u',$1,100,1000,300,$2,$3,'test')",kind,'credit-'+str(i),'registration' if i%2 else 'subscription')
+        for business in ['subscription','registration']:
+            db.execute("INSERT INTO ledger(user_id,kind,amount,balance_after,frozen_after,reference,business,description) VALUES('u','charge',-100,900,300,$1,$2,'test')",business+'-charge',business)
+        before=db.all("SELECT id,business,amount,balance_after,frozen_after FROM ledger ORDER BY id")
+        result=ledger(self.request,page=1,page_size=50)
+        self.assertEqual({r['kind'] for r in result['items'] if r['business']=='shared'},set(kinds))
+        for business in ['subscription','registration']:
+            rows=[r for r in result['items'] if r['business']==business]
+            self.assertEqual(len(rows),1)
+            self.assertEqual(rows[0]['kind'],'charge')
+        self.assertEqual(db.all("SELECT id,business,amount,balance_after,frozen_after FROM ledger ORDER BY id"),before)
+
     def test_openapi_references_and_security_resolve_in_single_document(self):
         from backend.registration_docs import document
         spec=document();ids=[]

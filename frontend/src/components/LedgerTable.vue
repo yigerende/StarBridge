@@ -5,11 +5,12 @@ import {cash,date,labels,type Row} from '../lib'
 import {deltaTone,signed,upstreamAmount,discountText} from '../record-format'
 import RecordsTable from './RecordsTable.vue'
 const props=defineProps<{rows:Row[];loading:boolean;business:string}>()
+const shared=computed(()=>props.business==='shared')
 const registration=computed(()=>props.business==='registration')
-const searchLabel=computed(()=>registration.value?'注册订单号 / 流水说明':'订单号 / 邮箱 / 流水说明')
+const searchLabel=computed(()=>shared.value?'流水编号 / 账户收支说明':registration.value?'注册订单号 / 流水说明':'订单号 / 邮箱 / 流水说明')
 defineEmits<{order:[row:Row]}>()
 const q=ref(''),kind=ref(''),start=ref(''),end=ref('')
-const kinds=['topup','redeem','freeze','unfreeze','charge','refund','adjustment','invite_reward','invite_reversal']
+const kinds=computed(()=>shared.value?['topup','redeem','adjustment','invite_reward','invite_reversal']:['freeze','unfreeze','charge','refund'])
 const invalidDates=computed(()=>!!(start.value&&end.value&&start.value>end.value))
 const hasFilters=computed(()=>!!(q.value||kind.value||start.value||end.value))
 const filtered=computed(()=>{
@@ -27,8 +28,11 @@ const totals=computed(()=>filtered.value.reduce((s,r)=>{
  if(r.kind==='charge')s.spent-=Number(r.amount)
  if(r.kind==='freeze')s.held+=Math.max(0,Number(r.frozen_delta||0))
  if(['unfreeze','refund'].includes(r.kind))s.returned+=Math.max(0,Number(r.available_delta||0))
+ if(r.kind==='adjustment')s.adjusted+=Number(r.amount)
+ if(['invite_reward','invite_reversal'].includes(r.kind))s.reward+=Number(r.amount)
+ s.net+=Number(r.amount)
  return s
-},{credit:0,spent:0,held:0,returned:0}))
+},{credit:0,spent:0,held:0,returned:0,adjusted:0,reward:0,net:0}))
 function ledgerDescription(row:Row){
  const fee=Math.abs(Number(row.frozen_delta||row.amount||0))
  if(row.kind==='freeze')return `${row.related_order?.product_name||(row.business==='registration'?'注册订单':'订单')}冻结 ${cash(fee)} 积分，等待办理结算`
@@ -38,12 +42,13 @@ function ledgerDescription(row:Row){
 }
 function reset(){q.value='';kind.value='';start.value='';end.value=''}
 const source=(r:Row)=>r.registration_order_id?'注册订单':r.related_order?'订阅订单':({invite_reward:'伙伴计划奖励',invite_reversal:'伙伴计划退回',topup:'人工充值',redeem:'兑换码入账',adjustment:'运营调整',refund:'服务退费',charge:'服务结算',freeze:'服务费冻结',unfreeze:'服务费解冻'} as Row)[r.kind]||'账户变动'
-const columns=computed(()=>[{key:'kind',label:'流水类型'},{key:'source',label:'业务来源'},...registration.value?[]:[{key:'payment',label:'银行卡费用'}],{key:'available',label:'可用变动'},{key:'frozen',label:'冻结变动'},{key:'balance',label:'变动后余额'},{key:'related',label:registration.value?'注册订单 / 关联记录':'关联记录',wide:true},{key:'description',label:'说明',wide:true},{key:'time',label:'发生时间'}])
+const columns=computed(()=>[{key:'kind',label:'流水类型'},{key:'source',label:'业务来源'},...props.business!=='subscription'?[]:[{key:'payment',label:'银行卡费用'}],{key:'available',label:'可用变动'},{key:'frozen',label:'冻结变动'},{key:'balance',label:'变动后余额'},{key:'related',label:registration.value?'注册订单 / 关联记录':'关联记录',wide:true},{key:'description',label:'说明',wide:true},{key:'time',label:'发生时间'}])
 </script>
 <template>
  <section class="panel record-panel ledger-panel">
-  <div class="records-heading"><div><h2>{{registration?'注册':'订阅'}}资金明细</h2><p>{{registration?'下单先冻结积分，按成功交付的账号结算；失败部分释放冻结，恢复可用余额。':'冻结转入待结算金额；确认扣费从冻结金额结算，不重复扣减可用余额。'}}</p></div><span class="pill">账户单位 · 积分</span></div>
-  <div class="ledger-totals"><div><span><ArrowDownLeft :size="15"/>充值入账</span><b>{{cash(totals.credit)}} <em>积分</em></b></div><div><span><Outgoing :size="15"/>服务扣费</span><b>{{cash(totals.spent)}} <em>积分</em></b></div><div><span><LockKeyhole :size="15"/>累计冻结</span><b>{{cash(totals.held)}} <em>积分</em></b></div><div><span><RotateCcw :size="15"/>解冻 / 退费</span><b>{{cash(totals.returned)}} <em>积分</em></b></div></div>
+  <div class="records-heading"><div><h2>{{shared?'账户收支':registration?'注册资金明细':'订阅资金明细'}}</h2><p>{{shared?'充值、兑换码、运营调整和伙伴奖励计入共用钱包，可用于订阅与注册。':registration?'下单先冻结积分，按成功交付的账号结算；失败部分释放冻结，恢复可用余额。':'冻结转入待结算金额；确认扣费从冻结金额结算，不重复扣减可用余额。'}}</p></div><span class="pill">账户单位 · 积分</span></div>
+  <div v-if="shared" class="ledger-totals"><div><span><ArrowDownLeft :size="15"/>充值 / 兑换</span><b>{{cash(totals.credit)}} <em>积分</em></b></div><div><span><ReceiptText :size="15"/>人工调整</span><b>{{signed(totals.adjusted)}} <em>积分</em></b></div><div><span><ArrowUpRight :size="15"/>伙伴奖励净额</span><b>{{signed(totals.reward)}} <em>积分</em></b></div><div><span><Outgoing :size="15"/>收支净额</span><b>{{signed(totals.net)}} <em>积分</em></b></div></div>
+  <div v-else class="ledger-totals"><div><span><ArrowDownLeft :size="15"/>服务收支净额</span><b>{{signed(totals.net)}} <em>积分</em></b></div><div><span><Outgoing :size="15"/>服务扣费</span><b>{{cash(totals.spent)}} <em>积分</em></b></div><div><span><LockKeyhole :size="15"/>累计冻结</span><b>{{cash(totals.held)}} <em>积分</em></b></div><div><span><RotateCcw :size="15"/>解冻 / 退费</span><b>{{cash(totals.returned)}} <em>积分</em></b></div></div>
   <div class="records-filters">
    <label class="records-search"><span class="sr-only">{{searchLabel}}</span><Search :size="16"/><input v-model="q" type="search" :placeholder="searchLabel"/></label>
    <label><span class="sr-only">流水类型</span><select v-model="kind" aria-label="流水类型"><option value="">全部流水类型</option><option v-for="k in kinds" :key="k" :value="k">{{labels[k]||k}}</option></select></label>

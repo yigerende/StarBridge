@@ -128,7 +128,7 @@ def response(value, status=200):
     return JSONResponse(jsonable_encoder(value), status_code=status)
 
 
-USER_FIELDS = 'u.id,u.email,u.name,u.role,u.status,u.balance,u.frozen,u.invite_code,u.fee_override'
+USER_FIELDS = 'u.id,u.email,u.name,u.role,u.status,u.balance,u.frozen,u.invite_code,u.fee_override,u.created_at'
 
 
 def authenticate(request: Request, admin=False, apply_limit=True):

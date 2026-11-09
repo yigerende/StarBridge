@@ -81,6 +81,11 @@ def api_wallet(request: Request):
 
 def project_ledger(rows,user):
     from .features import allowed
+    # Credits and account adjustments belong to the common wallet, regardless
+    # of which business screen initiated them. Order settlement keeps its scope.
+    for row in rows:
+        if row['kind'] in ('topup','redeem','adjustment','invite_reward','invite_reversal'):
+            row['business']='shared'
     if not allowed('orders',user):
         for row in rows: row.update(order_id=None,related_order=None,payment={})
     return rows
