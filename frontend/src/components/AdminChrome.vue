@@ -10,7 +10,7 @@ const title=computed(()=>{const custom=props.menus?.find(item=>'/admin/custom/'+
 </script>
 <template><SystemUpdate v-if="part==='label'" compact/>
  <template v-if="part==='navigation'"><div class="side-greeting"><span class="eyebrow">OPERATIONS</span><h3>掌握每一处变化。</h3></div><section v-for="g in groups" :key="g.title"><p>{{g.title}}</p><a v-for="n in g.items" :key="n[0]" :href="n[0]==='/admin/engine'?'/registration/admin/engine':'#'+n[0]" :target="n[0]==='/admin/engine'?'_blank':undefined" :rel="n[0]==='/admin/engine'?'noopener noreferrer':undefined" :class="{active:route===n[0]}"><component :is="n[2]" :size="18"/>{{n[1]}}<span v-if="route===n[0]" class="nav-dot"></span></a></section><CustomMenuLinks :items="menus||[]" :route="route" prefix="/admin/custom/"/><div class="side-foot"><span class="live-dot"/><span>独立服务空间<small>STARBRIDGE · 订阅与注册</small></span></div></template>
- <a v-else-if="part==='entry'" :href="admin?'#/home':'#/admin'" class="mode-switch"><span class="mode-full">{{admin?'客户工作台':'运营控制台'}}</span><span class="mode-short">{{admin?'工作台':'运营'}}</span><ArrowUpRight :size="14"/></a>
+ <a v-else-if="part==='entry'" :href="admin?'#/home':'#/admin'" target="_blank" rel="noopener noreferrer" class="mode-switch"><span class="mode-full">{{admin?'客户工作台':'运营控制台'}}</span><span class="mode-short">{{admin?'工作台':'运营'}}</span><ArrowUpRight :size="14"/></a>
  <span v-else-if="part==='label'" class="console-label">{{admin?'运营控制台':'服务工作台'}} <span class="pill">{{admin?'ADMIN':'WORKSPACE'}}</span></span>
  <b v-else>{{title}}</b>
 </template>
