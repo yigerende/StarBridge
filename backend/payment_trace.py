@@ -37,6 +37,7 @@ CODES = {
     'activation_confirmed': '已确认订阅生效', 'activation_pending': '等待订阅生效核实',
     'renewal_disabled': '已确认关闭自动续费', 'renewal_kept': '按要求保留自动续费',
     'renewal_pending': '等待续费处理', 'review': '需要核实处理结果',
+    'payment_verifying': '付款响应异常，正在查询原交易结果；不会重复提交付款',
     'payment_result_unconfirmed': '付款结果尚未确认', 'payment_declined': '付款被拒绝',
     'approval_blocked': '商户批准未通过', 'internal_error': '步骤执行异常，请结合前后技术记录核实',
     'subscription_absent': '当前查询尚无订阅，等待后续生效核实',

@@ -38,6 +38,7 @@ from backend.common import uid,digest,encrypt,decrypt,now
 from backend import renewals,proxies
 from backend.seed import DEFAULTS
 from test_customer_api import CustomerApiTests
+from test_subscription_payment_result import SubscriptionPaymentResultTests
 from test_admin_order_pricing import AdminOrderPricingTests
 from test_payment_delay_settings import PaymentDelaySettingsTests
 from test_experience import ExperienceTests
@@ -58,7 +59,7 @@ from test_country_pool import CountryPoolTests
 from test_region_prices import RegionalPriceTests
 
 
-class BackendTests(RegionalPriceTests,CountryPoolTests,TeamSubscriptionTests,RegionTests,ProxyEditingTests,ProductPlanTests,RedeemUsageTests,AuthSecurityTests,RedeemCodeTests,CheckoutDiagnosticTests,BrandingTests,CustomMenuTests,AccountDeletionTests,SiteSecurityTests,InvitationTests,ExperienceTests,PaymentDelaySettingsTests,AdminOrderPricingTests,CustomerApiTests,unittest.TestCase):
+class BackendTests(SubscriptionPaymentResultTests,RegionalPriceTests,CountryPoolTests,TeamSubscriptionTests,RegionTests,ProxyEditingTests,ProductPlanTests,RedeemUsageTests,AuthSecurityTests,RedeemCodeTests,CheckoutDiagnosticTests,BrandingTests,CustomMenuTests,AccountDeletionTests,SiteSecurityTests,InvitationTests,ExperienceTests,PaymentDelaySettingsTests,AdminOrderPricingTests,CustomerApiTests,unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         with patch('backend.main.worker_loop'):
@@ -560,7 +561,8 @@ class BackendTests(RegionalPriceTests,CountryPoolTests,TeamSubscriptionTests,Reg
 
     @contextmanager
     def retry_network(self, module):
-        target='generator.generate_pro_long_link'
+        is_gener = module.FLOW == 'gener_direct_pay'
+        target='generator.generate_pro_long_link' if is_gener else 'backend.cslive_go_checkout.create_checkout'
         result={'ok':True,'payable':True,'hostedUrl':'https://pay.openai.com/c/pay/cs_test_retry',
                 'checkoutSessionId':'cs_test_retry','is_hosted':True}
         with ExitStack() as stack:
@@ -573,9 +575,10 @@ class BackendTests(RegionalPriceTests,CountryPoolTests,TeamSubscriptionTests,Reg
             stripe.update_tax_region.return_value={'total_summary':{'due':100},'currency':'USD'}
             stripe.create_payment_method.return_value={'id':'pm_fixture'}
             stripe.confirm.return_value={'status':'complete','payment_status':'paid'}
-            stack.enter_context(patch('backend.prolong.stripe_checksum.fetch_stripe_build_constants',return_value=Mock(version='fixture')))
-            stack.enter_context(patch('backend.prolong.stripe_checksum.build_runtime_checksums',return_value={'version':'fixture','js_checksum':'fixture','rv_timestamp':'fixture'}))
-            followup=stack.enter_context(patch('backend.go_post_payment.finish_payment'))
+            stack.enter_context(patch(('backend.prolong.stripe_checksum' if is_gener else module.__name__)+'.fetch_stripe_build_constants',return_value=Mock(version='fixture')))
+            stack.enter_context(patch(('backend.prolong.stripe_checksum' if is_gener else module.__name__)+'.build_runtime_checksums',return_value={'version':'fixture','js_checksum':'fixture','rv_timestamp':'fixture'}))
+            followup=stack.enter_context(patch('backend.go_post_payment.finish_payment' if is_gener else 'backend.cslive_go_post_payment.finish_payment'))
+            stack.enter_context(patch('backend.subscription_payment_result.time.sleep'))
             yield generate,stripe,followup
 
     def ready_retry(self, module, order_id):
@@ -981,7 +984,7 @@ class BackendTests(RegionalPriceTests,CountryPoolTests,TeamSubscriptionTests,Reg
             sent.append((url,kwargs['data']))
             payload=({'status':'open','init_checksum':'offline','config_id':'offline'} if url.endswith('/init') else
                      {'id':'pm_fixture'} if url.endswith('/payment_methods') else
-                     {'status':'complete'} if url.endswith('/confirm') else {'total_summary':{'due':100},'currency':'usd'})
+                     {'status':'complete','payment_status':'paid'} if url.endswith('/confirm') else {'total_summary':{'due':100},'currency':'usd'})
             response=Mock(status_code=200,headers={'Request-Id':'req_offline123456'},text=json.dumps(payload));response.json.return_value=payload
             return response
         with patch('requests.sessions.Session.request',side_effect=AssertionError('External network forbidden')), \

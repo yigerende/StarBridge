@@ -24,7 +24,7 @@ def _order_history(id, technical=False):
     labels={'admin_closed':'管理员关闭订单','network_retry':'等待网络重试','checkout_reused':'复用原结账链接','payment_review':'付款结果待核实','queued':'排队受理','processing':'开始办理','network_check':'检查代理出口',
             'network_verified':'记录代理出口','checkout_retry':'等待初始化重试','checkout':'生成结账链接','checkout_done':'结账链接已生成',
             'awaiting_payment':'等待用户付款','payment':'开始付款','confirming':'提交付款确认',
-            'approving':'商户批准','failed':'办理失败','payment_succeeded':'付款成功',
+            'checking':'核实原交易付款结果','approving':'商户批准','failed':'办理失败','payment_succeeded':'付款成功',
             'activation':'核实订阅生效','activation_confirmed':'订阅生效','activation_pending':'等待订阅生效',
             'post_payment_review':'付款后核实待处理',
             'renewal_pending':'等待续费处理','renewal_disabled':'续费已关闭','renewal_kept':'保留续费'}

@@ -1,13 +1,12 @@
 """cslive_go_direct_pay 订阅办理：cs-live Go 提链 + HTTP 直连付款 + Go 付款后续。
 
 完全独立复制自 subscription.py 的流程骨架；http 付款走 cslive_go_prolong，
-付款后续走 cslive_go_post_payment，均为本流程专属副本，不与 gener_direct_pay 共享代码。
+付款后续走 cslive_go_post_payment；付款结果核实与资金保护由统一模块处理。
 """
 from __future__ import annotations
 
 import json
 import logging
-import time
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 import requests
@@ -364,6 +363,7 @@ def _add_event(order_id: str, stage: str, message: str):
     milestones = {
         'checkout': ('checkout', 'running', ''), 'checkout_done': ('checkout', 'completed', 'completed'),
         'payment': ('card_prepare', 'running', ''), 'confirming': ('confirming', 'running', ''),
+        'checking': ('checking', 'running', ''),
         'approving': ('confirming', 'running', ''), 'renewal_pending': ('renewal', 'waiting', 'renewal_pending'),
         'activation_confirmed': ('activation', 'completed', 'activation_confirmed'),
         'activation_pending': ('activation', 'waiting', 'activation_pending'),
@@ -378,6 +378,10 @@ def _add_event(order_id: str, stage: str, message: str):
 
 def _fail_order(order_id: str, user_id: str, fee: int, message: str, code='internal_error'):
     with db.transaction() as q:
+        row = q.one('SELECT o.status,s.paid_at FROM orders o JOIN subscription_runs s '
+                    'ON s.order_id=o.id WHERE o.id=$1 FOR UPDATE OF o,s', order_id)
+        if not row or row['paid_at'] or row['status'] != 'processing':
+            return
         q.execute("UPDATE orders SET status='failed',renewal='not_started',updated_at=now() WHERE id=$1", order_id)
         if fee > 0:
             q.execute("UPDATE users SET frozen=GREATEST(0,frozen-$2) WHERE id=$1", user_id, fee)
@@ -394,6 +398,10 @@ def _fail_order(order_id: str, user_id: str, fee: int, message: str, code='inter
 
 def _succeed_order(order_id: str, user_id: str, fee: int, last4: str, charged_amount: int, charged_currency: str):
     with db.transaction() as q:
+        row = q.one('SELECT o.status,o.deleted_at,s.paid_at FROM orders o JOIN subscription_runs s '
+                    'ON s.order_id=o.id WHERE o.id=$1 FOR UPDATE OF o,s', order_id)
+        if not row or row['deleted_at'] or row['paid_at'] or row['status'] != 'processing':
+            return False
         q.execute(
             "UPDATE orders SET status='succeeded',renewal='pending',activation='pending',updated_at=now() WHERE id=$1",
             order_id
@@ -414,6 +422,7 @@ def _succeed_order(order_id: str, user_id: str, fee: int, last4: str, charged_am
         q.execute("INSERT INTO order_events(order_id,stage,message) VALUES($1,'payment_succeeded','付款成功，等待生效核实。')", order_id)
         trace.record('result', 'completed', 'payment_succeeded', order_id=order_id, q=q)
         trace.record('funds', 'completed', 'charge', order_id=order_id, q=q)
+    return True
 
 
 @trace.order_run
@@ -574,41 +583,16 @@ def run_subscription(job: dict):
         )
         _add_event(order_id, 'confirming', '正在提交付款确认…')
         subscription_retry.mark_payment_submission(order_id)
-        confirm_resp = stripe.confirm(cs_id, confirm_form)
+        from . import subscription_payment_result as payment_result
+        confirm_resp = payment_result.confirm_once(stripe, cs_id, confirm_form)
 
-        def _classify(data: dict) -> tuple[bool, str, int]:
-            status = str(data.get('status') or '').lower()
-            payment_status = str(data.get('payment_status') or '').lower()
-            sa = data.get('submission_attempt') or {}
-            sa_state = str(sa.get('state') or sa.get('status') or '').lower()
-            pi_obj = None
-            for container in [data, sa, data.get('error') or {}]:
-                raw = container.get('payment_intent')
-                if isinstance(raw, dict) and raw.get('id', '').startswith('pi_'):
-                    pi_obj = raw
-                    break
-            pi_status = str((pi_obj or {}).get('status') or '').lower()
-            amount_received = (pi_obj or {}).get('amount_received')
-            charged_amount = int(amount_received) if isinstance(amount_received, (int, float)) and amount_received > 0 else 0
-            paid = (status == 'complete' or payment_status == 'paid' or pi_status == 'succeeded')
-            if paid:
-                return True, '', charged_amount
-            declined_states = {'canceled', 'cancelled', 'declined', 'failed', 'expired'}
-            if any(s in declined_states for s in [status, pi_status, sa_state]):
-                pi_err = (pi_obj or {}).get('last_payment_error') or data.get('error') or {}
-                if isinstance(pi_err, dict):
-                    code = str(pi_err.get('decline_code') or pi_err.get('code') or 'card_declined')
-                else:
-                    code = 'card_declined'
-                return False, code, 0
-            return False, '', 0
-
-        paid, decline_code, charged_minor = _classify(confirm_resp)
+        paid, decline_code, charged_minor = payment_result.classify(confirm_resp)
 
         if not paid:
             if decline_code:
                 raise RuntimeError(f'payment_declined:{decline_code}')
-            sa = confirm_resp.get('submission_attempt') or {}
+            sa = confirm_resp.get('submission_attempt')
+            sa = sa if isinstance(sa, dict) else {}
             sa_state = str(sa.get('state') or sa.get('status') or '').lower()
             if sa_state in ('requires_approval', 'requires_action'):
                 access_token = creds.get('access_token', '')
@@ -635,40 +619,23 @@ def run_subscription(job: dict):
                         result_val = str(approve_body.get('result') or approve_body.get('status') or approve_body.get('state') or '').lower()
                         if result_val == 'blocked':
                             raise RuntimeError('approval_blocked')
-                    except RuntimeError:
-                        raise
                     except Exception as ae:
                         log.warning('[%s] approve error: %s', order_id, trace.error_code(ae))
                     finally:
                         if 'approve_sess' in locals():
                             approve_sess.close()
 
-            poll_data = None
-            for _ in range(5):
-                time.sleep(1.5)
-                try:
-                    poll = trace.http_call('payment_read', stripe.session.get,
-                        f'https://api.stripe.com/v1/payment_pages/{cs_id}',
-                        params={'key': pk, 'eid': 'NA'},
-                        timeout=30,
-                    )
-                    if poll.status_code == 200:
-                        poll_data = poll.json()
-                        paid, decline_code, charged_minor = _classify(poll_data)
-                        if paid:
-                            break
-                        if decline_code:
-                            raise RuntimeError(f'payment_declined:{decline_code}')
-                except RuntimeError:
-                    raise
-                except Exception:
-                    pass
+            _add_event(order_id, 'checking', '正在核实原交易付款结果，请勿重复付款。')
+            paid, decline_code, charged_minor, poll_data = payment_result.poll_result(stripe, cs_id, pk)
+            if decline_code:
+                raise RuntimeError(f'payment_declined:{decline_code}')
 
         if not paid:
             raise RuntimeError('payment_result_unconfirmed')
 
         actual_charged = charged_minor if charged_minor > 0 else expected_amount
-        _succeed_order(order_id, user_id, fee, last4, actual_charged, currency_from_stripe)
+        if not _succeed_order(order_id, user_id, fee, last4, actual_charged, currency_from_stripe):
+            return
 
         # 4. Go 付款后续（独立副本），任何异常不触发付款退款
         try:

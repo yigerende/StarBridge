@@ -1,5 +1,20 @@
 # 订阅办理网络重试
 
+## 2026-11-10：付款响应异常后核实原交易
+
+正式序付的一笔 cslive_go_direct_pay 订单在付款确认 POST 返回409后，抛出异常并直接进入 review。日志只有付款确认请求和 payment_result_unconfirmed，没有 payment_read，也没有 charge/unfreeze 流水。该日志能证实跳过核实，不能单独证明银行卡实际扣款；实际成功由用户另行核对。Space 的当前接入代码将 review 映射为 manual_review，只有 payment.state=succeeded 才继续开通流程。
+
+星桥的 gener_direct_pay 与 cslive_go_direct_pay 统一处理付款结果：
+
+- 付款确认仍只提交一次。409、超时、非JSON及其他确认响应异常转入同一 checkout、同一HTTP会话/代理的只读GET核实；不重新提链、创建付款方式或提交付款。
+- GET最多5次，首次立即查询，后续间隔1.5秒，每次超时30秒。HTTP异常、网络异常、RuntimeError和无效JSON不会跳过剩余查询。商户批准异常或blocked也先查原交易，不能仅据批准失败释放资金。
+- 明确 payment_status=paid 或 payment_intent.status=succeeded 才按成功继续现有付款后交付流程。checkout complete 或单次submission失败不单独作为扣款/拒付证据。明确支付意图取消、拒付才释放冻结；未知仍为review，冻结保留、禁止重付。
+- 服务费结算和释放持有订单/执行记录行锁；已处理订单不能再次扣费/释放。对外 API 查询保持原有 succeeded/review/failed 与 charged/held/released 契约。付款后刷新/生效/续费异常不逆转已确认付款。
+- 独立 cs-live 全流程的确认请求已使用 AllowError=true 读取409 JSON并进入原有核实流程，本次不修改其付款协议。原注册引擎保持不变。
+
+验证为隔离PostgreSQL和模拟上游：两条流程分别覆盖409、超时、非JSON后成功，查询临时失败/503/无效数据后成功，未知保留冻结、明确拒付释放、批准异常后核实、付款后异常与24次并发结算。未做真实付款；不修改或自动重跑旧序付订单。
+
+
 ## 2026-11-05：Go 提链错误诊断
 
 `cslive_go_checkout` 保留已知协议错误码及 `http_100`～`http_599`，以 `response_error_code` 写入技术日志；分类用于阶段说明，原码单独显示，不再用 `internal_error` 覆盖。记录来源为 Go 提链程序，可用时附进程退出码；HTTP 状态只从明确的 `http_NNN` 错误码提取。进程超时、无法启动、空输出及非 JSON 输出也有明确分类。
