@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "序付 API",
+    "title": "星桥 API",
     "version": "1.5.0",
-    "description": "面向序付用户的服务端接入 API：订阅办理、生成结账链接、关闭自动续费、订单查询、账户与资金管理。\n\n功能权限由后台设置控制。关闭的功能返回 403；关闭开发接入后已有 API 密钥也暂停使用。通过 GET /api/v1/me 的 features 查看当前开放功能。密码通过邮箱重置后，旧 API 密钥将失效，需登录重新生成。"
+    "description": "面向星桥用户的服务端接入 API：订阅办理、生成结账链接、关闭自动续费、订单查询、账户与资金管理。\n\n功能权限由后台设置控制。关闭的功能返回 403；关闭开发接入后已有 API 密钥也暂停使用。通过 GET /api/v1/me 的 features 查看当前开放功能。密码通过邮箱重置后，旧 API 密钥将失效，需登录重新生成。"
   },
   "servers": [
     {
@@ -2798,7 +2798,7 @@
       "get": {
         "operationId": "get_me",
         "summary": "查询当前账户",
-        "description": "返回密钥所属的序付账户和会员权益；不是提交订阅的目标账号。",
+        "description": "返回密钥所属的星桥账户和会员权益；不是提交订阅的目标账号。",
         "tags": [
           "账户与套餐"
         ],
@@ -3896,7 +3896,7 @@
       "BearerKey": {
         "type": "http",
         "scheme": "bearer",
-        "description": "在序付网页「开发接入」创建 API 密钥，保存创建成功时显示的完整密钥；请求头传 Authorization: Bearer <密钥>。客户 API 不提供创建密钥的接口。"
+        "description": "在星桥网页「开发接入」创建 API 密钥，保存创建成功时显示的完整密钥；请求头传 Authorization: Bearer <密钥>。客户 API 不提供创建密钥的接口。"
       }
     },
     "schemas": {
@@ -4034,9 +4034,9 @@
             "properties": {
               "email": {
                 "type": "string",
-                "description": "账号邮箱。 来源：来自原始 Session 的 user.email；目标订阅邮箱可与序付登录邮箱不同。",
+                "description": "账号邮箱。 来源：来自原始 Session 的 user.email；目标订阅邮箱可与星桥登录邮箱不同。",
                 "format": "email",
-                "x-input-source": "来自原始 Session 的 user.email；目标订阅邮箱可与序付登录邮箱不同。",
+                "x-input-source": "来自原始 Session 的 user.email；目标订阅邮箱可与星桥登录邮箱不同。",
                 "x-source-operations": []
               }
             },
@@ -4052,8 +4052,8 @@
             "properties": {
               "id": {
                 "type": "string",
-                "description": "账号空间标识。 来源：来自原始 Session 的 account.id；不是 GET /api/v1/me 返回的序付账户 id。",
-                "x-input-source": "来自原始 Session 的 account.id；不是 GET /api/v1/me 返回的序付账户 id。",
+                "description": "账号空间标识。 来源：来自原始 Session 的 account.id；不是 GET /api/v1/me 返回的星桥账户 id。",
+                "x-input-source": "来自原始 Session 的 account.id；不是 GET /api/v1/me 返回的星桥账户 id。",
                 "x-source-operations": []
               },
               "planType": {
@@ -4678,7 +4678,7 @@
             "type": "string",
             "maxLength": 256,
             "default": "",
-            "description": "可选：用户自己的 Team 优惠码，仅用于当前 Go提链＋HTTP付款流程的 Team。不能包含控制字符，UTF-8 最多256字节；留空不发送。只影响上游结账，序付服务费不变。无平台优惠码购买或库存功能。"
+            "description": "可选：用户自己的 Team 优惠码，仅用于当前 Go提链＋HTTP付款流程的 Team。不能包含控制字符，UTF-8 最多256字节；留空不发送。只影响上游结账，星桥服务费不变。无平台优惠码购买或库存功能。"
           }
         },
         "required": [
@@ -4855,7 +4855,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "序付账户编号。"
+            "description": "星桥账户编号。"
           },
           "email": {
             "type": "string",
@@ -4899,7 +4899,7 @@
         "properties": {
           "id": {
             "type": "string",
-            "description": "序付账户编号。"
+            "description": "星桥账户编号。"
           },
           "email": {
             "type": "string",
@@ -5023,7 +5023,7 @@
         "properties": {
           "user": {
             "$ref": "#/components/schemas/Account",
-            "description": "当前 API 密钥所属的序付账户。"
+            "description": "当前 API 密钥所属的星桥账户。"
           },
           "stats": {
             "type": "object",

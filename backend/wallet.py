@@ -7,15 +7,15 @@ from . import customer_contract
 
 router=APIRouter(prefix='/api',dependencies=[Depends(member)])
 LEDGER_QUERY="""WITH history AS (
- SELECT id,kind,amount,balance_after,frozen_after,description,created_at,order_id,reference,
+ SELECT id,kind,amount,balance_after,frozen_after,description,created_at,order_id,reference,business,registration_order_id,available_change,frozen_change,
  lag(balance_after) OVER (ORDER BY id) AS previous_balance,lag(frozen_after) OVER (ORDER BY id) AS previous_frozen
  FROM ledger WHERE user_id=$1
 ), recent AS (SELECT * FROM history ORDER BY id DESC LIMIT 300)
- SELECT l.id,l.kind,l.amount,l.balance_after,l.frozen_after,l.description,l.created_at,
- CASE WHEN l.previous_balance IS NOT NULL THEN (l.balance_after-l.frozen_after)-(l.previous_balance-l.previous_frozen)
+ SELECT l.id,l.kind,l.amount,l.balance_after,l.frozen_after,l.description,l.created_at,l.business,l.registration_order_id,
+ CASE WHEN l.available_change IS NOT NULL THEN l.available_change WHEN l.previous_balance IS NOT NULL THEN (l.balance_after-l.frozen_after)-(l.previous_balance-l.previous_frozen)
  WHEN l.kind='freeze' THEN -o.fee WHEN l.kind='unfreeze' THEN o.fee
  WHEN l.kind='charge' AND l.reference LIKE 'payment:%' THEN 0 ELSE l.amount END AS available_delta,
- CASE WHEN l.previous_frozen IS NOT NULL THEN l.frozen_after-l.previous_frozen
+ CASE WHEN l.frozen_change IS NOT NULL THEN l.frozen_change WHEN l.previous_frozen IS NOT NULL THEN l.frozen_after-l.previous_frozen
  WHEN l.kind='freeze' THEN o.fee WHEN l.kind='unfreeze' THEN -o.fee
  WHEN l.kind='charge' AND l.reference LIKE 'payment:%' THEN l.amount ELSE 0 END AS frozen_delta,
  CASE WHEN o.id IS NULL OR o.deleted_at IS NOT NULL THEN NULL ELSE jsonb_build_object('id',o.id,'product_name',o.product_name,'email',o.email,'country',o.country,'fee',o.fee,'price_snapshot',o.price_snapshot) END AS related_order,
@@ -34,15 +34,17 @@ def credit(q,request,user_id,kind,reference,description,amount,require_active=Fa
         require(user['status']=='active' and user['deleted_at'] is None,'账户已停用或删除，无法兑换',403)
     integer(amount,-100000000000,100000000000,'金额超出允许范围')
     require(amount!=0,'金额超出允许范围')
-    require(user['balance']+amount>=0,'可用余额不足，无法扣减')
+    require(user['balance']+amount>=user['frozen'],'可用余额不足，无法扣减冻结积分')
     q.execute('INSERT INTO ledger(user_id,kind,amount,balance_after,frozen_after,reference,description,actor_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',user_id,kind,amount,user['balance']+amount,user['frozen'],reference,description,current(request)['id'])
     q.execute('UPDATE users SET balance=balance+$2,updated_at=now() WHERE id=$1',user_id,amount)
 
 
 @router.get('/wallet')
 def wallet(request: Request):
+    from .registration_account import legacy_ledger
     user=current(request)
-    ledger=db.all(LEDGER_QUERY,user['id'])
+    ledger=db.all(LEDGER_QUERY,user['id'])+legacy_ledger(user['id'])
+    ledger.sort(key=lambda row:row['created_at'],reverse=True)
     project_ledger(ledger,user)
     return {'balance':user['balance'],'frozen':user['frozen'],'ledger':ledger,'topups':db.all('SELECT * FROM topups WHERE user_id=$1 ORDER BY created_at DESC LIMIT 200',user['id']),
             'recharges':db.all(RECHARGE_QUERY,user['id'])}
@@ -114,12 +116,18 @@ def cancel_topup(id: str,request: Request):
 @router.post('/v1/wallet/redeem')
 async def redeem(request: Request):
     from .redeem_codes import redeem as redeem_transaction
-    return await run_in_threadpool(redeem_transaction, request, await body(request))
+    value=await body(request)
+    if isinstance(value.get('code'),str) and value['code'].strip().startswith('GR-'):
+        from .registration_account import redeem as redeem_registration
+        return await run_in_threadpool(redeem_registration,request,value['code'])
+    return await run_in_threadpool(redeem_transaction, request, value)
 
 
 @router.get('/keys')
 def keys(request: Request):
-    return {'items':db.all('SELECT id,name,prefix,revoked,last_used,created_at FROM api_keys WHERE user_id=$1 ORDER BY created_at DESC',current(request)['id'])}
+    from .registration_account import legacy_keys
+    user_id=current(request)['id']
+    return {'items':db.all('SELECT id,name,prefix,revoked,last_used,created_at FROM api_keys WHERE user_id=$1 ORDER BY created_at DESC',user_id)+legacy_keys(user_id)}
 
 
 @router.post('/keys')
@@ -136,6 +144,10 @@ async def create_key(request: Request):
 
 @router.delete('/keys/{id}')
 def revoke_key(id: str,request: Request):
+    if id.startswith('registration:'):
+        from .registration_account import revoke_key as revoke_registration_key
+        require(revoke_registration_key(current(request)['id'],id.removeprefix('registration:'))==1,'密钥不存在',404)
+        return {'ok':True}
     require(db.execute('UPDATE api_keys SET revoked=true WHERE id=$1 AND user_id=$2',id,current(request)['id'])==1,'密钥不存在',404)
     return {'ok':True}
 

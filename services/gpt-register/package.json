@@ -1,0 +1,47 @@
+{
+  "name": "gpt-register",
+  "version": "1.0.0",
+  "private": true,
+  "description": "High-performance automated ChatGPT registration and OAuth authentication suite.",
+  "main": "index.js",
+  "bin": {
+    "gpt-register": "./bin/gpt-register.js",
+    "gpt-re": "./bin/gpt-re.js"
+  },
+  "scripts": {
+    "start": "node src/ui-server/index.js",
+    "register": "node bin/gpt-re.js registration-run",
+    "register:one": "node scripts/register-one.js",
+    "oauth": "node bin/gpt-re.js oauth-login-run",
+    "oauth:login": "node scripts/oauth-login.js",
+    "batch": "node bin/gpt-re.js orchestrator-run --config gpt-re.config.json",
+    "token:exchange": "node bin/gpt-re.js oauth-token-exchange",
+    "cpa:export": "node bin/gpt-re.js cpa-export",
+    "test": "node scripts/run-tests.js quick",
+    "test:quick": "node scripts/run-tests.js quick",
+    "test:session-proxy": "node --test test/session-proxy.test.js",
+    "ui:build": "npm --prefix web run build",
+    "test:platform": "node --test --test-concurrency=2 test/platform.test.js test/platform-costs.test.js test/platform-finance.test.js test/platform-suppliers.test.js test/platform-auth.test.js test/platform-redeem-usage.test.js test/platform-encryption.test.js test/platform-openapi.test.js test/platform-flow.test.js test/platform-account-export.test.js test/platform-redeem.test.js test/platform-account-retention.test.js test/platform-risk.test.js test/platform-regions.test.js test/platform-partners.test.js",
+    "start:platform": "node docker/server.js",
+    "start:worker": "node docker/worker.js"
+  },
+  "dependencies": {
+    "@fastify/http-proxy": "^11.6.6",
+    "fastify": "^5.0.0",
+    "nodemailer": "^10.3.1",
+    "parse5": "^7.3.0",
+    "pg": "^8.23.1",
+    "playwright": "^1.62.1",
+    "tough-cookie": "^5.1.2"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "ISC",
+  "optionalDependencies": {
+    "impit": "^0.14.3"
+  }
+}

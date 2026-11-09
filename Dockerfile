@@ -32,12 +32,14 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY --chown=app:app backend/ ./backend/
 COPY --chown=app:app generator.py ./
-COPY --chown=app:app scripts/serve.py scripts/recover_post_payment.py ./scripts/
+COPY --chown=app:app scripts/serve.py scripts/recover_post_payment.py scripts/registration_migrate.py ./scripts/
 COPY --from=frontend --chown=app:app /build/webui/ ./webui/
 COPY --from=postpayment --chown=app:app /post-payment ./bin/post-payment
 COPY --from=cslive --chown=app:app /cs_live ./cs-live-source/cs_live
 ARG VCS_REF=local
-LABEL org.opencontainers.image.source="https://github.com/yigerende/xufupython" \
+LABEL org.opencontainers.image.source="https://github.com/yigerende/StarBridge" \
+      org.opencontainers.image.title="StarBridge" \
+      org.opencontainers.image.description="Subscription and registration workspace" \
       org.opencontainers.image.revision=$VCS_REF
 USER app
 EXPOSE 18970

@@ -1,0 +1,6 @@
+.registration-embedded{background:transparent;min-height:0;padding:0 2px 24px}
+.registration-embedded .p-workspace-main{padding:0}.registration-embedded>section{min-width:0}
+@media(min-width:900px){
+ .registration-embedded .p-registration-layout{grid-template-columns:minmax(0,1.65fr) minmax(280px,1fr)}
+ .registration-embedded .p-quote-card ul{display:block}
+}

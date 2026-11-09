@@ -64,6 +64,10 @@ def settle():
 
 
 def listing(request, owner=None):
+    from .registration_account import reward_source
+    rewards=reward_source()
+    relations=f"""(SELECT id,email,created_at,invited_by FROM users WHERE invited_by IS NOT NULL UNION
+      SELECT u.id,u.email,u.created_at,r.inviter_id AS invited_by FROM users u JOIN {rewards} r ON r.invitee_id=u.id)"""
     params=request.query_params
     page=integer(int(params.get('page','1')) if params.get('page','1').isdigit() else 0,1,100000)
     search=params.get('q','').strip();require(len(search)<=100,'搜索内容过长')
@@ -72,22 +76,22 @@ def listing(request, owner=None):
     if owner:
         search=''
     args=(owner,search)
-    totals=db.one("""SELECT count(*) AS invited,count(r.invitee_id) AS qualified,
+    totals=db.one(f"""SELECT count(*) AS invited,count(r.invitee_id) AS qualified,
       COALESCE(sum(r.entitled),0)::bigint AS earned,
       COALESCE(sum(r.recovered),0)::bigint AS recovered,
       COALESCE(sum(r.granted-r.recovered-r.entitled),0)::bigint AS pending_recovery
-      FROM users u JOIN users i ON i.id=u.invited_by LEFT JOIN (SELECT invitee_id,max(rate_percent) AS rate_percent,sum(fee)::bigint AS fee,
+      FROM {relations} u JOIN users i ON i.id=u.invited_by LEFT JOIN (SELECT inviter_id,invitee_id,max(rate_percent) AS rate_percent,sum(fee)::bigint AS fee,
        sum(granted)::bigint AS granted,sum(entitled)::bigint AS entitled,sum(recovered)::bigint AS recovered,max(created_at) AS created_at
-       FROM invitation_rewards GROUP BY invitee_id) r ON r.invitee_id=u.id WHERE """+where,*args)
+       FROM {rewards} rewards GROUP BY inviter_id,invitee_id) r ON r.invitee_id=u.id AND r.inviter_id=u.invited_by WHERE """+where,*args)
     email="substring(u.email from 1 for 2)||'***@'||split_part(u.email,'@',2)" if owner else 'u.email'
     inviter="NULL::text" if owner else 'i.email'
     rows=db.all(f"""SELECT u.id,{email} AS email,{inviter} AS inviter,u.created_at,
       r.rate_percent,r.fee,r.granted,r.entitled,r.recovered,r.created_at AS rewarded_at,
       CASE WHEN r.invitee_id IS NULL THEN 'waiting' WHEN r.granted-r.recovered>r.entitled THEN 'recovering'
        WHEN r.entitled=0 AND r.granted>0 THEN 'reversed' WHEN r.recovered>0 THEN 'adjusted' ELSE 'rewarded' END AS reward_state
-      FROM users u JOIN users i ON i.id=u.invited_by LEFT JOIN (SELECT invitee_id,max(rate_percent) AS rate_percent,sum(fee)::bigint AS fee,
+      FROM {relations} u JOIN users i ON i.id=u.invited_by LEFT JOIN (SELECT inviter_id,invitee_id,max(rate_percent) AS rate_percent,sum(fee)::bigint AS fee,
        sum(granted)::bigint AS granted,sum(entitled)::bigint AS entitled,sum(recovered)::bigint AS recovered,max(created_at) AS created_at
-       FROM invitation_rewards GROUP BY invitee_id) r ON r.invitee_id=u.id
+       FROM {rewards} rewards GROUP BY inviter_id,invitee_id) r ON r.invitee_id=u.id AND r.inviter_id=u.invited_by
       WHERE {where} ORDER BY u.created_at DESC,u.id LIMIT 25 OFFSET $3""",*args,(page-1)*25)
     return {'items':rows,'stats':totals,'total':totals['invited'],'page':page,'has_more':page*25<totals['invited'],'rules':config('invites')}
 

@@ -1,3 +1,9 @@
+# 星桥 StarBridge
+
+2026-11-09 最新授权：完成 GPT Register 整合、统一导航、注册会员减免和品牌图标更名后，提交推送 https://github.com/yigerende/StarBridge.git；正式目录 /opt/1panel/apps/starbridge，对外5876。新安装使用独立空库，仅创建用户指定管理员；原 xufupython、gptreg 保持运行，不迁入其数据配置。Compose project starbridge，四个容器 starbridge-app / starbridge-postgres / starbridge-registration-app / starbridge-registration-worker。后续保留新项目自己的数据库、运行目录和主密钥。读取上级 _codex-memory/starbridge-production-runbook.md。此授权覆盖下述历史未推送限制；历史路径和旧项目操作不适用于本次新部署。
+
+## 历史记录
+
 # XUFU Python 独立复刻
 
 2026-11-06 最新授权覆盖下文暂不推送限制：本侧会话完成地区套餐参考价格、定时配置和 R 排序展示后，将 xufupython 全部未提交改动（包含主线程地区批量启停）一起提交推送 GitHub 并更新正式环境。报价每小时、汇率每天默认定时，范围跟随订阅地区。上游请求仅后端执行，用户浏览器不接触实际上游 API 地址和参数；不改付款或订单代理流程。详见 docs/regional-price-reference.md。

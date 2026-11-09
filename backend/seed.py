@@ -18,7 +18,7 @@ DEFAULTS = {
     'security': {'registration_open':True,'email_verify_enabled':False,'email_domain_whitelist':[],'login_slider_enabled':True},
     'mail': {'enabled':False,'host':'','port':465,'username':'','password_enc':'','from_email':'','from_name':'','encryption':'ssl'},
     'invites': {'enabled':True,'stages':[{'until_days':30,'rate_percent':10},{'until_days':60,'rate_percent':5},{'until_days':90,'rate_percent':2}]},
-    'site': {'icon':'','name':'序付','english_name':'XUPAY','tagline':'让每一笔订阅，清晰有序。','registration_open':True,'support_url':'','terms':'请仅提交本人或已获授权的账号与银行卡。服务费与上游订阅费用分别结算，订单处理结果以订单记录为准。','billing_country':'US','billing_mode':'customer_review','invite_rate':0},
+    'site': {'icon':'','name':'星桥','english_name':'StarBridge','tagline':'连接每一份服务，让订阅与注册清晰有序。','registration_open':True,'support_url':'','terms':'请仅提交本人或已获授权的账号与银行卡。服务费与上游订阅费用分别结算，订单处理结果以订单记录为准。','billing_country':'US','billing_mode':'customer_review','invite_rate':0},
     'risk': {'login_per_minute':10,'api_per_minute':120,'order_per_minute':5,'max_open_orders':10,'max_topup':10000000,'session_hours':24,'event_retention_days':90},
     'scheduler': {'paused':False,'max_parallel':2,'per_user_parallel':1,'retry_limit':2,'retry_delay_seconds':30,'task_timeout_seconds':180,'queue_limit':500,'default_country':'PH','link_mode':'long','engine':'not_connected'},
     'billing': {'country':'US','allow_customer_edit':True,'address_templates':[]},
@@ -36,6 +36,9 @@ def seed():
             q.execute('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT DO NOTHING',key,value)
         q.execute("UPDATE settings SET value=value || $1::jsonb WHERE key='security' AND NOT value ? 'login_slider_enabled'", {'login_slider_enabled':True})
         q.execute("UPDATE settings SET value=(value-'rate_percent') || $1::jsonb WHERE key='invites' AND NOT value ? 'stages'", {'stages':DEFAULTS['invites']['stages']})
+        q.execute("""UPDATE settings SET value=value || $1::jsonb
+          WHERE key='site' AND value->>'name'='序付' AND value->>'english_name'='XUPAY'""",
+          {k:DEFAULTS['site'][k] for k in ('name','english_name','tagline','icon')})
         products = [('pro5x','Pro 5x','灵活开启，更适合轻量使用','轻量进阶'),('pro','Pro 20x','为高频工作提供充足空间','热门选择'),('team','Team 标准','将团队协作放到同一个空间','团队协作'),('team_premium','Team 高级','为团队成员配置更高使用额度','弹性席位')]
         products += [('plus','Plus','个人订阅，满足日常使用需求','个人订阅'),('promax','Pro 50x（Pro Max）','更高额度的个人订阅方案','高阶个人')]
         for i, (pid,name,description,tag) in enumerate(products):

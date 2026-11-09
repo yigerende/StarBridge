@@ -69,25 +69,28 @@ def _saved_checkout_links(id, run, checkout):
 
 @public_router.get('/public')
 def public():
+    from .registration_gateway import enabled as registration_enabled
     cfg=config('payment')
     flow=cfg.get('subscription_flow') or ''
     connected=cfg.get('enabled') is True and flow in ('gener_direct_pay','cslive_go_direct_pay','cslive_full_go')
     flags=capabilities()
     products=visible_products(db.all('SELECT * FROM products WHERE enabled ORDER BY sort'),flow) if any(flags[k] for k in ('subscribe','links','membership')) else []
-    return {'site':public_site(),'features':flags,'security':dict(security_config(),password_reset_available=mail_ready()),'products':products,'announcements':db.all(ANN+' AND login_visible ORDER BY sort,created_at DESC'),'checkout_connected':connected and flags['links'],'payment_connected':connected and flags['subscribe'],'subscription_flow':flow if connected and (flags['subscribe'] or flags['links']) else '','countries':regions.enabled(flow),'default_country':regions.default_country(flow),'tiers':config('tiers') if flags['membership'] else {}}
+    return {'registration_enabled':registration_enabled(),'site':public_site(),'features':flags,'security':dict(security_config(),password_reset_available=mail_ready()),'products':products,'announcements':db.all(ANN+' AND login_visible ORDER BY sort,created_at DESC'),'checkout_connected':connected and flags['links'],'payment_connected':connected and flags['subscribe'],'subscription_flow':flow if connected and (flags['subscribe'] or flags['links']) else '','countries':regions.enabled(flow),'default_country':regions.default_country(flow),'tiers':config('tiers') if flags['membership'] else {}}
 
 
 @router.get('/overview')
 def overview(request:Request):
+    from .registration_account import summary,legacy_spend
     user=current(request)
     stats=db.one("SELECT count(*) AS orders,count(*) FILTER(WHERE status='succeeded') AS succeeded,count(*) FILTER(WHERE status IN ('draft','queued','processing','awaiting_payment') AND NOT(workflow='link' AND status='awaiting_payment')) AS pending FROM orders WHERE user_id=$1 AND deleted_at IS NULL",user['id'])
     stats.update(db.one("SELECT COALESCE(sum(-amount) FILTER(WHERE kind='charge'),0) AS used,COALESCE(sum(amount) FILTER(WHERE kind IN ('topup','redeem')),0) AS credited FROM ledger WHERE user_id=$1",user['id']))
+    stats['used']+=legacy_spend(user['id'])
     flags=capabilities(user)
     if not flags['orders']:
         for key in ('orders','succeeded','pending'): stats.pop(key,None)
     if not flags['wallet']:
         for key in ('used','credited'): stats.pop(key,None)
-    return {'user':project_user(user),'stats':stats,'recent_orders':db.all('SELECT '+ORDER_FIELDS+' FROM orders o WHERE user_id=$1 AND o.deleted_at IS NULL ORDER BY created_at DESC LIMIT 5',user['id']) if flags['orders'] else [],'announcements':db.all(ANN+' ORDER BY sort,created_at DESC')}
+    return {'user':project_user(user),'stats':stats,'registration':summary(user['id']) if flags['orders'] else None,'recent_orders':db.all('SELECT '+ORDER_FIELDS+' FROM orders o WHERE user_id=$1 AND o.deleted_at IS NULL ORDER BY created_at DESC LIMIT 5',user['id']) if flags['orders'] else [],'announcements':db.all(ANN+' ORDER BY sort,created_at DESC')}
 
 
 @router.get('/announcements')
@@ -183,11 +186,12 @@ def catalog(request:Request):
 
 @admin_router.get('/overview')
 def admin_overview():
+    from .registration_account import summary
     stats=db.one("SELECT (SELECT count(*) FROM users WHERE role='member' AND deleted_at IS NULL) AS customers,(SELECT COALESCE(sum(balance),0) FROM users WHERE role='member') AS balance,(SELECT COALESCE(sum(frozen),0) FROM users WHERE role='member') AS frozen,(SELECT count(*) FROM orders WHERE deleted_at IS NULL) AS orders,(SELECT count(*) FROM topups WHERE status='pending') AS pending_topups,(SELECT count(*) FROM risk_events WHERE NOT resolved) AS risks,(SELECT count(*) FROM resources WHERE enabled) AS resources,(SELECT count(*) FROM orders WHERE deleted_at IS NULL AND status IN ('queued','processing','awaiting_payment') AND NOT(workflow='link' AND status='awaiting_payment')) AS active_orders")
     scheduler=dict(config('scheduler'),worker_mode=worker_mode())
     scheduler['paused']=scheduler['paused'] or worker_mode()=='off'
     cfg=config('payment')
-    return {'stats':stats,'orders':db.all('SELECT '+ORDER_FIELDS+',o.user_id,o.note,u.email AS owner FROM orders o JOIN users u ON u.id=o.user_id WHERE o.deleted_at IS NULL ORDER BY o.created_at DESC LIMIT 8'),'risks':db.all('SELECT * FROM risk_events ORDER BY id DESC LIMIT 5'),'scheduler':scheduler,'payment_connected':cfg.get('enabled') is True and cfg.get('subscription_flow') in ('gener_direct_pay','cslive_go_direct_pay','cslive_full_go')}
+    return {'stats':stats,'registration':summary(),'orders':db.all('SELECT '+ORDER_FIELDS+',o.user_id,o.note,u.email AS owner FROM orders o JOIN users u ON u.id=o.user_id WHERE o.deleted_at IS NULL ORDER BY o.created_at DESC LIMIT 8'),'risks':db.all('SELECT * FROM risk_events ORDER BY id DESC LIMIT 5'),'scheduler':scheduler,'payment_connected':cfg.get('enabled') is True and cfg.get('subscription_flow') in ('gener_direct_pay','cslive_go_direct_pay','cslive_full_go')}
 
 
 @admin_router.get('/orders')

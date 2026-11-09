@@ -146,6 +146,7 @@ class CustomerApiTests:
             anonymous=TestClient(self.client.app)
             try:
                 for path,methods in spec['paths'].items():
+                    if path.startswith('/registration/'):continue  # Separate service authentication is covered by integration.test.js.
                     for method in methods:
                         result=anonymous.request(method,path.replace('{id}','missing'),json={} if method=='post' else None)
                         self.assertEqual(result.status_code,401,path)

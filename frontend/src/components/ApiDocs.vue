@@ -21,7 +21,7 @@ onMounted(async()=>{try{spec.value=await api('/openapi.json');await nextTick();i
 <div class="api-docs">
   <button class="docs-menu-toggle icon-btn bordered" @click="mobile=!mobile" aria-label="文档菜单"><Menu :size="20"/></button>
   <aside class="docs-sidebar" :class="{open:mobile}">
-    <a href="/#/home" class="brand"><span class="brand-icon"><img :src="site?.icon_url||'/site-icon'" alt=""/></span><b>{{site?.name||'序付'}}<small>DEVELOPERS</small></b></a>
+    <a href="/#/home" class="brand"><span class="brand-icon"><img :src="site?.icon_url||'/site-icon'" alt=""/></span><b>{{site?.name||'星桥'}}<small>DEVELOPERS</small></b></a>
     <button class="icon-btn docs-close" @click="mobile=false" aria-label="收起文档菜单"><X/></button>
     <p class="eyebrow">接入指引</p>
     <a href="/docs#start" @click="mobile=false">快速开始</a><a href="/docs#auth" @click="mobile=false">鉴权与数据约定</a>
@@ -29,18 +29,19 @@ onMounted(async()=>{try{spec.value=await api('/openapi.json');await nextTick();i
     <a href="/docs#input-sources" @click="mobile=false">字段来源与调用顺序</a>
     <a v-for="guide in spec['x-guides']" :key="guide.id" :href="'/docs#guide-'+guide.id" @click="mobile=false">{{guide.title}}示例</a>
     <a href="/docs#results" @click="mobile=false">如何判断办理结果</a>
+    <a href="/docs#registration" @click="mobile=false">注册与账号交付</a>
     <template v-for="group in groups" :key="group.name"><p class="eyebrow">{{group.name}}</p>
       <a v-for="x in group.items" :key="x.id" :href="'/docs#'+x.id" @click="mobile=false"><span :class="['method',x.method]">{{x.method.toUpperCase()}}</span>{{x.op.summary}}</a>
     </template>
     <p class="eyebrow">参考</p><a href="/docs#fields" @click="mobile=false">字段字典</a><a href="/docs#states" @click="mobile=false">状态、分页与重试</a><a href="/docs#errors" @click="mobile=false">错误处理</a>
-    <a href="/api/openapi.json" download="xufupython-openapi.json"><Download :size="14"/>下载 OpenAPI 3.1</a>
+    <a href="/api/openapi.json" download="starbridge-openapi.json"><Download :size="14"/>下载 OpenAPI 3.1</a>
     <a href="/#/keys">管理 API 密钥<ArrowUpRight :size="14"/></a>
   </aside>
   <main class="docs-main">
     <div v-if="error" class="alert danger">{{error}}</div>
     <section id="start" class="docs-intro">
-      <span class="eyebrow">序付 API · {{spec.info?.version}}</span><h1>API 接入文档</h1>
-      <p>从你的服务端完成订阅办理、生成结账链接、关闭自动续费，并查询账户、订单和资金记录。</p>
+      <span class="eyebrow">星桥 API · {{spec.info?.version}}</span><h1>API 接入文档</h1>
+      <p>一份文档接入订阅办理、注册与账号交付、结账链接、关闭自动续费，以及统一账户与资金。</p>
       <div class="docs-base"><code>{{origin}}</code><button class="text-btn" @click="action(()=>copy(origin))"><Copy :size="15"/>复制基础地址</button></div>
       <div class="docs-steps"><span>01 在开发接入创建密钥</span><span>02 查询套餐与余额</span><span>03 提交并保存任务编号</span><span>04 查询进度与结果</span></div>
       <div class="callout">先将 API 密钥保存为服务端环境变量 XUFU_API_KEY。示例中的 Session、银行卡和记录编号都是占位符，请替换为本次授权操作的真实资料。cURL 示例适用于 Bash；Windows 可使用 Python 或 Node.js 示例。</div>
@@ -48,10 +49,17 @@ onMounted(async()=>{try{spec.value=await api('/openapi.json');await nextTick();i
       <p>Python 示例使用 requests；Node.js 示例使用内置 fetch，建议 Node.js 22 或更新版本。</p>
     </section>
     <section id="auth" class="panel docs-section">
-      <h2>鉴权与数据约定</h2><p>请求携带 <code>Authorization: Bearer YOUR_API_KEY</code>。密钥只能操作所属序付账户的数据；目标订阅账号由请求中的 Session 指定。密钥只在创建时显示一次，撤销后失效。</p>
+      <h2>鉴权与数据约定</h2><p>请求携带 <code>Authorization: Bearer YOUR_API_KEY</code>。密钥只能操作所属星桥账户的数据；目标订阅账号由请求中的 Session 指定。密钥只在创建时显示一次，撤销后失效。</p>
       <p>可用余额为 <code>balance − frozen</code>。</p>
       <p>套餐以 <code>GET /api/v1/catalog</code> 返回的 <code>items[].id</code> 为准，作为报价和下单的 <code>product_id</code>。Pro 20x 使用 <code>pro20x</code>；后续开放的新套餐同样传对应标识。</p><p>服务费优先使用该套餐专属价，其次账户通用价，否则使用会员折扣；<code>price_source</code> 说明本次计价来源。专属价为 0 也有效。</p><p>使用 HTTPS 从服务端调用；密钥、Session、银行卡及兑换码不要放入 URL、前端代码或日志。接口不开放跨域浏览器调用。</p>
       <p>Session 检查仅核对格式、账号与有效期，不验证上游登录和订阅状态。办理时请提供最新完整 Session，并保留其中的 sessionToken 或会话 Cookie，以便需要时刷新登录态。</p>
+    </section>
+    <section id="registration" class="panel docs-section">
+      <h2>注册与账号交付</h2>
+      <p>使用开发接入创建的同一个 <code>xp_live_</code> 密钥；注册接口位于 <code>/registration/open/v1/</code>。历史 <code>gr_</code> 密钥保持原注册权限，可在开发接入统一撤销。</p>
+      <p>先查询注册套餐，再提交订单并保存订单编号。相同业务重试必须复用 <code>Idempotency-Key</code>，更改参数时使用新的键。按原订单查询进度，交付后查询账号或下载导出文件；下方列出完整接口、请求字段和示例。</p>
+      <p>下单先冻结，账号资料完整交付后才扣费；选择 OAuth 时必须同时完成授权。失败释放对应冻结，部分成功仅扣已交付部分。<code>queued / running / oauth_pending</code> 为处理中，<code>review</code> 保留原单继续查询。</p>
+      <p>注册接口金额单位为积分；星桥接口使用最小单位，100 最小单位 = 1 积分。两类接口显示同一钱包。分页分别遵循对应接口的参数，导出文件含敏感账号资料，请只保存在授权系统。</p>
     </section>
     <section id="product-ids" class="panel docs-section">
       <h2>product_id 可以传什么？</h2>

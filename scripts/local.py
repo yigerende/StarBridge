@@ -39,25 +39,25 @@ def initialize():
     env_file=ROOT/'.env'
     if not env_file.exists():
         password=secrets.token_urlsafe(32)
-        env_file.write_text('DATABASE_URL=postgresql://xufu_python:'+password+'@127.0.0.1:18972/xufu_python\nMASTER_KEY='+base64.b64encode(secrets.token_bytes(32)).decode()+'\nPOSTGRES_PASSWORD='+password+'\nPORT=18970\nLISTEN_HOST=127.0.0.1\nCOOKIE_SECURE=false\nBOOTSTRAP_EMAIL=admin\nBOOTSTRAP_PASSWORD=admin\n',encoding='utf-8')
+        env_file.write_text('DATABASE_URL=postgresql://starbridge:'+password+'@127.0.0.1:18972/starbridge\nMASTER_KEY='+base64.b64encode(secrets.token_bytes(32)).decode()+'\nPOSTGRES_PASSWORD='+password+'\nPORT=18970\nLISTEN_HOST=127.0.0.1\nCOOKIE_SECURE=false\nBOOTSTRAP_EMAIL=admin\nBOOTSTRAP_PASSWORD=admin\n',encoding='utf-8')
     env=dotenv_values(env_file)
+    url=urlsplit(env['DATABASE_URL']);database=url.path.lstrip('/')
     if not (DATA/'PG_VERSION').exists():
         if port_open(18972): raise RuntimeError('Port 18972 is occupied by another service')
         pw=LOCAL/'init-password.tmp'
         try:
             pw.write_text(env['POSTGRES_PASSWORD'],encoding='utf-8')
             with (LOCAL/'postgres-init.log').open('ab') as log:
-                subprocess.run([str(PG/'initdb.exe'),'-D',str(DATA),'-U','xufu_python','--pwfile='+str(pw),'--auth=scram-sha-256','--encoding=UTF8','--locale=C'],stdout=log,stderr=log,check=True,creationflags=FLAGS,timeout=60)
+                subprocess.run([str(PG/'initdb.exe'),'-D',str(DATA),'-U',url.username,'--pwfile='+str(pw),'--auth=scram-sha-256','--encoding=UTF8','--locale=C'],stdout=log,stderr=log,check=True,creationflags=FLAGS,timeout=60)
         finally: pw.unlink(missing_ok=True)
         with (DATA/'postgresql.conf').open('a',encoding='utf-8') as cfg:
             cfg.write("\nlisten_addresses='127.0.0.1'\nport=18972\ntimezone='Asia/Shanghai'\nmax_connections=60\n")
     if not port_open(18972): pg_command('-l',str(LOCAL/'postgres.log'),'-w','start')
-    url=urlsplit(env['DATABASE_URL'])
     conn=psycopg2.connect(host=url.hostname,port=url.port,user=url.username,password=url.password,dbname='postgres',connect_timeout=5)
     conn.autocommit=True
     with conn.cursor() as c:
-        c.execute("SELECT datname FROM pg_database WHERE datname='xufu_python'")
-        if not c.fetchone(): c.execute(sql.SQL('CREATE DATABASE {}').format(sql.Identifier('xufu_python')))
+        c.execute('SELECT datname FROM pg_database WHERE datname=%s',(database,))
+        if not c.fetchone(): c.execute(sql.SQL('CREATE DATABASE {}').format(sql.Identifier(database)))
     conn.close()
     from backend import db
     from backend.seed import seed

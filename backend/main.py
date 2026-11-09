@@ -17,11 +17,12 @@ from .runtime import worker_mode
 from . import login_slider, customer_api, admin_orders, order_updates, invitations, email_auth, features, custom_menus, branding, regions, country_pool, price_reference
 from .request_origin import configured_origin, origin_allowed
 from .auth_runtime import bounded_call
+from . import registration_gateway
 from starlette.concurrency import run_in_threadpool
 
 PUBLIC_ORIGIN = configured_origin(os.getenv('PUBLIC_ORIGIN', ''))
 
-log=logging.getLogger('xufu')
+log=logging.getLogger('starbridge')
 WEB=db.ROOT/'webui'
 HEADERS={
  'X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer',
@@ -45,7 +46,7 @@ def maintenance():
 
 
 def worker_loop(stop):
-    executor=ThreadPoolExecutor(max_workers=30,thread_name_prefix='xufu-worker')
+    executor=ThreadPoolExecutor(max_workers=30,thread_name_prefix='starbridge-worker')
     sync_jobs=set();price_jobs=set();proxy_jobs=set();renewal_jobs=set();subscription_jobs=set();cslive_go_jobs=set();cslive_full_jobs=set();last_maintenance=0;last_price_tick=0
     try:
         while not stop.wait(1):
@@ -82,7 +83,7 @@ def worker_loop(stop):
 @asynccontextmanager
 async def lifespan(app):
     db.initialize();seed();stop=threading.Event()
-    thread=threading.Thread(target=worker_loop,args=(stop,),daemon=True,name='xufu-scheduler');thread.start()
+    thread=threading.Thread(target=worker_loop,args=(stop,),daemon=True,name='starbridge-scheduler');thread.start()
     order_updates.updates.start()
     try:
         yield
@@ -93,7 +94,7 @@ async def lifespan(app):
         db.close()
 
 
-app=FastAPI(title='XUFU Python API',version='1.0.0',docs_url=None,redoc_url=None,openapi_url=None,lifespan=lifespan)
+app=FastAPI(title='StarBridge API',version='1.0.0',docs_url=None,redoc_url=None,openapi_url=None,lifespan=lifespan)
 
 
 @app.exception_handler(BusinessError)
@@ -125,6 +126,9 @@ async def security(request:Request,call_next):
     except Exception as e:
         log.error('Request failed (%s)',type(e).__name__);result=response({'error':'操作未完成，请稍后重试'},500)
     for k,v in HEADERS.items():result.headers[k]=v
+    if request.url.path.startswith('/registration/'):
+        result.headers['X-Frame-Options']='SAMEORIGIN'
+        result.headers['Content-Security-Policy']=HEADERS['Content-Security-Policy'].replace("frame-ancestors 'none'", "frame-ancestors 'self'")
     return result
 
 
@@ -134,7 +138,7 @@ def check_source(request):
     require(limit('edge:'+source,600),'请求过于频繁',429)
 
 
-for module in (login_slider,auth,email_auth,membership,wallet,admin_accounts,settings,proxies,admin_content,renewals,subscription,subscription_cslive_go,subscription_cslive_full):app.include_router(module.router)
+for module in (login_slider,auth,email_auth,membership,wallet,admin_accounts,settings,proxies,admin_content,renewals,subscription,subscription_cslive_go,subscription_cslive_full,registration_gateway):app.include_router(module.router)
 for router in (records.public_router,records.router,records.admin_router,customer_api.router,admin_orders.router,order_updates.router,invitations.router,custom_menus.router,branding.router,regions.router,country_pool.router,price_reference.router,price_reference.admin_router):app.include_router(router)
 
 
@@ -151,7 +155,8 @@ def ready():
 @app.get('/api/openapi.json')
 def openapi_document(request:Request):
     if not features.allowed('docs'): authenticate(request,True)
-    return FileResponse(db.ROOT/'backend/openapi.json',media_type='application/json')
+    from .registration_docs import document
+    return document()
 
 
 @app.api_route('/{path:path}',methods=['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS'],include_in_schema=False)

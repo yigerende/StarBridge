@@ -1,0 +1,51 @@
+'use strict';
+const { fail } = require('../src/platform/security');
+const { lockMember } = require('./member-lock');
+
+// Match backend/membership.py: settled subscription spend selects the automatic
+// tier; an unexpired manual tier and the account fee override take precedence.
+async function prices(q, memberId, settings) {
+  const user = (await q.query(`SELECT u.membership_code,u.membership_until,u.fee_override,
+    coalesce((SELECT sum(s.spent) FROM (
+      SELECT l.order_id,greatest(0,-sum(l.amount)) AS spent
+      FROM ledger l JOIN orders o ON o.id=l.order_id AND o.user_id=l.user_id
+      WHERE l.user_id=u.id AND o.status='succeeded'
+        AND ((l.kind='charge' AND l.amount<0) OR (l.kind='refund' AND l.amount>0))
+      GROUP BY l.order_id) s),0) AS spent
+    FROM users u JOIN platform_users p ON p.xufu_user_id=u.id WHERE p.id=$1`, [memberId])).rows[0];
+  fail(user, '用户不存在', 404);
+  const config = (await q.query("SELECT value FROM settings WHERE key='tiers'")).rows[0]?.value;
+  const tiers = (config?.items || [{ code: 'L1', name: '启程会员', threshold: 0, discount: 100 }])
+    .slice().sort((a,b) => a.threshold-b.threshold).map((t,i) => ({...t,code:t.code || `L${i+1}`}));
+  fail(tiers.length > 0, '会员价格配置不可用', 503);
+  let current = tiers[0], source = 'automatic', until = null;
+  for (const tier of tiers) if (Number(user.spent) >= tier.threshold) current = tier;
+  if (user.membership_code && (!user.membership_until || new Date(user.membership_until) > new Date())) {
+    const manual = tiers.find(t => t.code === user.membership_code);
+    if (manual) { current = manual; source = 'manual'; until = user.membership_until; }
+  }
+  fail(Number.isInteger(current.discount) && current.discount >= 0 && current.discount <= 100, '会员价格配置不可用', 503);
+  const membership = { current, source, until };
+  return {
+    membership,
+    products: [false,true].map(oauth => {
+      const standard = Math.round(Number(oauth ? settings.price_oauth : settings.price_standard)*100);
+      const fee = user.fee_override == null ? Math.floor((standard*current.discount+50)/100) : Number(user.fee_override);
+      fail(Number.isSafeInteger(standard) && standard>=0 && Number.isSafeInteger(fee) && fee>=0, '服务费配置不可用', 503);
+      return { name: oauth ? 'OAuth 账号' : '标准账号', need_oauth: oauth,
+        standard_price: standard/100, unit_price: fee/100, saved: (standard-fee)/100,
+        price_source: user.fee_override == null ? 'membership' : 'account_override' };
+    }),
+  };
+}
+
+async function catalog(db, memberId) {
+  return db.tx(async q => {
+    await lockMember(q, memberId, 'id', true);
+    const settings = (await q.query('SELECT value FROM platform_settings WHERE id=1 FOR SHARE')).rows[0].value;
+    return { orders_open: settings.orders_open, max_quantity: settings.max_quantity, currency: 'points',
+      ...await prices(q, memberId, settings) };
+  });
+}
+
+module.exports = { prices, catalog };

@@ -11,7 +11,7 @@ from .common import config, require
 from .custom_menus import valid_icon
 
 router=APIRouter()
-DEFAULT_ICON=(Path(__file__).parent/'assets/xupay-icon.svg').read_bytes()
+DEFAULT_ICON=(Path(__file__).parent/'assets/starbridge-icon.svg').read_bytes()
 MAX_BYTES=256*1024
 
 

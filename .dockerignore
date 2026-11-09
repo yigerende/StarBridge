@@ -11,6 +11,7 @@
 !scripts/
 !scripts/serve.py
 !scripts/recover_post_payment.py
+!scripts/registration_migrate.py
 !frontend/
 !frontend/**
 **/__pycache__/

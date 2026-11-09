@@ -4,10 +4,12 @@ import {Search,ArrowUpRight,ArrowDownLeft,ArrowUpRight as Outgoing,LockKeyhole,R
 import {cash,date,labels,type Row} from '../lib'
 import {deltaTone,signed,upstreamAmount,discountText} from '../record-format'
 import RecordsTable from './RecordsTable.vue'
-const props=defineProps<{rows:Row[];loading:boolean}>()
+const props=defineProps<{rows:Row[];loading:boolean;business:string}>()
+const registration=computed(()=>props.business==='registration')
+const searchLabel=computed(()=>registration.value?'注册订单号 / 流水说明':'订单号 / 邮箱 / 流水说明')
 defineEmits<{order:[row:Row]}>()
 const q=ref(''),kind=ref(''),start=ref(''),end=ref('')
-const kinds=['topup','redeem','freeze','unfreeze','charge','refund','adjustment','invite_reward','invite_reversal']
+const kinds=['topup','redeem','freeze','unfreeze','charge','refund','adjustment','invite_reward','invite_reversal','migration']
 const invalidDates=computed(()=>!!(start.value&&end.value&&start.value>end.value))
 const hasFilters=computed(()=>!!(q.value||kind.value||start.value||end.value))
 const filtered=computed(()=>{
@@ -17,7 +19,7 @@ const filtered=computed(()=>{
  if(until)until.setDate(until.getDate()+1)
  return props.rows.filter(r=>{
   const when=new Date(r.created_at).getTime(),o=r.related_order
-  return (!q.value||`${r.id} ${r.description} ${o?.id||''} ${o?.email||''} ${o?.product_name||''}`.toLowerCase().includes(q.value.trim().toLowerCase()))&&(!kind.value||r.kind===kind.value)&&when>=from&&when<(until?.getTime()??Infinity)
+  return (!q.value||`${r.id} ${r.description} ${r.registration_order_id||''} ${o?.id||''} ${o?.email||''} ${o?.product_name||''}`.toLowerCase().includes(q.value.trim().toLowerCase()))&&(!kind.value||r.kind===kind.value)&&when>=from&&when<(until?.getTime()??Infinity)
  })
 })
 const totals=computed(()=>filtered.value.reduce((s,r)=>{
@@ -29,34 +31,34 @@ const totals=computed(()=>filtered.value.reduce((s,r)=>{
 },{credit:0,spent:0,held:0,returned:0}))
 function ledgerDescription(row:Row){
  const fee=Math.abs(Number(row.frozen_delta||row.amount||0))
- if(row.kind==='freeze')return `${row.related_order?.product_name||'订单'}冻结 ${cash(fee)} 积分，等待办理结算`
- if(row.kind==='charge')return `订阅服务费结算 ${cash(Math.abs(Number(row.amount)))} 积分`
+ if(row.kind==='freeze')return `${row.related_order?.product_name||(row.business==='registration'?'注册订单':'订单')}冻结 ${cash(fee)} 积分，等待办理结算`
+ if(row.kind==='charge')return `${row.business==='registration'?'注册':'订阅'}服务费结算 ${cash(Math.abs(Number(row.amount)))} 积分`
  if(row.kind==='unfreeze')return `释放冻结 ${cash(fee)} 积分，已恢复可用余额`
  return String(row.description||'—').replace(/\bR\b/g,'积分')
 }
 function reset(){q.value='';kind.value='';start.value='';end.value=''}
-const source=(r:Row)=>r.related_order?'订阅订单':({invite_reward:'伙伴计划奖励',invite_reversal:'伙伴计划退回',topup:'人工充值',redeem:'兑换码入账',adjustment:'运营调整',refund:'服务退费',charge:'服务结算',freeze:'服务费冻结',unfreeze:'服务费解冻'} as Row)[r.kind]||'账户变动'
-const columns=[{key:'kind',label:'流水类型'},{key:'source',label:'业务来源'},{key:'payment',label:'银行卡费用'},{key:'available',label:'可用变动'},{key:'frozen',label:'冻结变动'},{key:'balance',label:'变动后余额'},{key:'related',label:'关联记录',wide:true},{key:'description',label:'说明',wide:true},{key:'time',label:'发生时间'}]
+const source=(r:Row)=>r.registration_order_id?'注册订单':r.related_order?'订阅订单':({invite_reward:'伙伴计划奖励',invite_reversal:'伙伴计划退回',topup:'人工充值',redeem:'兑换码入账',adjustment:'运营调整',refund:'服务退费',charge:'服务结算',freeze:'服务费冻结',unfreeze:'服务费解冻'} as Row)[r.kind]||'账户变动'
+const columns=computed(()=>[{key:'kind',label:'流水类型'},{key:'source',label:'业务来源'},...registration.value?[]:[{key:'payment',label:'银行卡费用'}],{key:'available',label:'可用变动'},{key:'frozen',label:'冻结变动'},{key:'balance',label:'变动后余额'},{key:'related',label:registration.value?'注册订单 / 关联记录':'关联记录',wide:true},{key:'description',label:'说明',wide:true},{key:'time',label:'发生时间'}])
 </script>
 <template>
  <section class="panel record-panel ledger-panel">
-  <div class="records-heading"><div><h2>资金明细</h2><p>冻结转入待结算金额；确认扣费从冻结金额结算，不重复扣减可用余额。</p></div><span class="pill">账户单位 · 积分</span></div>
+  <div class="records-heading"><div><h2>{{registration?'注册':'订阅'}}资金明细</h2><p>{{registration?'下单先冻结积分，按成功交付的账号结算；失败部分释放冻结，恢复可用余额。':'冻结转入待结算金额；确认扣费从冻结金额结算，不重复扣减可用余额。'}}</p></div><span class="pill">账户单位 · 积分</span></div>
   <div class="ledger-totals"><div><span><ArrowDownLeft :size="15"/>充值入账</span><b>{{cash(totals.credit)}} <em>积分</em></b></div><div><span><Outgoing :size="15"/>服务扣费</span><b>{{cash(totals.spent)}} <em>积分</em></b></div><div><span><LockKeyhole :size="15"/>累计冻结</span><b>{{cash(totals.held)}} <em>积分</em></b></div><div><span><RotateCcw :size="15"/>解冻 / 退费</span><b>{{cash(totals.returned)}} <em>积分</em></b></div></div>
   <div class="records-filters">
-   <label class="records-search"><span class="sr-only">搜索订单号、邮箱或流水说明</span><Search :size="16"/><input v-model="q" type="search" placeholder="订单号 / 邮箱 / 流水说明"/></label>
-   <label><span class="sr-only">流水类型</span><select v-model="kind" aria-label="流水类型"><option value="">全部流水类型</option><option v-for="k in kinds" :key="k" :value="k">{{labels[k]}}</option></select></label>
+   <label class="records-search"><span class="sr-only">{{searchLabel}}</span><Search :size="16"/><input v-model="q" type="search" :placeholder="searchLabel"/></label>
+   <label><span class="sr-only">流水类型</span><select v-model="kind" aria-label="流水类型"><option value="">全部流水类型</option><option v-for="k in kinds" :key="k" :value="k">{{labels[k]||(k==='migration'?'历史余额迁入':k)}}</option></select></label>
    <div class="records-date-range"><label><span class="sr-only">开始日期</span><input v-model="start" type="date" aria-label="开始日期" :max="end||undefined"/></label><span>至</span><label><span class="sr-only">结束日期</span><input v-model="end" type="date" aria-label="结束日期" :min="start||undefined"/></label></div>
    <button v-if="hasFilters" class="text-btn records-reset" @click="reset">重置</button>
   </div>
   <p v-if="invalidDates" class="records-date-error" role="alert">结束日期不能早于开始日期。</p>
-  <RecordsTable :rows="filtered" :columns="columns" :loading="loading" :filtered="hasFilters" scope="在最近 300 条流水内筛选；汇总随筛选更新" @reset="reset">
+  <RecordsTable :rows="filtered" :columns="columns" :loading="loading" :filtered="hasFilters" scope="最近 300 条统一流水及迁移前注册流水；汇总随筛选更新" @reset="reset">
    <template #kind="{row}"><span class="ledger-kind" :class="'ledger-'+row.kind"><ReceiptText :size="13"/>{{labels[row.kind]||'账户变动'}}</span><small class="mono">#{{row.id}}</small></template>
    <template #source="{row}"><b>{{row.related_order?.product_name||source(row)}}</b><small v-if="row.related_order">服务费 {{cash(row.related_order.fee)}} 积分</small><small v-if="row.related_order" :class="{'positive':Number(row.related_order.price_snapshot?.standard)>row.related_order.fee}">{{discountText(row.related_order)}}</small><small v-else>账户资金</small></template>
    <template #payment="{row}"><b class="record-money">{{upstreamAmount(row.payment).value}}</b><small>{{row.related_order?upstreamAmount(row.payment).label:'不涉及上游付款'}}</small><small v-if="row.payment?.last4" class="mono">自备卡 · 尾号 {{row.payment.last4}}</small></template>
    <template #available="{row}"><b class="record-money" :class="deltaTone(row.available_delta)">{{signed(row.available_delta)}}</b></template>
    <template #frozen="{row}"><b class="record-money" :class="deltaTone(row.frozen_delta)">{{signed(row.frozen_delta)}}</b></template>
-   <template #balance="{row}"><b class="record-money">{{cash(Number(row.balance_after)-Number(row.frozen_after))}} 积分</b><small>冻结 {{cash(row.frozen_after)}} 积分</small></template>
-   <template #related="{row}"><template v-if="row.related_order"><button class="text-btn record-order-link mono" @click="$emit('order',row.related_order)">{{row.related_order.id}}<ArrowUpRight :size="13"/></button><small>{{row.related_order.email}}</small></template><span v-else class="muted">{{source(row)}}</span></template>
+   <template #balance="{row}"><b class="record-money">{{cash(Number(row.balance_after)-Number(row.frozen_after))}} 积分</b><small>冻结 {{cash(row.frozen_after)}} 积分</small><small v-if="row.legacy_registration">迁移前注册账户余额</small></template>
+   <template #related="{row}"><template v-if="row.related_order"><button class="text-btn record-order-link mono" @click="$emit('order',row.related_order)">{{row.related_order.id}}<ArrowUpRight :size="13"/></button><small>{{row.related_order.email}}</small></template><a v-else-if="row.registration_order_id" :href="'/?business=registration#/orders'" class="mono">{{row.registration_order_id}}</a><span v-else class="muted">{{source(row)}}</span></template>
    <template #description="{row}"><p class="record-description">{{ledgerDescription(row)}}</p></template>
    <template #time="{row}"><time>{{date(row.created_at)}}</time></template>
   </RecordsTable>

@@ -1,0 +1,65 @@
+services:
+  app:
+    environment:
+      REGISTRATION_URL: http://registration-app:3210
+      REGISTRATION_GATEWAY_SECRET: ${REGISTRATION_GATEWAY_SECRET:?Set a separate registration gateway secret}
+  registration-app:
+    image: starbridge-registration:${APP_VERSION:-local}
+    build:
+      context: ./services/gpt-register
+      args:
+        VCS_REF: ${APP_VERSION:-local}
+    container_name: starbridge-registration-app
+    restart: unless-stopped
+    init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-starbridge}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-starbridge}
+      XUFU_INTEGRATION: "1"
+      WORKER_URL: http://registration-worker:3211
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      REGISTRATION_GATEWAY_SECRET: ${REGISTRATION_GATEWAY_SECRET:?Set a separate registration gateway secret}
+      TZ: Asia/Shanghai
+    volumes:
+      - ./.registration-runtime:/app/.runtime
+    read_only: true
+    tmpfs: [/tmp:rw,noexec,nosuid,size=128m]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    stop_grace_period: 45s
+    networks: [private]
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+  registration-worker:
+    image: starbridge-registration:${APP_VERSION:-local}
+    container_name: starbridge-registration-worker
+    command: [node, docker/worker.js]
+    restart: unless-stopped
+    init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-starbridge}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-starbridge}
+      XUFU_INTEGRATION: "1"
+      TZ: Asia/Shanghai
+    volumes:
+      - ./.registration-runtime:/app/.runtime
+    read_only: true
+    tmpfs: [/tmp:rw,noexec,nosuid,size=128m]
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    stop_grace_period: 120s
+    networks: [private]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3211/healthz',{signal:AbortSignal.timeout(4000)}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}

@@ -65,6 +65,10 @@ def password_hash(value):
 
 def password_matches(value, hashed):
     try:
+        if isinstance(hashed,str) and re.fullmatch(r'scrypt:[0-9a-f]{32}:[0-9a-f]{128}',hashed):
+            _,salt,expected=hashed.split(':')
+            actual=hashlib.scrypt(value.encode(),salt=salt.encode(),n=16384,r=8,p=1,dklen=64,maxmem=64*1024*1024)
+            return secrets.compare_digest(actual,bytes.fromhex(expected))
         return bcrypt.checkpw(value.encode(), hashed.encode())
     except (ValueError, TypeError, AttributeError):
         return False

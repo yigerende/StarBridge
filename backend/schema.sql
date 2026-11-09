@@ -58,6 +58,10 @@ CREATE TABLE IF NOT EXISTS ledger (
 );
 
 CREATE INDEX IF NOT EXISTS ledger_user_time ON ledger(user_id,created_at DESC);
+ALTER TABLE ledger ADD COLUMN IF NOT EXISTS business text NOT NULL DEFAULT 'subscription';
+ALTER TABLE ledger ADD COLUMN IF NOT EXISTS registration_order_id text;
+ALTER TABLE ledger ADD COLUMN IF NOT EXISTS available_change bigint;
+ALTER TABLE ledger ADD COLUMN IF NOT EXISTS frozen_change bigint;
 
 CREATE TABLE IF NOT EXISTS topups (id text PRIMARY KEY,user_id text NOT NULL REFERENCES users(id),amount bigint NOT NULL CHECK(amount>0),method text NOT NULL DEFAULT 'manual',proof text NOT NULL DEFAULT '',status text NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','rejected','cancelled')),note text NOT NULL DEFAULT '',reviewed_by text REFERENCES users(id),created_at timestamptz NOT NULL DEFAULT now(),updated_at timestamptz NOT NULL DEFAULT now());
 

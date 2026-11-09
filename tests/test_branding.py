@@ -20,6 +20,20 @@ def png_icon(width=32,height=32):
 
 
 class BrandingTests:
+    def test_brand_upgrade_preserves_business_settings_and_custom_names(self):
+        from backend.seed import seed
+        with self.brand_config():
+            site=dict(config('site'),name='序付',english_name='XUPAY',support_url='https://support.example.test',billing_country='JP')
+            db.execute("UPDATE settings SET value=$1 WHERE key='site'",site)
+            before=db.all('SELECT id,balance,frozen,password_hash FROM users ORDER BY id')
+            seed();changed=config('site')
+            self.assertEqual((changed['name'],changed['english_name']),('星桥','StarBridge'))
+            self.assertEqual((changed['support_url'],changed['billing_country']),(site['support_url'],'JP'))
+            self.assertEqual(db.all('SELECT id,balance,frozen,password_hash FROM users ORDER BY id'),before)
+            custom=dict(changed,name='客户自定义名称',english_name='CUSTOM')
+            db.execute("UPDATE settings SET value=$1 WHERE key='site'",custom)
+            seed();self.assertEqual(config('site'),custom)
+
     @contextmanager
     def brand_config(self):
         saved=config('site')

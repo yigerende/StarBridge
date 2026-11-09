@@ -43,7 +43,7 @@ onUnmounted(()=>{disposed=true;revision++;detailRevision++;clearTimeout(timer);c
 <template>
 <div class="renewal-layout">
  <form class="panel renewal-form" autocomplete="off" @submit.prevent="submit">
-  <div class="renewal-heading"><span class="renewal-icon"><ShieldCheck :size="24"/></span><div><h2>单独关闭自动续费</h2><p>已有订阅也能操作，无需在序付下单。</p></div><span class="free-label">免费操作</span></div>
+  <div class="renewal-heading"><span class="renewal-icon"><ShieldCheck :size="24"/></span><div><h2>单独关闭自动续费</h2><p>已有订阅也能操作，无需在星桥下单。</p></div><span class="free-label">免费操作</span></div>
   <label for="renewal-session">账号 Session<textarea id="renewal-session" v-model="session" rows="6" maxlength="262144" required autocomplete="off" spellcheck="false" :disabled="busy" placeholder="粘贴完整 Session JSON，自动识别需要关闭续费的账号。"></textarea></label>
   <p class="muted small">授权仅用于本次处理，加密暂存，结束或到期后清除。</p>
   <p v-if="checking" class="muted" role="status">正在识别账号…</p>

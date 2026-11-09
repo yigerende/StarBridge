@@ -1,0 +1,31 @@
+const base = '/registration';
+export const integrated = location.pathname === base || location.pathname.startsWith(base + '/');
+export const embedded = integrated && window.parent !== window;
+export const servicePath = (path: string) => integrated && path.startsWith('/') && !path.startsWith('//')
+  && path !== base && !path.startsWith(base + '/') ? base + path : path;
+const sharedRoutes:Record<string,string>={'/':'/home','/keys':'/keys','/wallet':'/wallet','/partners':'/invites','/profile':'/profile','/docs':'/docs','/admin':'/admin','/admin/users':'/admin/users','/admin/invites':'/admin/invites'};
+export function unifiedRoute(path:string){return sharedRoutes[path]}
+export function openUnified(path:string){
+  if(embedded)window.parent.postMessage({type:'registration:navigate',path},location.origin);
+  else location.assign(path==='/docs'?'/docs':'/?business=registration#'+path);
+}
+
+if (integrated) {
+  if(embedded){
+    const report=()=>{const page=document.querySelector('.registration-embedded');if(page)window.parent.postMessage({type:'registration:resize',height:Math.ceil(page.getBoundingClientRect().height)+8},location.origin)};
+    const root=document.getElementById('root');
+    if(root){new ResizeObserver(report).observe(root);new MutationObserver(report).observe(root,{childList:true,subtree:true})}
+  }
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = (input, init) => originalFetch(typeof input === 'string' ? servicePath(input) : input, init);
+  const OriginalEventSource = window.EventSource;
+  window.EventSource = class extends OriginalEventSource {
+    constructor(url: string | URL, options?: EventSourceInit) {
+      super(typeof url === 'string' ? servicePath(url) : url, options);
+    }
+  };
+  window.addEventListener('gptreg:session-expired', () => {
+    if (embedded) window.parent.postMessage({ type: 'registration:session-expired' }, location.origin);
+    else location.assign('/?business=registration');
+  });
+}

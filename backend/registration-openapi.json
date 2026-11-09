@@ -1,0 +1,2201 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GPT Register 开放 API",
+    "version": "1.7.0",
+    "description": "通过服务端 API 创建标准或含 OAuth 的注册订单，查询进度并领取交付凭据。下单预留积分，按实际交付结算；失败/取消未交付部分释放。所有示例为虚构演示资料，实际价格与上限以接口返回为准。"
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "账户与服务",
+      "description": "查看用户积分和注册服务价格"
+    },
+    {
+      "name": "注册订单",
+      "description": "创建、筛选和查询自己的订单；用户及 API 不支持取消"
+    },
+    {
+      "name": "账号交付",
+      "description": "领取及导出已交付账号"
+    }
+  ],
+  "paths": {
+    "/open/v1/me": {
+      "get": {
+        "operationId": "get_me",
+        "summary": "查询账户与积分",
+        "tags": [
+          "账户与服务"
+        ],
+        "x-scope": "",
+        "description": "返回密钥所属的平台用户。points 已是可用积分，frozen 是单独预留的积分，不能再次从 points 中扣除。",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                },
+                "example": {
+                  "id": "44444444-4444-4444-8444-444444444444",
+                  "email": "customer@example.com",
+                  "name": "示例用户",
+                  "role": "member",
+                  "status": "active",
+                  "points": 900,
+                  "frozen": 100,
+                  "created_at": "2026-11-05T04:00:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/open/v1/products": {
+      "get": {
+        "operationId": "get_products",
+        "summary": "查询注册服务与价格",
+        "tags": [
+          "账户与服务"
+        ],
+        "x-scope": "",
+        "description": "返回两种模式的当前完整单价和每单上限。原 quantity 和 need_oauth 调用保持兼容，默认随机地区；无需 product_id。此处的示例价格不是实时价格。",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Products"
+                },
+                "example": {
+                  "orders_open": true,
+                  "max_quantity": 50,
+                  "currency": "points",
+                  "products": [
+                    {
+                      "name": "标准账号",
+                      "need_oauth": false,
+                      "unit_price": 50
+                    },
+                    {
+                      "name": "OAuth 账号",
+                      "need_oauth": true,
+                      "unit_price": 100
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/open/v1/registration-regions": {
+      "get": {
+        "operationId": "get_registration_regions",
+        "summary": "查询可选注册地区",
+        "tags": [
+          "账户与服务"
+        ],
+        "x-scope": "",
+        "description": "使用现有 Bearer API Key，无需新增 scope。返回当前默认代理模式开放的国家代码和名称，不返回地址、密钥或库存。国家池模式保持原行为；独立会话模式返回管理员开放的注册地区，不要求提前拉取代理。省略地区或 random 始终默认随机；独立会话模式兼容 GLOBAL 输入并按 random 处理。切换模式及修改地区只影响新订单，已接受订单保持原快照；同幂等键重试返回原订单。读取配置失败返回503。",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistrationRegions"
+                },
+                "example": {
+                  "default_region": "random",
+                  "regions": [
+                    {
+                      "code": "CL",
+                      "name": "智利"
+                    },
+                    {
+                      "code": "JP",
+                      "name": "日本"
+                    },
+                    {
+                      "code": "PH",
+                      "name": "菲律宾"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/open/v1/registration-orders": {
+      "post": {
+        "operationId": "create_order",
+        "summary": "创建注册订单",
+        "tags": [
+          "注册订单"
+        ],
+        "x-scope": "orders:write",
+        "description": "下单锁定模式和价格，预留 quantity × unit_price 积分。标准模式注册并配置密码和 2FA；含 OAuth 模式在同一任务中继续授权，账号已注册但授权未完成时只补授权。邮箱、代理和短信由平台管理，无需传入资源参数。网页和 API 订单共用全平台与单用户并发上限，同一用户多笔订单及 OAuth 合并计数，超出名额自动排队，结束后补位。新订单返回 202；同一用户以相同幂等键和相同参数重试返回原订单当前状态（200），不会重复创建。",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "调用方生成并保存的唯一请求标识；8～128 位可见 ASCII，不含空格。网络超时后重试必须保持同一键和内容",
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 128,
+              "pattern": "^[!-~]{8,128}$"
+            },
+            "example": "YOUR_SAVED_REQUEST_ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "quantity": {
+                    "type": "integer",
+                    "description": "期望交付数量；实际每单上限以查询服务接口 max_quantity 为准",
+                    "minimum": 1,
+                    "maximum": 1000
+                  },
+                  "need_oauth": {
+                    "type": "boolean",
+                    "description": "true 包含完整 OAuth 数据；false 交付邮箱、密码和 2FA",
+                    "default": false
+                  },
+                  "registration_region": {
+                    "type": "string",
+                    "description": "可选：省略或 random 默认随机，或传地区查询接口返回的 code（如 JP）。国家池模式沿用原有分配；独立会话模式按每个注册尝试首次分配时从订单冻结候选集中等概率选择，普通重试与换短信不重新随机，GLOBAL 兼容为 random。无需用户选择供应商或配置代理。等待代理资源不计注册失败次数，但仍有原订单超时上限，未交付部分按规则退款。幂等重试必须保留原参数。",
+                    "default": "random",
+                    "pattern": "^(random|GLOBAL|[A-Z]{2})$"
+                  }
+                },
+                "required": [
+                  "quantity"
+                ],
+                "additionalProperties": false
+              },
+              "examples": {
+                "standard": {
+                  "summary": "标准账号，不含 OAuth",
+                  "value": {
+                    "quantity": 1,
+                    "need_oauth": false
+                  }
+                },
+                "oauth": {
+                  "summary": "包含 OAuth 授权",
+                  "value": {
+                    "quantity": 1,
+                    "need_oauth": true
+                  }
+                },
+                "region": {
+                  "summary": "指定日本地区（需先查询可选代码）",
+                  "value": {
+                    "quantity": 2,
+                    "need_oauth": true,
+                    "registration_region": "JP"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "幂等重试命中已有订单，返回它的当前状态",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                },
+                "examples": {
+                  "standard": {
+                    "summary": "标准账号订单",
+                    "value": {
+                      "id": "11111111-1111-4111-8111-111111111111",
+                      "quantity": 1,
+                      "need_oauth": false,
+                      "registration_region": "random",
+                      "unit_price": 50,
+                      "status": "completed",
+                      "delivered": 1,
+                      "charged": 50,
+                      "released": 0,
+                      "cancel_requested": false,
+                      "source": "api",
+                      "created_at": "2026-11-05T04:00:00.000Z",
+                      "updated_at": "2026-11-05T04:00:00.000Z"
+                    }
+                  },
+                  "oauth": {
+                    "summary": "OAuth 账号订单",
+                    "value": {
+                      "id": "11111111-1111-4111-8111-111111111111",
+                      "quantity": 1,
+                      "need_oauth": true,
+                      "registration_region": "random",
+                      "unit_price": 100,
+                      "status": "completed",
+                      "delivered": 1,
+                      "charged": 100,
+                      "released": 0,
+                      "cancel_requested": false,
+                      "source": "api",
+                      "created_at": "2026-11-05T04:00:00.000Z",
+                      "updated_at": "2026-11-05T04:00:00.000Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "已受理新订单并预留积分，尚未完成交付",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                },
+                "examples": {
+                  "standard": {
+                    "summary": "标准账号订单",
+                    "value": {
+                      "id": "11111111-1111-4111-8111-111111111111",
+                      "quantity": 1,
+                      "need_oauth": false,
+                      "registration_region": "random",
+                      "unit_price": 50,
+                      "status": "queued",
+                      "delivered": 0,
+                      "charged": 0,
+                      "released": 0,
+                      "cancel_requested": false,
+                      "source": "api",
+                      "created_at": "2026-11-05T04:00:00.000Z",
+                      "updated_at": "2026-11-05T04:00:00.000Z"
+                    }
+                  },
+                  "oauth": {
+                    "summary": "OAuth 账号订单",
+                    "value": {
+                      "id": "11111111-1111-4111-8111-111111111111",
+                      "quantity": 1,
+                      "need_oauth": true,
+                      "registration_region": "random",
+                      "unit_price": 100,
+                      "status": "queued",
+                      "delivered": 0,
+                      "charged": 0,
+                      "released": 0,
+                      "cancel_requested": false,
+                      "source": "api",
+                      "created_at": "2026-11-05T04:00:00.000Z",
+                      "updated_at": "2026-11-05T04:00:00.000Z"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "402": {
+            "$ref": "#/components/responses/Error402"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      },
+      "get": {
+        "operationId": "list_orders",
+        "summary": "筛选与分页查询订单",
+        "tags": [
+          "注册订单"
+        ],
+        "x-scope": "orders:read",
+        "description": "仅返回自己的订单，按创建时间及 ID 倒序排序。q、status 和 mode 可组合使用，total 是筛选后的数量。",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "每页条数",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "跳过的记录数，从 0 开始；下一页加上 limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000,
+              "default": 0
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "搜索订单编号或当前平台用户的登录邮箱；不是交付邮箱；忽略首尾空白，按字面内容模糊匹配，不区分大小写，% 和 _ 不作通配符",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "按整体订单状态筛选；不传或空字符串表示全部",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "running",
+                "review",
+                "completed",
+                "partial",
+                "failed",
+                "cancelled",
+                ""
+              ]
+            }
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "description": "按服务模式筛选；不传或空字符串表示全部模式",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "standard",
+                "oauth",
+                ""
+              ]
+            }
+          }
+        ],
+        "x-query-examples": {
+          "all": {
+            "summary": "全部订单，第一页",
+            "value": {
+              "limit": 50,
+              "offset": 0
+            }
+          },
+          "filtered": {
+            "summary": "已完成的 OAuth 订单",
+            "value": {
+              "status": "completed",
+              "mode": "oauth",
+              "limit": 20,
+              "offset": 0
+            }
+          },
+          "search": {
+            "summary": "搜索订单编号",
+            "value": {
+              "q": "ORDER_ID",
+              "limit": 20,
+              "offset": 0
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderPage"
+                },
+                "examples": {
+                  "all": {
+                    "summary": "全部订单，第一页",
+                    "value": {
+                      "items": [
+                        {
+                          "id": "11111111-1111-4111-8111-111111111111",
+                          "quantity": 1,
+                          "need_oauth": true,
+                          "registration_region": "random",
+                          "unit_price": 100,
+                          "status": "completed",
+                          "delivered": 1,
+                          "charged": 100,
+                          "released": 0,
+                          "cancel_requested": false,
+                          "source": "api",
+                          "created_at": "2026-11-05T04:00:00.000Z",
+                          "updated_at": "2026-11-05T04:00:00.000Z"
+                        }
+                      ],
+                      "total": 1,
+                      "limit": 50,
+                      "offset": 0
+                    }
+                  },
+                  "filtered": {
+                    "summary": "已完成的 OAuth 订单",
+                    "value": {
+                      "items": [
+                        {
+                          "id": "11111111-1111-4111-8111-111111111111",
+                          "quantity": 1,
+                          "need_oauth": true,
+                          "registration_region": "random",
+                          "unit_price": 100,
+                          "status": "completed",
+                          "delivered": 1,
+                          "charged": 100,
+                          "released": 0,
+                          "cancel_requested": false,
+                          "source": "api",
+                          "created_at": "2026-11-05T04:00:00.000Z",
+                          "updated_at": "2026-11-05T04:00:00.000Z"
+                        }
+                      ],
+                      "total": 1,
+                      "limit": 20,
+                      "offset": 0
+                    }
+                  },
+                  "search": {
+                    "summary": "搜索订单编号",
+                    "value": {
+                      "items": [
+                        {
+                          "id": "11111111-1111-4111-8111-111111111111",
+                          "quantity": 1,
+                          "need_oauth": true,
+                          "registration_region": "random",
+                          "unit_price": 100,
+                          "status": "completed",
+                          "delivered": 1,
+                          "charged": 100,
+                          "released": 0,
+                          "cancel_requested": false,
+                          "source": "api",
+                          "created_at": "2026-11-05T04:00:00.000Z",
+                          "updated_at": "2026-11-05T04:00:00.000Z"
+                        }
+                      ],
+                      "total": 1,
+                      "limit": 20,
+                      "offset": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/open/v1/registration-orders/{id}": {
+      "get": {
+        "operationId": "get_order",
+        "summary": "查询订单进度",
+        "tags": [
+          "注册订单"
+        ],
+        "x-scope": "orders:read",
+        "description": "订单字段与子项 items 一并返回。HTTP 200 表示查询成功，是否交付须检查 status、delivered 和子项状态。queued/running 建议每 5 秒查询；review 继续查询原订单，系统会自动恢复或结束退款。",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "订单 ID，来自创建订单响应 id 或订单列表 items[].id",
+            "schema": {
+              "type": "string"
+            },
+            "example": "ORDER_ID",
+            "x-source-operation": "create_order"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderDetail"
+                },
+                "example": {
+                  "id": "11111111-1111-4111-8111-111111111111",
+                  "quantity": 1,
+                  "need_oauth": true,
+                  "registration_region": "random",
+                  "unit_price": 100,
+                  "status": "completed",
+                  "delivered": 1,
+                  "charged": 100,
+                  "released": 0,
+                  "cancel_requested": false,
+                  "source": "api",
+                  "created_at": "2026-11-05T04:00:00.000Z",
+                  "updated_at": "2026-11-05T04:00:00.000Z",
+                  "items": [
+                    {
+                      "id": "33333333-3333-4333-8333-333333333333",
+                      "position": 1,
+                      "status": "delivered",
+                      "attempts": 1,
+                      "oauth_attempts": 1,
+                      "message": "已交付",
+                      "updated_at": "2026-11-05T04:00:00.000Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/open/v1/accounts": {
+      "get": {
+        "operationId": "list_accounts",
+        "summary": "筛选与分页查询交付账号",
+        "tags": [
+          "账号交付"
+        ],
+        "x-scope": "accounts:read",
+        "description": "仅返回交付后未满 72 小时的账号基础信息，包含 download_expires_at，不含密码、2FA 或 OAuth。到期账号从列表及 total 中移除，历史订单不受影响。按创建时间及 ID 倒序返回；用 items[].id 读取凭据或导出。",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "每页条数",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "跳过的记录数，从 0 开始；下一页加上 limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1000000,
+              "default": 0
+            }
+          },
+          {
+            "name": "order_id",
+            "in": "query",
+            "description": "精确匹配订单 ID，来自创建或查询订单响应 id",
+            "schema": {
+              "type": "string"
+            },
+            "x-source-operation": "create_order"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "description": "搜索交付账号邮箱或所属订单编号；忽略首尾空白，按字面内容模糊匹配，不区分大小写，% 和 _ 不作通配符",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "description": "按服务模式筛选；不传或空字符串表示全部模式",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "standard",
+                "oauth",
+                ""
+              ]
+            }
+          }
+        ],
+        "x-query-examples": {
+          "order": {
+            "summary": "领取指定订单的交付账号",
+            "value": {
+              "order_id": "ORDER_ID",
+              "limit": 50,
+              "offset": 0
+            }
+          },
+          "oauth": {
+            "summary": "筛选全部 OAuth 账号",
+            "value": {
+              "mode": "oauth",
+              "limit": 50,
+              "offset": 0
+            }
+          },
+          "search": {
+            "summary": "按邮箱搜索",
+            "value": {
+              "q": "demo.account@gmail.com",
+              "limit": 50,
+              "offset": 0
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountPage"
+                },
+                "examples": {
+                  "order": {
+                    "summary": "领取指定订单的交付账号",
+                    "value": {
+                      "items": [
+                        {
+                          "id": "22222222-2222-4222-8222-222222222222",
+                          "order_id": "11111111-1111-4111-8111-111111111111",
+                          "email": "demo.account@gmail.com",
+                          "need_oauth": true,
+                          "created_at": "2026-11-05T04:00:00.000Z",
+                          "download_expires_at": "2026-11-08T04:00:00.000Z"
+                        }
+                      ],
+                      "total": 1,
+                      "limit": 50,
+                      "offset": 0
+                    }
+                  },
+                  "oauth": {
+                    "summary": "筛选全部 OAuth 账号",
+                    "value": {
+                      "items": [
+                        {
+                          "id": "22222222-2222-4222-8222-222222222222",
+                          "order_id": "11111111-1111-4111-8111-111111111111",
+                          "email": "demo.account@gmail.com",
+                          "need_oauth": true,
+                          "created_at": "2026-11-05T04:00:00.000Z",
+                          "download_expires_at": "2026-11-08T04:00:00.000Z"
+                        }
+                      ],
+                      "total": 1,
+                      "limit": 50,
+                      "offset": 0
+                    }
+                  },
+                  "search": {
+                    "summary": "按邮箱搜索",
+                    "value": {
+                      "items": [
+                        {
+                          "id": "22222222-2222-4222-8222-222222222222",
+                          "order_id": "11111111-1111-4111-8111-111111111111",
+                          "email": "demo.account@gmail.com",
+                          "need_oauth": true,
+                          "created_at": "2026-11-05T04:00:00.000Z",
+                          "download_expires_at": "2026-11-08T04:00:00.000Z"
+                        }
+                      ],
+                      "total": 1,
+                      "limit": 50,
+                      "offset": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/open/v1/accounts/{id}/credentials": {
+      "get": {
+        "operationId": "get_credentials",
+        "summary": "读取账号凭据与验证码",
+        "tags": [
+          "账号交付"
+        ],
+        "x-scope": "credentials:read",
+        "description": "仅在交付后 72 小时内可读取密码、2FA、当前验证码及已保存的网页登录 AT / 完整 Session Token；到期返回 404。新增可选 access_token / session_token，标准账号也可获取，缺失时为空或省略；不会刷新凭据。只有购买含 OAuth 服务才返回 oauth，其中 oauth.access_token 与顶层网页登录 AT 独立。旧字段、权限和调用路径保持兼容，调用方应忽略不使用的新增字段。",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "交付账号 ID，来自账号列表 items[].id；不是订单/子项/asset_id",
+            "schema": {
+              "type": "string"
+            },
+            "example": "ACCOUNT_ID",
+            "x-source-operation": "list_accounts"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Credentials"
+                },
+                "example": {
+                  "asset_id": "engine-asset-example",
+                  "email": "demo.account@gmail.com",
+                  "password": "EXAMPLE_PASSWORD",
+                  "totp_secret": "EXAMPLE_BASE32_SECRET",
+                  "access_token": "EXAMPLE_WEB_ACCESS_TOKEN",
+                  "session_token": "EXAMPLE_FULL_SESSION_TOKEN",
+                  "oauth": {
+                    "access_token": "EXAMPLE_ACCESS_TOKEN",
+                    "refresh_token": "EXAMPLE_REFRESH_TOKEN"
+                  },
+                  "download_expires_at": "2026-11-08T04:00:00.000Z",
+                  "totp_code": "012345",
+                  "totp_expires_in": 18
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/open/v1/accounts/export": {
+      "post": {
+        "operationId": "export_accounts",
+        "summary": "批量导出交付资料",
+        "tags": [
+          "账号交付"
+        ],
+        "x-scope": "credentials:read",
+        "description": "一次传入 1～1000 个账号 ID。任一 ID 不存在、不属于当前用户或已超过交付后 72 小时，则整体返回 404；重复 ID 去重，不保证输出顺序。现有 TXT/CSV 三列及默认 txt 不变；JSON 新增可选网页登录 access_token / session_token。新增 email_at / email_session 均输出 TXT，每行邮箱----完整 AT 或 Session Token，标准账号也支持，任一账号缺少该凭据则整批 409，不跳过、不回退到 OAuth AT。CPA 每号一份 OAuth JSON，多号 ZIP（encoding=base64）；SUB 多号合并 sub2api JSON，均仍需 OAuth。响应始终为 JSON 封装，解析后保存 content，ZIP 先 Base64 解码。",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 1000,
+                    "description": "交付账号 ID 数组，来自账号列表 items[].id；不能传订单 ID",
+                    "items": {
+                      "type": "string"
+                    },
+                    "x-source-operation": "list_accounts"
+                  },
+                  "format": {
+                    "type": "string",
+                    "enum": [
+                      "txt",
+                      "csv",
+                      "json",
+                      "cpa",
+                      "sub",
+                      "email_at",
+                      "email_session"
+                    ],
+                    "default": "txt",
+                    "description": "txt：邮箱-密码-2fa；csv：三列基础凭据；json：完整交付；email_at：邮箱+网页登录 AT；email_session：邮箱+完整 Session Token；cpa：CPA；sub：sub2api"
+                  }
+                },
+                "required": [
+                  "ids"
+                ]
+              },
+              "examples": {
+                "json": {
+                  "summary": "JSON，含所购 OAuth 数据",
+                  "value": {
+                    "ids": [
+                      "ACCOUNT_ID"
+                    ],
+                    "format": "json"
+                  }
+                },
+                "txt": {
+                  "summary": "TXT，邮箱----密码----2FA",
+                  "value": {
+                    "ids": [
+                      "ACCOUNT_ID"
+                    ],
+                    "format": "txt"
+                  }
+                },
+                "csv": {
+                  "summary": "CSV，三列基础凭据",
+                  "value": {
+                    "ids": [
+                      "ACCOUNT_ID"
+                    ],
+                    "format": "csv"
+                  }
+                },
+                "cpa": {
+                  "summary": "CPA，每个账号独立 JSON，多账号 ZIP",
+                  "value": {
+                    "ids": [
+                      "ACCOUNT_ID"
+                    ],
+                    "format": "cpa"
+                  }
+                },
+                "sub": {
+                  "summary": "SUB，多个账号合并 JSON",
+                  "value": {
+                    "ids": [
+                      "ACCOUNT_ID"
+                    ],
+                    "format": "sub"
+                  }
+                },
+                "email_at": {
+                  "summary": "邮箱+AT，网页登录态 TXT",
+                  "value": {
+                    "ids": [
+                      "ACCOUNT_ID"
+                    ],
+                    "format": "email_at"
+                  }
+                },
+                "email_session": {
+                  "summary": "邮箱+Session，完整 Session Token TXT",
+                  "value": {
+                    "ids": [
+                      "ACCOUNT_ID"
+                    ],
+                    "format": "email_session"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "导出内容已生成，解析 JSON 后保存 content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportResult"
+                },
+                "examples": {
+                  "json": {
+                    "summary": "JSON 文件正文",
+                    "value": {
+                      "filename": "gptreg-accounts.json",
+                      "content": "[\n  {\n    \"asset_id\": \"engine-asset-example\",\n    \"email\": \"demo.account@gmail.com\",\n    \"password\": \"EXAMPLE_PASSWORD\",\n    \"totp_secret\": \"EXAMPLE_BASE32_SECRET\",\n    \"access_token\": \"EXAMPLE_WEB_ACCESS_TOKEN\",\n    \"session_token\": \"EXAMPLE_FULL_SESSION_TOKEN\",\n    \"oauth\": {\n      \"access_token\": \"EXAMPLE_ACCESS_TOKEN\",\n      \"refresh_token\": \"EXAMPLE_REFRESH_TOKEN\"\n    }\n  }\n]"
+                    }
+                  },
+                  "txt": {
+                    "summary": "TXT 文件正文",
+                    "value": {
+                      "filename": "gptreg-accounts.txt",
+                      "content": "demo.account@gmail.com----EXAMPLE_PASSWORD----EXAMPLE_BASE32_SECRET\n"
+                    }
+                  },
+                  "csv": {
+                    "summary": "CSV 文件正文（含 BOM）",
+                    "value": {
+                      "filename": "gptreg-accounts.csv",
+                      "content": "﻿email,password,totp_secret\r\n\"demo.account@gmail.com\",\"EXAMPLE_PASSWORD\",\"EXAMPLE_BASE32_SECRET\"\r\n"
+                    }
+                  },
+                  "cpa": {
+                    "summary": "CPA 单账号独立 JSON（多账号为 ZIP）",
+                    "value": {
+                      "filename": "codex-demo.account@gmail.com.json",
+                      "content": "{\n  \"access_token\": \"EXAMPLE_ACCESS_TOKEN\",\n  \"refresh_token\": \"EXAMPLE_REFRESH_TOKEN\",\n  \"email\": \"demo.account@gmail.com\",\n  \"type\": \"codex\"\n}"
+                    }
+                  },
+                  "email_at": {
+                    "summary": "邮箱+AT TXT 文件正文",
+                    "value": {
+                      "filename": "gptreg-email-at.txt",
+                      "content": "demo.account@gmail.com----EXAMPLE_WEB_ACCESS_TOKEN\n"
+                    }
+                  },
+                  "email_session": {
+                    "summary": "邮箱+Session TXT 文件正文",
+                    "value": {
+                      "filename": "gptreg-email-session.txt",
+                      "content": "demo.account@gmail.com----EXAMPLE_FULL_SESSION_TOKEN\n"
+                    }
+                  },
+                  "sub": {
+                    "summary": "SUB 合并导入文件",
+                    "value": {
+                      "filename": "SUB-1.json",
+                      "content": "{\n  \"exported_at\": \"2026-11-05T00:00:00.000Z\",\n  \"proxies\": [],\n  \"accounts\": [\n    {\n      \"name\": \"demo.account@gmail.com\",\n      \"platform\": \"openai\",\n      \"type\": \"oauth\",\n      \"credentials\": {\n        \"access_token\": \"EXAMPLE_ACCESS_TOKEN\",\n        \"refresh_token\": \"EXAMPLE_REFRESH_TOKEN\",\n        \"email\": \"demo.account@gmail.com\"\n      },\n      \"concurrency\": 10,\n      \"priority\": 1\n    }\n  ]\n}"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    }
+  },
+  "x-order-states": {
+    "queued": "排队等待执行",
+    "running": "注册或 OAuth 授权处理中",
+    "review": "兼容旧状态：系统自动恢复，超过时限或次数后自动退款",
+    "completed": "全部交付完成",
+    "partial": "部分交付完成，其余已退回积分",
+    "failed": "没有交付，积分已退回",
+    "cancelled": "已取消，未交付部分积分已退回"
+  },
+  "x-item-states": {
+    "queued": "等待执行",
+    "running": "注册或授权执行中",
+    "oauth_pending": "注册完成，等待授权或重试授权",
+    "review": "自动恢复中",
+    "delivered": "已交付并扣费",
+    "failed": "未交付，已退回积分",
+    "cancelled": "已取消，已退回积分"
+  },
+  "x-scopes": {
+    "orders:read": "查询订单列表与进度",
+    "orders:write": "创建订单",
+    "accounts:read": "查询已交付账号列表",
+    "credentials:read": "读取密码、2FA、网页登录 AT / Session、OAuth 与批量导出"
+  },
+  "x-errors": [
+    {
+      "status": 400,
+      "message": "参数格式或业务条件不正确",
+      "action": "核对类型、数量上限、筛选值和必填参数，修正后提交。"
+    },
+    {
+      "status": 401,
+      "message": "API Key 无效或账户不可用",
+      "action": "检查 Bearer 密钥、撤销状态及账户是否停用。网页登录会话不能代替 API Key。"
+    },
+    {
+      "status": 402,
+      "message": "可用积分不足",
+      "action": "查询账户 points 并充值；points 已是可用余额，不要再减 frozen。"
+    },
+    {
+      "status": 403,
+      "message": "权限不足或功能未开放",
+      "action": "检查密钥权限及站点功能开关，必要时联系管理员。"
+    },
+    {
+      "status": 404,
+      "message": "记录不存在、不属于当前账户或账号资料已到期",
+      "action": "核对订单或账号 ID；账号交付满 72 小时后不可再读取或导出，请提前保存。"
+    },
+    {
+      "status": 409,
+      "message": "幂等键与请求内容冲突",
+      "action": "相同操作重试须复用相同键和内容；确认要创建新订单时使用新键。"
+    },
+    {
+      "status": 413,
+      "message": "请求体过大",
+      "action": "总请求体不能超过 1 MiB；账号导出每次最多 1000 个 ID。"
+    },
+    {
+      "status": 429,
+      "message": "请求过频或未完成订单达到上限",
+      "action": "有 Retry-After 时按该秒数等待；否则至少等待 60 秒。订单上限需等待已有订单结算，review 继续查询原订单，系统自动恢复或退款。"
+    },
+    {
+      "status": 500,
+      "message": "服务暂时不可用",
+      "action": "查询可退避重试；创建订单需复用原幂等键和原内容，避免重复预留积分。"
+    },
+    {
+      "status": 503,
+      "message": "服务或新订单暂停受理",
+      "action": "稍后重试；创建订单保留原幂等键。以响应说明判断暂停范围。"
+    }
+  ],
+  "x-input-sources": [
+    {
+      "field": "registration_region",
+      "source": "注册地区查询返回的 regions[].code；省略或 random 为默认随机",
+      "usage": "可选 JSON 字符串，如 JP；原接入无需修改",
+      "operation": "get_registration_regions"
+    },
+    {
+      "field": "Authorization",
+      "source": "工作台 → 开发接入 → 创建 API Key",
+      "usage": "Bearer YOUR_API_KEY",
+      "operation": ""
+    },
+    {
+      "field": "quantity",
+      "source": "调用方选择数量，不能超过 max_quantity",
+      "usage": "JSON 整数，例如 1",
+      "operation": "get_products"
+    },
+    {
+      "field": "need_oauth",
+      "source": "用户选择交付模式，与 products[].need_oauth 对应",
+      "usage": "JSON 布尔值 true / false，不要传字符串",
+      "operation": "get_products"
+    },
+    {
+      "field": "Idempotency-Key",
+      "source": "调用方生成并保存的请求唯一标识",
+      "usage": "请求头，重试时原样复用；新订单使用新键",
+      "operation": "create_order"
+    },
+    {
+      "field": "订单 id / order_id",
+      "source": "创建响应 id 或订单列表 items[].id",
+      "usage": "查详情或筛选交付账号",
+      "operation": "create_order"
+    },
+    {
+      "field": "账号 id / ids[]",
+      "source": "账号列表 items[].id",
+      "usage": "查凭据路径参数，或导出 JSON 的 ids 数组",
+      "operation": "list_accounts"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "API Key",
+        "description": "在用户工作台的开发接入创建；仅显示一次，撤销后立即失效"
+      }
+    },
+    "schemas": {
+      "RegistrationRegions": {
+        "type": "object",
+        "properties": {
+          "default_region": {
+            "type": "string",
+            "description": "省略下单地区参数时使用随机地区",
+            "const": "random"
+          },
+          "regions": {
+            "type": "array",
+            "description": "当前默认代理模式开放的注册地区；只返回代码和名称，不包含代理资料",
+            "items": {
+              "$ref": "#/components/schemas/RegistrationRegion"
+            }
+          }
+        },
+        "required": [
+          "default_region",
+          "regions"
+        ]
+      },
+      "RegistrationRegion": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "注册地区代码；国家池模式下 GLOBAL 为全球混合池；独立会话模式兼容 GLOBAL 输入并按订单冻结的开放地区随机",
+            "pattern": "^(GLOBAL|[A-Z]{2})$"
+          },
+          "name": {
+            "type": "string",
+            "description": "地区显示名称"
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ]
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "当前平台用户 ID"
+          },
+          "email": {
+            "type": "string",
+            "description": "平台登录账号；与交付账号邮箱不同"
+          },
+          "name": {
+            "type": "string",
+            "description": "平台用户名"
+          },
+          "role": {
+            "type": "string",
+            "description": "账户角色",
+            "enum": [
+              "admin",
+              "member"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "description": "账户状态",
+            "enum": [
+              "active",
+              "disabled"
+            ]
+          },
+          "points": {
+            "type": "number",
+            "description": "可直接用于下单的积分，已经扣除预留部分；最多两位小数",
+            "minimum": 0,
+            "multipleOf": 0.01
+          },
+          "frozen": {
+            "type": "number",
+            "description": "未结算订单预留的积分；最多两位小数",
+            "minimum": 0,
+            "multipleOf": 0.01
+          },
+          "created_at": {
+            "type": "string",
+            "description": "账户创建时间",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "name",
+          "role",
+          "status",
+          "points",
+          "frozen",
+          "created_at"
+        ]
+      },
+      "Products": {
+        "type": "object",
+        "properties": {
+          "orders_open": {
+            "type": "boolean",
+            "description": "当前是否接受新订单；最终以提交结果为准"
+          },
+          "max_quantity": {
+            "type": "integer",
+            "description": "当前每单可提交的最大数量",
+            "minimum": 1,
+            "maximum": 1000
+          },
+          "currency": {
+            "type": "string",
+            "description": "计价单位",
+            "const": "points"
+          },
+          "membership": {
+            "type": "object",
+            "description": "统一账户的当前会员等级及生效来源；注册与订阅使用同一会员配置"
+          },
+          "products": {
+            "type": "array",
+            "description": "两种注册模式的当前单价",
+            "items": {
+              "$ref": "#/components/schemas/Product"
+            }
+          }
+        },
+        "required": [
+          "orders_open",
+          "max_quantity",
+          "currency",
+          "products"
+        ]
+      },
+      "Product": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "服务名称"
+          },
+          "need_oauth": {
+            "type": "boolean",
+            "description": "false 为标准账号；true 为含 OAuth 账号"
+          },
+          "unit_price": {
+            "type": "number",
+            "description": "当前账户优惠后的完整单价，单位积分，最多两位小数；OAuth 无需再加标准价",
+            "minimum": 0,
+            "multipleOf": 0.01
+          },
+          "standard_price": {
+            "type": "number",
+            "description": "减免前的标准单价，单位积分",
+            "minimum": 0,
+            "multipleOf": 0.01
+          },
+          "saved": {
+            "type": "number",
+            "description": "每个账号相对标准价的优惠；账户专属价优先"
+          },
+          "price_source": {
+            "type": "string",
+            "description": "价格来源：会员减免或账户专属价",
+            "enum": [
+              "membership",
+              "account_override"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "need_oauth",
+          "unit_price"
+        ]
+      },
+      "Order": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "订单 ID；用于查进度和筛选交付账号"
+          },
+          "quantity": {
+            "type": "integer",
+            "description": "期望交付数量",
+            "minimum": 1
+          },
+          "need_oauth": {
+            "type": "boolean",
+            "description": "本单是否包含 OAuth 数据"
+          },
+          "registration_region": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "下单选择的注册地区；random 为每个账号随机选择，历史订单为 null。不是实际出口 IP 的地理检测结果。"
+          },
+          "unit_price": {
+            "type": "number",
+            "description": "下单时锁定的优惠后单价，单位积分；会员变化不影响已受理订单",
+            "minimum": 0,
+            "multipleOf": 0.01
+          },
+          "status": {
+            "type": "string",
+            "description": "订单整体状态；不是 HTTP 请求结果",
+            "enum": [
+              "queued",
+              "running",
+              "review",
+              "completed",
+              "partial",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "delivered": {
+            "type": "integer",
+            "description": "已经完整交付的账号数量",
+            "minimum": 0
+          },
+          "charged": {
+            "type": "number",
+            "description": "实际完成交付累计扣除的积分",
+            "minimum": 0,
+            "multipleOf": 0.01
+          },
+          "released": {
+            "type": "number",
+            "description": "未交付部分累计退回的积分",
+            "minimum": 0,
+            "multipleOf": 0.01
+          },
+          "cancel_requested": {
+            "type": "boolean",
+            "description": "是否由管理员请求取消；用户和 API 不支持取消，true 不代表运行中子项已立即结束"
+          },
+          "source": {
+            "type": "string",
+            "description": "订单创建渠道",
+            "enum": [
+              "web",
+              "api"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "description": "创建时间",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "最后更新时间",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "quantity",
+          "need_oauth",
+          "registration_region",
+          "unit_price",
+          "status",
+          "delivered",
+          "charged",
+          "released",
+          "cancel_requested",
+          "source",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "OrderItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "订单子项 ID，仅用于识别进度；不能作为账号 ID 读取凭据"
+          },
+          "position": {
+            "type": "integer",
+            "description": "该账号在订单中的序号，从 1 开始",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "description": "单个账号当前状态",
+            "enum": [
+              "queued",
+              "running",
+              "oauth_pending",
+              "review",
+              "delivered",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "attempts": {
+            "type": "integer",
+            "description": "当前邮箱注册阶段已尝试次数；更换邮箱后重新计数",
+            "minimum": 0
+          },
+          "oauth_attempts": {
+            "type": "integer",
+            "description": "当前账号 OAuth 阶段已尝试次数；更换邮箱后重新计数",
+            "minimum": 0
+          },
+          "recovery_attempts": {
+            "type": "integer",
+            "description": "当前资源的原任务自动恢复次数，恢复和换邮箱都不会重置总执行期限",
+            "minimum": 0
+          },
+          "resource_replacements": {
+            "type": "integer",
+            "description": "已更换邮箱次数，不含首次邮箱；换邮箱不重置总时限，不重复扣除积分",
+            "minimum": 0
+          },
+          "next_retry_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "下一次恢复或排队检查时间；执行中不表示会再次启动任务"
+          },
+          "execution_started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "首次开始执行时间，排队期间为空"
+          },
+          "execution_deadline_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "总执行期限；首次执行前为空，恢复和 OAuth 不重置"
+          },
+          "message": {
+            "type": "string",
+            "description": "当前进度或处理说明"
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "子项最后更新时间",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "position",
+          "status",
+          "attempts",
+          "oauth_attempts",
+          "message",
+          "updated_at"
+        ]
+      },
+      "OrderDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Order"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "items": {
+                "type": "array",
+                "description": "按 position 升序返回的账号子项进度",
+                "items": {
+                  "$ref": "#/components/schemas/OrderItem"
+                }
+              }
+            },
+            "required": [
+              "items"
+            ]
+          }
+        ]
+      },
+      "Account": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "交付账号 ID；用于读取凭据及批量导出"
+          },
+          "order_id": {
+            "type": "string",
+            "description": "交付所属订单 ID"
+          },
+          "email": {
+            "type": "string",
+            "description": "交付账号的邮箱"
+          },
+          "need_oauth": {
+            "type": "boolean",
+            "description": "该账号是否包含 OAuth 数据"
+          },
+          "created_at": {
+            "type": "string",
+            "description": "交付成功时间，72 小时领取期从此刻起算",
+            "format": "date-time"
+          },
+          "download_expires_at": {
+            "type": "string",
+            "description": "用户领取资料删除时间；到达此时间后列表不再返回，凭据与导出均不可用。运营后台保留",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "email",
+          "need_oauth",
+          "created_at",
+          "download_expires_at"
+        ]
+      },
+      "OAuth": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "description": "访问令牌"
+          },
+          "refresh_token": {
+            "type": "string",
+            "description": "刷新令牌"
+          },
+          "id_token": {
+            "type": "string",
+            "description": "身份令牌，可能不返回"
+          }
+        },
+        "required": [
+          "access_token",
+          "refresh_token"
+        ],
+        "additionalProperties": true,
+        "description": "OAuth 数据，仅含 OAuth 的交付提供；可能有额外元数据，请保留完整对象"
+      },
+      "DeviceFingerprint": {
+        "type": "object",
+        "properties": {
+          "fingerprint": {
+            "type": "string",
+            "description": "注册时保存的完整浏览器指纹哈希，未记录时为空"
+          },
+          "deviceId": {
+            "type": "string",
+            "description": "保存的设备 ID，未记录时为空"
+          },
+          "countryCode": {
+            "type": "string",
+            "description": "记录的注册地区代码，不代表已核验的出口 IP"
+          },
+          "exitIp": {
+            "type": "string",
+            "description": "注册前通过当时代理检测到的出口 IP；历史未记录或检测失败时为空，不以代理入口地址代替"
+          },
+          "exitIpCheckedAt": {
+            "type": "string",
+            "description": "出口 IP 检测时间，ISO 8601；未记录时为空"
+          },
+          "registeredAt": {
+            "type": "string",
+            "description": "注册时间，ISO 8601；历史引擎账号使用首次保存时间，未知时为空"
+          },
+          "profile": {
+            "type": "object",
+            "description": "白名单设备配置：browser/browserVersion/userAgent/platform/oscpu/language/languages/acceptLanguage/timeZone/hardwareConcurrency/maxTouchPoints/storageQuotaBytes/screen/viewport/gpu/schemaVersion；不含密码、Cookie 或代理凭据",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "fingerprint",
+          "deviceId",
+          "countryCode",
+          "profile"
+        ]
+      },
+      "StoredCredentials": {
+        "type": "object",
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "description": "交付资产参考标识；查询接口使用 Account.id"
+          },
+          "email": {
+            "type": "string",
+            "description": "交付邮箱"
+          },
+          "password": {
+            "type": "string",
+            "description": "账号密码"
+          },
+          "totp_secret": {
+            "type": "string",
+            "description": "2FA 的 Base32 密钥，请妥善保管"
+          },
+          "access_token": {
+            "type": "string",
+            "description": "网页登录态 Access Token，标准/OAuth 账号均可返回；与 oauth.access_token 独立。仅新增可选字段，未采集或历史未补齐时为空或省略，不保证仍有效"
+          },
+          "session_token": {
+            "type": "string",
+            "description": "完整 Session Token（登录 Cookie 的值，原平台已合并分片），不截断；不是 /api/auth/session 的 JSON。标准/OAuth 均可返回，未保存时为空或省略，读取不触发刷新"
+          },
+          "device_fingerprint": {
+            "$ref": "#/components/schemas/DeviceFingerprint",
+            "description": "可选设备快照。历史未补齐时可省略；只对应当前交付账号，不包含全库统计或其他账号"
+          },
+          "oauth": {
+            "$ref": "#/components/schemas/OAuth"
+          }
+        },
+        "required": [
+          "asset_id",
+          "email",
+          "password",
+          "totp_secret"
+        ]
+      },
+      "Credentials": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/StoredCredentials"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "download_expires_at": {
+                "type": "string",
+                "description": "交付成功 72 小时后的资料领取截止时间，UTC ISO 8601",
+                "format": "date-time"
+              },
+              "totp_code": {
+                "type": "string",
+                "description": "读取时计算的当前 6 位验证码；前导零须保留"
+              },
+              "totp_expires_in": {
+                "type": "integer",
+                "description": "当前验证码剩余秒数，刷新凭据接口可获得新验证码",
+                "minimum": 1,
+                "maximum": 30
+              }
+            },
+            "required": [
+              "download_expires_at",
+              "totp_code",
+              "totp_expires_in"
+            ]
+          }
+        ]
+      },
+      "ExportResult": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string",
+            "description": "建议保存的文件名，按所选格式设置后缀"
+          },
+          "content": {
+            "type": "string",
+            "description": "文件正文字符串。json 是完整交付数组；cpa 单账号是 OAuth 对象、多账号是 ZIP 的 Base64；sub 是合并导入 JSON。encoding=base64 时先解码为二进制再保存，否则按 UTF-8 文本保存"
+          },
+          "encoding": {
+            "type": "string",
+            "description": "仅 CPA 多账号 ZIP 返回 base64；省略时 content 为 UTF-8 文本",
+            "enum": [
+              "base64"
+            ]
+          }
+        },
+        "required": [
+          "filename",
+          "content"
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "适合展示给用户的中文原因；不要按完整文案编写业务判断"
+          },
+          "status": {
+            "type": "integer",
+            "description": "HTTP 状态码",
+            "minimum": 400,
+            "maximum": 599
+          }
+        },
+        "required": [
+          "error",
+          "status"
+        ]
+      },
+      "OrderPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "description": "当前页记录",
+            "items": {
+              "$ref": "#/components/schemas/Order"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "符合全部筛选条件的总记录数",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "description": "本页最多返回条数",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "integer",
+            "description": "本页起始偏移量",
+            "minimum": 0,
+            "maximum": 1000000
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ]
+      },
+      "AccountPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "description": "当前页记录",
+            "items": {
+              "$ref": "#/components/schemas/Account"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "符合全部筛选条件的总记录数",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "description": "本页最多返回条数",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "integer",
+            "description": "本页起始偏移量",
+            "minimum": 0,
+            "maximum": 1000000
+          },
+          "server_time": {
+            "type": "string",
+            "description": "服务器当前时间，可用于校准领取截止时间",
+            "format": "date-time"
+          },
+          "next_expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "当前筛选结果中最早的领取截止时间；无可领取账号时为 null",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ]
+      }
+    },
+    "responses": {
+      "Error400": {
+        "description": "参数格式或业务条件不正确",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "参数格式或业务条件不正确",
+              "status": 400
+            }
+          }
+        }
+      },
+      "Error401": {
+        "description": "API Key 无效或账户不可用",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "API Key 无效或账户不可用",
+              "status": 401
+            }
+          }
+        }
+      },
+      "Error402": {
+        "description": "可用积分不足",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "可用积分不足",
+              "status": 402
+            }
+          }
+        }
+      },
+      "Error403": {
+        "description": "权限不足或功能未开放",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "权限不足或功能未开放",
+              "status": 403
+            }
+          }
+        }
+      },
+      "Error404": {
+        "description": "记录不存在、不属于当前账户或账号资料已到期",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "记录不存在、不属于当前账户或账号资料已到期",
+              "status": 404
+            }
+          }
+        }
+      },
+      "Error409": {
+        "description": "幂等键与请求内容冲突",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "幂等键与请求内容冲突",
+              "status": 409
+            }
+          }
+        }
+      },
+      "Error413": {
+        "description": "请求体过大",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "请求体过大",
+              "status": 413
+            }
+          }
+        }
+      },
+      "Error429": {
+        "description": "请求过频或未完成订单达到上限",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "请求过频或未完成订单达到上限",
+              "status": 429
+            }
+          }
+        },
+        "headers": {
+          "Retry-After": {
+            "description": "命中平台配置的风控频率限制时返回建议等待秒数；未完成订单数量上限等业务限制不保证携带",
+            "schema": {
+              "type": "integer",
+              "example": 60
+            }
+          }
+        }
+      },
+      "Error500": {
+        "description": "服务暂时不可用",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "服务暂时不可用",
+              "status": 500
+            }
+          }
+        }
+      },
+      "Error503": {
+        "description": "服务或新订单暂停受理",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            },
+            "example": {
+              "error": "服务或新订单暂停受理",
+              "status": 503
+            }
+          }
+        }
+      }
+    }
+  }
+}

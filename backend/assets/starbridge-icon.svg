@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <title>星桥 StarBridge</title>
+  <rect width="64" height="64" rx="18" fill="#133843"/>
+  <path d="M12 45C19 27 45 27 52 45" stroke="#B7F2D9" stroke-width="4" stroke-linecap="round"/>
+  <path d="M13 45H51M21 35V49M43 35V49" stroke="#64D8B1" stroke-width="4" stroke-linecap="round"/>
+  <path d="M32 10L34.8 17.2L42 20L34.8 22.8L32 30L29.2 22.8L22 20L29.2 17.2Z" fill="#E5FFF3"/>
+</svg>
