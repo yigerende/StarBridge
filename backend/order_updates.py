@@ -55,8 +55,14 @@ class OrderUpdates:
                 if conn: conn.close()
 
     async def close(self):
-        self.stop.set()
+        self.begin_shutdown()
         await asyncio.to_thread(self.thread.join, 7)
+
+    def begin_shutdown(self):
+        self.stop.set()
+        for queue in tuple(self.clients):
+            while not queue.empty():queue.get_nowait()
+            queue.put_nowait({'shutdown': True})
 
 
 updates = OrderUpdates()
@@ -84,6 +90,8 @@ async def order_updates(request: Request):
                     event = await asyncio.wait_for(queue.get(), timeout=15)
                 except asyncio.TimeoutError:
                     event = None
+                if updates.stop.is_set() or event and event.get('shutdown'):
+                    return
                 # Revalidate on every update/heartbeat; revocation takes effect
                 # without waiting for a long-lived stream to reconnect.
                 try: active_user = await asyncio.to_thread(authenticate, request, False, False)

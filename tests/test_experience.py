@@ -140,6 +140,13 @@ class ExperienceTests:
                 broker.publish({'id':'foreign','user_id':'other'});broker.publish({'id':oid,'user_id':owner})
                 result=await asyncio.wait_for(anext(stream),2)
                 self.assertIn(oid,result);self.assertNotIn('foreign',result);self.assertNotIn(owner,result)
+                draining=await updates.order_updates(request);drain_stream=draining.body_iterator
+                self.assertIn('ready',await anext(drain_stream))
+                broker.begin_shutdown()
+                with self.assertRaises(StopAsyncIteration):await asyncio.wait_for(anext(drain_stream),1)
+                await stream.aclose();broker.stop.clear()
+                response=await updates.order_updates(request);stream=response.body_iterator
+                self.assertIn('ready',await anext(stream))
                 db.execute('DELETE FROM sessions WHERE hash=$1',digest(token));broker.publish({'resync':True})
                 self.assertIn('revoked',await anext(stream));await stream.aclose();self.assertFalse(broker.clients)
         asyncio.run(exercise())
