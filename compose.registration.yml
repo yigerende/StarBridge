@@ -26,7 +26,7 @@ services:
     volumes:
       - ./.registration-runtime:/app/.runtime
     read_only: true
-    tmpfs: [/tmp:rw,noexec,nosuid,size=128m]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=128m"]
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
     stop_grace_period: 45s
@@ -50,7 +50,7 @@ services:
     volumes:
       - ./.registration-runtime:/app/.runtime
     read_only: true
-    tmpfs: [/tmp:rw,noexec,nosuid,size=128m]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=128m"]
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
     stop_grace_period: 120s
