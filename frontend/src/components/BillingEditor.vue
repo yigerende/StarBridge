@@ -19,7 +19,7 @@ const columns=[{key:'account',label:'资料名称'},{key:'holder',label:'持卡�
 function edit(row?:Row){original.value=row?profileKey(row):'';form.value=row?{...row,enabled:enabled(row),test_only:!!row.test_only}:{name:'',first_name:'',last_name:'',state:'',city:'',line1:'',postal_code:'',enabled:true,test_only:true};formError.value='';modal.value='edit'}
 function close(){if(!busy.value){modal.value='';form.value={};formError.value=''}}
 async function refresh(){if(busy.value)return;busy.value=true;error.value='';try{rows.value=(await api('/admin/billing-profiles')).items}catch(e){error.value=(e as Error).message}finally{busy.value=false}}
-async function change(method:string,endpoint:string,payload?:Row){if(busy.value)return;busy.value=true;error.value='';formError.value='';try{rows.value=(await api('/admin/billing-profiles'+endpoint,method,payload)).items;modal.value='';form.value={};notify(method==='DELETE'?'账单资料已删除':'账单资料已保存')}catch(e){if(modal.value)formError.value=(e as Error).message;else error.value=(e as Error).message}finally{busy.value=false}}
+async function change(method:string,endpoint:string,payload?:Row){if(busy.value)return;busy.value=true;error.value='';formError.value='';try{rows.value=(await api('/admin/billing-profiles'+endpoint,method,payload)).items;modal.value='';form.value={};notify(method==='DELETE'?'订阅资料已删除':'订阅资料已保存')}catch(e){if(modal.value)formError.value=(e as Error).message;else error.value=(e as Error).message}finally{busy.value=false}}
 function save(){const payload={...form.value};for(const key of ['name','email','first_name','last_name','state','city','line1','postal_code'])if(typeof payload[key]==='string')payload[key]=payload[key].trim();if(payload.email)payload.email=payload.email.toLowerCase();change(original.value?'PUT':'POST',original.value?'/'+encodeURIComponent(original.value):'',payload)}
 function toggle(row:Row){const payload={...row};payload.enabled=!enabled(row);payload.test_only=!!row.test_only;change('PUT','/'+encodeURIComponent(profileKey(row)),payload)}
 async function drawSample(){if(busy.value)return;busy.value=true;error.value='';try{sample.value=(await api('/admin/billing-profiles/sample','POST',{})).profile;modal.value='sample'}catch(e){error.value=(e as Error).message}finally{busy.value=false}}
@@ -29,8 +29,8 @@ function remove(row:Row){form.value={...row};formError.value='';modal.value='del
 <template>
   <section class="billing-manager">
     <div class="billing-heading">
-      <div><span class="eyebrow">BILLING PROFILES</span><h2>US 账单资料</h2><p>共 {{rows.length}} 条 · 已启用 {{liveCount}} 条 · 可用于付款 {{paymentCount}} 条</p></div>
-      <div class="actions"><button class="btn secondary" :disabled="busy" @click="drawSample"><Shuffle :size="16"/>随机测试</button><button class="btn secondary" :disabled="busy" @click="refresh"><RefreshCw :size="16"/>刷新</button><button class="btn primary" :disabled="busy||rows.length>=100" @click="edit()"><Plus :size="16"/>新增账单资料</button></div>
+      <div><span class="eyebrow">SUBSCRIPTION PROFILES</span><h2>资料库</h2><p>共 {{rows.length}} 条 · 已启用 {{liveCount}} 条 · 可用于付款 {{paymentCount}} 条</p></div>
+      <div class="actions"><button class="btn secondary" :disabled="busy" @click="drawSample"><Shuffle :size="16"/>随机测试</button><button class="btn secondary" :disabled="busy" @click="refresh"><RefreshCw :size="16"/>刷新</button><button class="btn primary" :disabled="busy||rows.length>=100" @click="edit()"><Plus :size="16"/>新增订阅资料</button></div>
     </div>
     <div class="billing-note"><MapPin :size="18"/><p>订阅付款会从已启用的正式资料中随机选择一条，无需绑定订阅邮箱；同一订单固定使用选中的资料。停用及仅供测试的资料不参与付款，随机测试按钮仅预览测试资料。</p></div>
     <div v-if="error" class="alert danger" role="alert">{{error}}</div>
@@ -42,7 +42,7 @@ function remove(row:Row){form.value={...row};formError.value='';modal.value='del
       <template #status="{row}"><span class="badge" :class="enabled(row)?'active':'disabled'">{{enabled(row)?'已启用':'已停用'}}</span><small :class="{'test-label':row.test_only}">{{row.test_only?'仅供测试':'正式资料'}}</small></template>
       <template #action="{row}"><div class="actions"><button class="text-btn" :disabled="busy" @click="edit(row)">编辑</button><button class="text-btn" :disabled="busy" @click="toggle(row)">{{enabled(row)?'停用':'启用'}}</button><button class="text-btn danger-text" :disabled="busy" @click="remove(row)">删除</button></div></template>
     </DataTable>
-    <Modal v-if="modal==='edit'" :title="original?'编辑账单资料':'新增账单资料'" wide @close="close">
+    <Modal v-if="modal==='edit'" :title="original?'编辑订阅资料':'新增订阅资料'" wide @close="close">
       <form @submit.prevent="save" autocomplete="off">
         <div v-if="formError" class="alert danger" role="alert">{{formError}}</div>
         <div class="form-grid">
@@ -56,11 +56,11 @@ function remove(row:Row){form.value={...row};formError.value='';modal.value='del
           <label>国家<input value="US · 美国" readonly/></label>
         </div>
         <div class="billing-switches"><label><input v-model="form.enabled" type="checkbox"/>启用此资料</label><label><input v-model="form.test_only" type="checkbox"/>仅供测试，不用于真实付款</label></div>
-        <p class="muted small">取消勾选“仅供测试”并启用后，此资料会加入正式付款随机池。请保存本人或已获授权使用的真实账单资料。</p>
-        <div class="form-footer"><button type="button" class="btn secondary" :disabled="busy" @click="close">取消</button><button class="btn primary" :disabled="busy">{{busy?'保存中…':'保存账单资料'}}</button></div>
+        <p class="muted small">取消勾选“仅供测试”并启用后，此资料会加入正式付款随机池。请保存本人或已获授权使用的真实订阅资料。</p>
+        <div class="form-footer"><button type="button" class="btn secondary" :disabled="busy" @click="close">取消</button><button class="btn primary" :disabled="busy">{{busy?'保存中…':'保存订阅资料'}}</button></div>
       </form>
     </Modal>
-    <Modal v-if="modal==='delete'" title="删除账单资料" @close="close"><div v-if="formError" class="alert danger" role="alert">{{formError}}</div><p>确定删除 <b>{{form.name||form.first_name+' '+form.last_name}}</b>？删除后无法再选用此资料，已开始的任务保留原资料。</p><div class="form-footer"><button class="btn secondary" :disabled="busy" @click="close">取消</button><button class="btn danger" :disabled="busy" @click="change('DELETE','/'+encodeURIComponent(profileKey(form)))">确认删除</button></div></Modal>
+    <Modal v-if="modal==='delete'" title="删除订阅资料" @close="close"><div v-if="formError" class="alert danger" role="alert">{{formError}}</div><p>确定删除 <b>{{form.name||form.first_name+' '+form.last_name}}</b>？删除后无法再选用此资料，已开始的任务保留原资料。</p><div class="form-footer"><button class="btn secondary" :disabled="busy" @click="close">取消</button><button class="btn danger" :disabled="busy" @click="change('DELETE','/'+encodeURIComponent(profileKey(form)))">确认删除</button></div></Modal>
     <Modal v-if="modal==='sample'&&sample" title="随机测试结果" @close="close"><p class="callout">仅预览测试资料，未创建订单或发起付款。</p><h3>{{sample.name||sample.first_name+' '+sample.last_name}}</h3><p>{{sample.first_name}} {{sample.last_name}}</p><p>{{sample.line1}}</p><p>{{sample.city}} · {{sample.state}} {{sample.postal_code}} · US</p><div class="form-footer"><button class="btn secondary" :disabled="busy" @click="drawSample">再抽取一次</button><button class="btn primary" @click="close">关闭</button></div></Modal>
   </section>
 </template>

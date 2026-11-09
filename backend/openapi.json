@@ -4453,9 +4453,15 @@
             ]
           },
           "membership": {
-            "$ref": "#/components/schemas/Membership",
             "description": "当前账户会员与专属计价信息。 会员中心关闭时为 null。",
-            "nullable": true
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Membership"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },
@@ -4937,9 +4943,15 @@
             "description": "账户通用服务费，积分最小单位；null 表示未设置。套餐专属价优先，其次此值，最后会员折扣。 对应资金、伙伴计划或会员功能关闭时可能不返回。"
           },
           "membership": {
-            "$ref": "#/components/schemas/Membership",
             "description": "当前账户会员与专属计价信息。 会员中心关闭时为 null。",
-            "nullable": true
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Membership"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "features": {
             "type": "object",

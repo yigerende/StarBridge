@@ -1,7 +1,7 @@
 export const registrationPaths:Record<string,string>={
  '/register':'/register','/accounts':'/accounts','/orders':'/orders',
  '/admin/orders':'/admin/orders','/admin/finance':'/admin/finance',
- '/admin/resources':'/admin/engine/proxies','/admin/products':'/admin/products',
+ '/admin/products':'/admin/products',
  '/admin/accounts':'/admin/accounts','/admin/suppliers':'/admin/suppliers','/admin/engine':'/admin/engine',
 }
 const fixed=new Set(['/register','/accounts','/admin/accounts','/admin/suppliers','/admin/engine'])

@@ -2,18 +2,19 @@
 import {computed,nextTick,onMounted,ref} from 'vue'
 import {ArrowUpRight,Copy,Download,Menu,X} from 'lucide-vue-next'
 import {api,copy,action,type Row} from '../lib'
-import {schemaFields,fieldType,fieldRules,requestExamples,codeSample} from '../apiDocs'
+import {schemaFields,fieldType,fieldRules,requestExamples,responseExamples,documentedOperations,codeSample} from '../apiDocs'
 defineProps<{site?:Row}>()
 const spec=ref<Row>({}),error=ref(''),lang=ref('curl'),mobile=ref(false),origin=location.origin
 const selected=ref<Record<string,string>>({})
-const operations=computed(()=>Object.entries(spec.value.paths||{}).flatMap(([path,v])=>Object.entries(v as Row).map(([method,op])=>({path,method,op:op as Row,id:(op as Row).operationId}))))
+const operations=computed(()=>documentedOperations(spec.value))
 const groups=computed(()=>((spec.value.tags||[]) as Row[]).map(tag=>({name:String(tag.name),items:operations.value.filter(x=>x.op.tags?.includes(tag.name))})))
 const states:Row={draft:'已保存',queued:'等待办理',processing:'正在办理',awaiting_payment:'结账链接已生成，等待用户自行付款',succeeded:'付款成功，请继续确认订阅与续费结果',failed:'办理失败，查看进度说明',cancelled:'已停止',review:'结果待核实，请勿重复付款'}
 const renewalStates:Row={queued:'等待办理',processing:'正在处理',checking:'正在确认关闭结果',disabled:'已确认关闭自动续费',no_subscription:'未发现可关闭的订阅',review:'待核实，请查看 message 或联系支持'}
 const fields=(v:Row)=>schemaFields(spec.value,v)
 const sample=(x:Row,key?:string)=>codeSample(x,origin,lang.value,key||selected.value[x.id])
 const operation=(id:string)=>operations.value.find(x=>x.id===id)!
-const responseExample=(response:Row)=>response.content?.['application/json']?.example
+const successfulResponses=(op:Row)=>Object.fromEntries(Object.entries(op.responses||{}).filter(([code])=>code.startsWith('2')))
+const errorResponses=(op:Row)=>Object.entries(op.responses||{}).filter(([code])=>!code.startsWith('2'))
 onMounted(async()=>{try{spec.value=await api('/openapi.json');await nextTick();if(location.pathname==='/docs')document.getElementById(location.hash.slice(1))?.scrollIntoView()}catch(e){error.value=(e as Error).message}})
 </script>
 
@@ -41,25 +42,25 @@ onMounted(async()=>{try{spec.value=await api('/openapi.json');await nextTick();i
     <div v-if="error" class="alert danger">{{error}}</div>
     <section id="start" class="docs-intro">
       <span class="eyebrow">星桥 API · {{spec.info?.version}}</span><h1>API 接入文档</h1>
-      <p>一份文档接入订阅办理、注册与账号交付、结账链接、关闭自动续费，以及统一账户与资金。</p>
+      <p>供星桥用户从自己的服务端接入订阅、注册与账号交付、结账链接、关闭自动续费及统一钱包。</p>
       <div class="docs-base"><code>{{origin}}</code><button class="text-btn" @click="action(()=>copy(origin))"><Copy :size="15"/>复制基础地址</button></div>
       <div class="docs-steps"><span>01 在开发接入创建密钥</span><span>02 查询套餐与余额</span><span>03 提交并保存任务编号</span><span>04 查询进度与结果</span></div>
-      <div class="callout">先将 API 密钥保存为服务端环境变量 XUFU_API_KEY。示例中的 Session、银行卡和记录编号都是占位符，请替换为本次授权操作的真实资料。cURL 示例适用于 Bash；Windows 可使用 Python 或 Node.js 示例。</div>
+      <div class="callout">先将 API 密钥保存为服务端环境变量 STARBRIDGE_API_KEY。示例中的 Session、银行卡和记录编号都是占位符，请替换为本次授权操作的真实资料。cURL 示例适用于 Bash；Windows 可使用 Python 或 Node.js 示例。</div>
       <div class="tabs"><button v-for="l in ['curl','node','python']" :key="l" :class="{active:lang===l}" @click="lang=l">{{({curl:'cURL',node:'Node.js',python:'Python'} as Row)[l]}}</button></div>
       <p>Python 示例使用 requests；Node.js 示例使用内置 fetch，建议 Node.js 22 或更新版本。</p>
     </section>
     <section id="auth" class="panel docs-section">
       <h2>鉴权与数据约定</h2><p>请求携带 <code>Authorization: Bearer YOUR_API_KEY</code>。密钥只能操作所属星桥账户的数据；目标订阅账号由请求中的 Session 指定。密钥只在创建时显示一次，撤销后失效。</p>
-      <p>可用余额为 <code>balance − frozen</code>。</p>
+      <div class="docs-table"><table><thead><tr><th>接口范围</th><th>金额单位</th><th>可用余额</th></tr></thead><tbody><tr><td><code>/api/v1/</code></td><td>积分最小单位，100 = 1 积分</td><td><code>(balance − frozen) / 100</code> 积分</td></tr><tr><td><code>/registration/open/v1/</code></td><td>积分，最多两位小数</td><td><code>points</code> 已是可用积分，不再减 frozen</td></tr></tbody></table></div><p>两类接口共用同一账户和钱包。下单前核对金额单位，不要重复换算。</p>
       <p>套餐以 <code>GET /api/v1/catalog</code> 返回的 <code>items[].id</code> 为准，作为报价和下单的 <code>product_id</code>。Pro 20x 使用 <code>pro20x</code>；后续开放的新套餐同样传对应标识。</p><p>服务费优先使用该套餐专属价，其次账户通用价，否则使用会员折扣；<code>price_source</code> 说明本次计价来源。专属价为 0 也有效。</p><p>使用 HTTPS 从服务端调用；密钥、Session、银行卡及兑换码不要放入 URL、前端代码或日志。接口不开放跨域浏览器调用。</p>
       <p>Session 检查仅核对格式、账号与有效期，不验证上游登录和订阅状态。办理时请提供最新完整 Session，并保留其中的 sessionToken 或会话 Cookie，以便需要时刷新登录态。</p>
     </section>
     <section id="registration" class="panel docs-section">
       <h2>注册与账号交付</h2>
-      <p>使用开发接入创建的同一个 <code>xp_live_</code> 密钥；注册接口位于 <code>/registration/open/v1/</code>。历史 <code>gr_</code> 密钥保持原注册权限，可在开发接入统一撤销。</p>
+      <p>使用开发接入创建的同一个 <code>xp_live_</code> 密钥；注册接口位于 <code>/registration/open/v1/</code>。此密钥只可操作所属账户的注册订单与交付账号。</p>
       <p>先查询注册套餐，再提交订单并保存订单编号。相同业务重试必须复用 <code>Idempotency-Key</code>，更改参数时使用新的键。按原订单查询进度，交付后查询账号或下载导出文件；下方列出完整接口、请求字段和示例。</p>
       <p>下单先冻结，账号资料完整交付后才扣费；选择 OAuth 时必须同时完成授权。失败释放对应冻结，部分成功仅扣已交付部分。<code>queued / running / oauth_pending</code> 为处理中，<code>review</code> 保留原单继续查询。</p>
-      <p>注册接口金额单位为积分；星桥接口使用最小单位，100 最小单位 = 1 积分。两类接口显示同一钱包。分页分别遵循对应接口的参数，导出文件含敏感账号资料，请只保存在授权系统。</p>
+      <p>账号资料在交付成功后保留 72 小时可领取。请及时读取或导出，截止时间查看 <code>download_expires_at</code>。导出接口返回 JSON 中的 <code>filename</code> 与 <code>content</code>；出现 <code>encoding: "base64"</code> 时先解码再保存文件。注册订单不提供用户取消接口。</p>
     </section>
     <section id="product-ids" class="panel docs-section">
       <h2>product_id 可以传什么？</h2>
@@ -70,7 +71,7 @@ onMounted(async()=>{try{spec.value=await api('/openapi.json');await nextTick();i
       <p>例如办理 Pro 20x，在下单 JSON 中填写 <code>"product_id": "pro20x"</code>；报价查询使用 <code>?product_id=pro20x</code>。</p>
       <p>获取最新列表：携带 API 密钥调用 <code>GET /api/v1/catalog</code>，找到所需套餐的 <code>name</code>，将同一条记录的 <code>id</code> 原样传入。后续新增套餐也使用这一方式。</p>
       <h3>Team团队订阅的席位与优惠码</h3>
-      <p>当前 Go 提链流程统一使用 <code>product_id: "team"</code>。<code>seats</code> 是普通与高级席位的总数，至少 2、最多 100；<code>premium_seats</code> 是其中的高级席位数。省略时分别为 2 和 0。</p>
+      <p>Team 套餐使用 <code>product_id: "team"</code>。<code>seats</code> 是普通与高级席位的总数，至少 2、最多 100；<code>premium_seats</code> 是其中的高级席位数。省略时分别为 2 和 0。</p>
       <div class="docs-table"><table><thead><tr><th>席位组合</th><th>seats</th><th>premium_seats</th></tr></thead><tbody><tr><td>2 普通</td><td>2</td><td>0</td></tr><tr><td>1 普通＋1 高级</td><td>2</td><td>1</td></tr><tr><td>2 高级</td><td>2</td><td>2</td></tr></tbody></table></div>
       <p>可选 <code>promo_code</code> 填写用户自己的 Team 优惠码，留空则不使用。优惠码只影响上游结账金额，平台服务费仍以报价为准。无需传递团队空间名称 <code>workspace_name</code>。订阅办理和仅生成结账链接均使用这些参数；总席位不足 2 或高级席位超过总数会返回 HTTP 400，且不会受理订单或冻结费用。</p>
     </section>
@@ -114,14 +115,14 @@ onMounted(async()=>{try{spec.value=await api('/openapi.json');await nextTick();i
       </div>
       <label v-if="Object.keys(requestExamples(x)).length>1">请求场景 <select :value="selected[x.id]||Object.keys(requestExamples(x))[0]" @change="selected[x.id]=($event.target as HTMLSelectElement).value"><option v-for="(e,k) in requestExamples(x)" :key="k" :value="k">{{e.summary}}</option></select></label>
       <pre>{{sample(x)}}</pre>
-      <details open><summary>响应字段、成功示例与错误示例</summary>
-        <div v-for="(response,code) in x.op.responses" :key="code">
+      <details><summary>成功响应字段与示例</summary>
+        <div v-for="(response,code) in successfulResponses(x.op)" :key="code">
           <h4>HTTP {{code}} · {{(response as Row).description}}</h4>
           <div class="docs-table" v-if="fields((response as Row).content?.['application/json']?.schema).length"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody>
             <tr v-for="f in fields((response as Row).content?.['application/json']?.schema)" :key="f.name"><td><code>{{f.name}}</code></td><td>{{fieldType(f)}}</td><td>{{f.description}}<small v-if="fieldRules(f)" class="muted">{{fieldRules(f)}}</small></td></tr>
-          </tbody></table></div><pre v-if="responseExample(response as Row)">{{JSON.stringify(responseExample(response as Row),null,2)}}</pre>
+          </tbody></table></div><div v-for="(example,key) in responseExamples(response as Row)" :key="key"><p v-if="example.summary" class="muted">{{example.summary}}</p><pre>{{JSON.stringify(example.value,null,2)}}</pre></div>
         </div>
-      </details>
+      </details><details v-if="errorResponses(x.op).length"><summary>可能返回的错误</summary><p>通用处理规则见 <a href="/docs#errors">错误处理</a>。</p><ul><li v-for="[code,response] in errorResponses(x.op)" :key="code"><code>{{code}}</code> · {{(response as Row).description}}</li></ul></details>
     </section>
     <section id="fields" class="panel docs-section"><h2>字段字典</h2><p>点号表示对象内字段，[] 表示数组元素，{product_id} 表示以套餐标识为键的字典。所有时间为带时区的 ISO 8601 格式。可选字段可能省略；null 不等同于 0 或失败。</p>
       <details v-for="(s,name) in spec.components?.schemas" :key="name"><summary>{{name}}</summary><div class="docs-table"><table><thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead><tbody>
@@ -129,17 +130,19 @@ onMounted(async()=>{try{spec.value=await api('/openapi.json');await nextTick();i
       </tbody></table></div></details>
     </section>
     <section id="states" class="panel docs-section"><h2>状态、分页与重试</h2>
-      <h3>订单状态</h3><div class="docs-table"><table><tbody><tr v-for="(label,state) in states" :key="state"><td><code>{{state}}</code></td><td>{{label}}</td></tr></tbody></table></div>
+      <h3>订阅与结账链接订单</h3><div class="docs-table"><table><tbody><tr v-for="(label,state) in states" :key="state"><td><code>{{state}}</code></td><td>{{label}}</td></tr></tbody></table></div>
+      <h3>注册订单</h3><div class="docs-table"><table><tbody><tr v-for="(label,state) in spec['x-registration-order-states']" :key="state"><td><code>{{state}}</code></td><td>{{label}}</td></tr></tbody></table></div><details><summary>注册订单中单个账号的状态</summary><div class="docs-table"><table><tbody><tr v-for="(label,state) in spec['x-registration-item-states']" :key="state"><td><code>{{state}}</code></td><td>{{label}}</td></tr></tbody></table></div></details>
       <h3>独立续费任务状态</h3><div class="docs-table"><table><tbody><tr v-for="(label,state) in renewalStates" :key="state"><td><code>{{state}}</code></td><td>{{label}}</td></tr></tbody></table></div>
-      <p>建议每 5 秒查询一次排队或办理中的任务。失败、取消或待核实时停止自动轮询并处理结果。提链订单在取得链接后停止轮询。订阅已付款但后续仍 pending 时可继续查询，长时间未变化请联系支持。</p>
-      <p>分页使用 page 和 page_size，按倒序返回，读取 has_more 决定是否继续下一页。订单默认每页 200 条，其他列表默认 50 条，上限均为 200；有新记录写入时页码内容可能变化，汇总时按 id 去重。</p>
+      <p>建议每 5 秒查询一次排队或办理中的任务。订阅付款 review 时停止自动重付并联系支持；注册订单 review 时继续查询原单，等待最终结算。已结束的任务停止轮询。提链订单在取得链接后停止轮询。订阅已付款但后续仍 pending 时可继续查询，长时间未变化请联系支持。</p>
+      <p>订阅及统一钱包列表使用 page 和 page_size，按倒序返回，读取 has_more 决定是否继续下一页。订单默认每页 200 条，其他列表默认 50 条，上限均为 200；有新记录写入时页码内容可能变化，汇总时按 id 去重。</p>
+      <p>注册订单和账号列表使用 <code>limit</code>（默认 50，上限 100）与 <code>offset</code>（默认 0），依据 <code>total</code> 和已读取条数判断是否结束；下一页将 offset 增加本次读取条数。两类分页参数不能混用。</p>
       <h3>超时与重复提交</h3><p>创建订单、续费任务和充值申请必须携带 Idempotency-Key。提交前保存请求标识和内容；网络超时或 HTTP 500 后，使用相同标识和相同内容重试，返回已有编号时不会重复创建。换账号、套餐、金额或银行卡等内容，必须视为新操作并使用新标识。</p>
       <p>同一标识配合不同内容返回 409。查询和重复取消同一充值申请可安全重试。兑换余额超时先核对余额和流水；确认原订单结果前，不要用新标识反复下单。支付结果 review 时联系支持核实原单。</p>
       <p>办理是否开放由站点配置决定；payment_connected 可作为下单前参考，最终以提交结果为准。排队期间暂停办理时，订单可能暂时保持 queued。限流阈值由站点配置决定，多个密钥共享所属账户的限额。</p>
     </section>
     <section id="errors" class="panel docs-section"><h2>错误处理</h2><p>错误返回 <code>{"error":"中文错误原因"}</code>。按 HTTP 状态决定处理方式，中文说明用于展示。</p>
       <div class="docs-table"><table><thead><tr><th>状态</th><th>处理方式</th></tr></thead><tbody>
-        <tr v-for="(v,k) in {400:'核对参数类型、Session、余额及业务条件；修正后再提交',401:'检查密钥是否有效及账户状态',403:'当前功能未开放、密钥权限不足或请求来源不允许',404:'记录不存在或不属于本账户',409:'请求标识内容冲突或记录状态不允许操作，先核对原请求',413:'缩小请求体；总请求最多 1 MB，Session 最多 256 KB',429:'降低请求频率，建议至少等待 60 秒后重试',500:'查询可退避重试；创建任务使用原请求标识重试',503:'办理资源暂不可用，稍后使用原请求标识重试'}" :key="k"><td><code>{{k}}</code></td><td>{{v}}</td></tr>
+        <tr v-for="(v,k) in {400:'核对参数类型、Session、余额及业务条件；修正后再提交',401:'检查密钥是否有效及账户状态',402:'注册可用积分不足，核对可用余额并充值',403:'当前功能未开放、密钥权限不足或请求来源不允许',404:'记录不存在或不属于本账户',409:'请求标识内容冲突或记录状态不允许操作，先核对原请求',413:'缩小请求体；总请求最多 1 MB，Session 最多 256 KB',429:'若有 Retry-After，按响应秒数等待；否则至少等待 60 秒。未完成订单达到上限时先等待原单结算',500:'查询可退避重试；创建任务使用原请求标识重试',503:'办理资源暂不可用，稍后使用原请求标识重试'}" :key="k"><td><code>{{k}}</code></td><td>{{v}}</td></tr>
       </tbody></table></div>
     </section>
   </main>

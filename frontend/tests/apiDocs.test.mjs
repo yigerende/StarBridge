@@ -1,9 +1,35 @@
 import {test} from 'node:test'
 import assert from 'node:assert/strict'
 import {readFileSync} from 'node:fs'
-import {schemaFields,codeSample,requestExamples,fieldRules} from '../src/apiDocs.ts'
+import {schemaFields,codeSample,requestExamples,responseExamples,documentedOperations,fieldRules} from '../src/apiDocs.ts'
 const spec=JSON.parse(readFileSync(new URL('../../backend/openapi.json',import.meta.url),'utf8'))
 const operations=Object.entries(spec.paths).flatMap(([path,v])=>Object.entries(v).map(([method,op])=>({path,method,op})))
+const registration=JSON.parse(readFileSync(new URL('../../backend/registration-openapi.json',import.meta.url),'utf8'))
+
+test('registration credentials expand inherited and nested OAuth fields once',()=>{
+  const fields=schemaFields(registration,{$ref:'#/components/schemas/Credentials'})
+  for(const name of ['email','password','totp_secret','access_token','session_token','oauth.access_token','download_expires_at','totp_code','totp_expires_in'])assert.ok(fields.some(f=>f.name===name),name)
+  assert.equal(new Set(fields.map(f=>f.name)).size,fields.length)
+  assert.ok(fields.find(f=>f.name==='totp_code').required)
+})
+
+test('all registration scenarios and multiple export responses are visible',()=>{
+  for(const x of documentedOperations(registration))for(const lang of ['curl','python','node']){
+    const code=codeSample({...x,path:'/registration'+x.path},'https://bridge.example.test',lang)
+    assert.ok(code.includes('/registration/open/v1/'))
+    assert.ok(code.includes('STARBRIDGE_API_KEY'))
+    assert.ok(!code.includes('undefined'))
+    assert.ok(!code.includes('{id}'))
+  }
+  const exported=registration.paths['/open/v1/accounts/export'].post.responses['200']
+  assert.ok(Object.keys(responseExamples(exported)).length>=7)
+  assert.ok(Object.values(responseExamples(exported)).every(v=>typeof v.value.filename==='string'&&typeof v.value.content==='string'))
+})
+
+test('path metadata is not mistaken for an API operation',()=>{
+  const d={paths:{'/example':{summary:'Example',parameters:[],get:{operationId:'one'}}}}
+  assert.deepEqual(documentedOperations(d).map(x=>x.id),['one'])
+})
 
 test('nested references, union objects and arrays expose customer fields',()=>{
   const order=schemaFields(spec,{$ref:'#/components/schemas/CreateOrder'})
@@ -18,7 +44,7 @@ test('nested references, union objects and arrays expose customer fields',()=>{
 test('all operations produce bounded, authenticated examples',()=>{
   for(const x of operations)for(const lang of ['curl','python','node']){
     const code=codeSample(x,'https://pay.example.test',lang)
-    assert.ok(code.includes('XUFU_API_KEY'))
+    assert.ok(code.includes('STARBRIDGE_API_KEY'))
     assert.ok(!code.includes('{id}'))
     assert.ok(!code.includes('undefined'))
     assert.ok(code.includes(lang==='curl'?'--max-time':lang==='node'?'AbortSignal.timeout':'timeout=30'))
