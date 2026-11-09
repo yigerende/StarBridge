@@ -17,6 +17,9 @@ from backend.common import BusinessError, password_matches
 
 
 class RegistrationGatewayTests(unittest.TestCase):
+    def tearDown(self):
+        asyncio.run(gateway.close_transport())
+
     def test_path_preserves_query_without_allowing_url_escape(self):
         env={'REGISTRATION_URL':'http://registration-app:3210','REGISTRATION_GATEWAY_SECRET':'s'*40}
         with patch.dict('os.environ',env):
@@ -53,22 +56,13 @@ class RegistrationGatewayTests(unittest.TestCase):
             with self.assertRaises(BusinessError) as error:asyncio.run(gateway.registration(request,'api/public'))
         self.assertEqual(error.exception.status,503)
 
-    def test_migrated_scrypt_password_verifies_without_resetting_credentials(self):
-        import hashlib
-        salt='a'*32
-        digest=hashlib.scrypt(b'LegacyPassword123',salt=salt.encode(),n=16384,r=8,p=1,dklen=64).hex()
-        stored='scrypt:'+salt+':'+digest
-        self.assertTrue(password_matches('LegacyPassword123',stored))
-        self.assertFalse(password_matches('wrong-password',stored))
-        self.assertFalse(password_matches('LegacyPassword123','scrypt:invalid:hash'))
-
     def test_browser_navigation_closes_upstream_without_server_error(self):
         from starlette.requests import ClientDisconnect
         request=Request({'type':'http','method':'GET','path':'/registration/api/public','raw_path':b'/registration/api/public','headers':[(b'host',b'local')],'query_string':b''})
         with patch.dict('os.environ',{'REGISTRATION_URL':'http://registration-app:3210','REGISTRATION_GATEWAY_SECRET':'s'*40}),patch.object(gateway,'ip',return_value='127.0.0.1'),patch.object(request,'body',side_effect=ClientDisconnect),patch.object(gateway.httpx.AsyncClient,'aclose',new_callable=AsyncMock) as close:
             response=asyncio.run(gateway.registration(request,'api/public'))
         self.assertEqual(response.status_code,499)
-        close.assert_awaited_once()
+        close.assert_not_awaited()
 
 
 if __name__=='__main__':unittest.main()

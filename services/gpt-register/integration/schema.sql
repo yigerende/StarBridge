@@ -11,20 +11,11 @@ ALTER TABLE platform_orders ADD COLUMN IF NOT EXISTS price_snapshot jsonb;
 ALTER TABLE platform_ledger ALTER COLUMN points_delta TYPE numeric(20,2);
 ALTER TABLE platform_ledger ALTER COLUMN frozen_delta TYPE numeric(20,2);
 ALTER TABLE platform_partner_rewards ALTER COLUMN fee TYPE numeric(20,2);
-ALTER TABLE platform_api_keys ADD COLUMN IF NOT EXISTS xufu_credential_hash text NOT NULL DEFAULT '';
 CREATE TABLE IF NOT EXISTS registration_reservations (
  order_id text PRIMARY KEY REFERENCES platform_orders(id),
  user_id text NOT NULL REFERENCES users(id), reserved bigint NOT NULL CHECK(reserved>=0),
  charged bigint NOT NULL DEFAULT 0 CHECK(charged>=0), released bigint NOT NULL DEFAULT 0 CHECK(released>=0),
  CHECK(charged+released<=reserved)
-);
-CREATE TABLE IF NOT EXISTS registration_migrations (
- source_user_id text PRIMARY KEY REFERENCES platform_users(id),
- target_user_id text NOT NULL REFERENCES users(id), amount bigint NOT NULL,
- frozen bigint NOT NULL, completed_at timestamptz NOT NULL DEFAULT now()
-);
-CREATE TABLE IF NOT EXISTS registration_imports (
- id integer PRIMARY KEY CHECK(id=1), completed_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE OR REPLACE VIEW registration_members AS
  SELECT p.id,u.email,u.name,u.password_hash,u.role,
@@ -42,7 +33,7 @@ DECLARE owner_id text; owner users; prior platform_ledger; registration_order te
         amount bigint; frozen_amount bigint; entry_id text; shared_entry_id bigint; reservation registration_reservations;
 BEGIN
  SELECT xufu_user_id INTO owner_id FROM platform_users WHERE id=member_id;
- IF owner_id IS NULL THEN RAISE EXCEPTION 'Registration identity has not been migrated'; END IF;
+ IF owner_id IS NULL THEN RAISE EXCEPTION 'Unified registration identity is missing'; END IF;
  SELECT * INTO owner FROM users WHERE id=owner_id FOR UPDATE;
  SELECT * INTO prior FROM platform_ledger WHERE user_id=member_id AND reference=entry_reference;
  IF FOUND THEN
@@ -103,16 +94,6 @@ BEGIN
  UPDATE platform_ledger SET unified_entry_id=shared_entry_id WHERE id=entry_id;
  RETURN true;
 END $$;
-
-CREATE OR REPLACE FUNCTION registration_key_identity() RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
- SELECT md5(u.password_hash) INTO NEW.xufu_credential_hash
-  FROM users u JOIN platform_users p ON p.xufu_user_id=u.id WHERE p.id=NEW.user_id;
- RETURN NEW;
-END $$;
-DROP TRIGGER IF EXISTS registration_key_identity ON platform_api_keys;
-CREATE TRIGGER registration_key_identity BEFORE INSERT ON platform_api_keys
- FOR EACH ROW EXECUTE FUNCTION registration_key_identity();
 
 CREATE OR REPLACE FUNCTION platform_partner_admit() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE inviter text; joined timestamptz; rules jsonb; rate integer;

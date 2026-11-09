@@ -6,7 +6,7 @@
 
 ## Docker 部署
 
-全新安装使用 Compose project `starbridge`，容器为 `starbridge-app`、`starbridge-postgres`、`starbridge-registration-app`、`starbridge-registration-worker`。对外端口 **5876**，数据库与注册服务仅内部访问。
+全新安装使用 Compose project `starbridge`，容器为 `starbridge-app`、`starbridge-postgres`、`starbridge-registration-worker`。对外端口 **5876**，数据库与注册服务仅内部访问。
 
 正式仓库为 `yigerende/StarBridge`，部署目录为 `/opt/1panel/apps/starbridge`：
 
@@ -17,11 +17,8 @@ cp .env.example .env
 # 设置数据库密码、32 字节 Base64 主密钥、初始管理员密码及注册网关密钥。
 docker compose -f compose.yml -f compose.registration.yml build
 sudo install -d -m 0700 -o 1000 -g 1000 .registration-runtime
+sudo python3 scripts/starbridge_updater.py --install
 docker compose -f compose.yml -f compose.registration.yml up -d --wait --wait-timeout 90 postgres
-# 初始化统一表；此进程不启动应用或业务调度。
-docker compose -f compose.yml -f compose.registration.yml run --rm --no-deps app python -c "from backend import db;from backend.seed import seed;db.initialize();seed();db.close()"
-docker compose -f compose.yml -f compose.registration.yml run --rm --no-deps registration-app node integration/initialize.js
-docker compose -f compose.yml -f compose.registration.yml run --rm --no-deps registration-app node -e "require('./docker/runtime').initializeRuntime(process.cwd());require('./src/platform/security').loadSecrets(process.cwd())"
 docker compose -f compose.yml -f compose.registration.yml up -d
 ```
 
@@ -52,4 +49,6 @@ npm --prefix frontend run build
 npm --prefix services/gpt-register/web run build
 ```
 
-后台测试使用独立临时数据库；网络请求用模拟响应，不执行真实注册、付款或取消续费。源码完整性、财务结算和生产迁移说明见 [整合文档](docs/registration-integration.md)，会员报价见 [会员减免](docs/registration-membership.md)。
+后台测试使用独立临时数据库；网络请求用模拟响应，不执行真实注册、付款或取消续费。源码完整性、财务结算和独立部署说明见 [整合文档](docs/registration-integration.md)，会员报价见 [会员减免](docs/registration-membership.md)。
+
+站点设置 → 安全与认证可修改访问地址；“更新”预构建，准备完成后“立即重启”切换。宿主更新服务只管理本项目，运行日志通过 `journalctl -u starbridge-updater` 和 `/var/lib/starbridge-updater/` 查看。

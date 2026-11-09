@@ -28,7 +28,7 @@ test('unified registration account, wallet and delivery isolation', { timeout: 1
     await db.initialize();
     await db.initialize();
     await db.query(`UPDATE platform_settings SET value=value || $1::jsonb`,
-      [{ orders_open: true, price_standard: 5, price_oauth: 8, max_open_orders: 100, invitations: { enabled: false, stages: [] } }]);
+      [{ orders_open: true, price_standard: 5, price_oauth: 8, max_open_orders: 20, invitations: { enabled: false, stages: [] } }]);
     const orders = new Orders(db, cipher(crypto.randomBytes(32).toString('base64')));
     app = buildPlatform({ db, orders, crypt: orders.crypt, secrets: { internal: 'test' }, proxy: false });
     await app.ready();
@@ -69,9 +69,26 @@ test('unified registration account, wallet and delivery isolation', { timeout: 1
       await db.query("UPDATE users SET status='disabled' WHERE id=$1", [u.xufu_user_id]);
       assert.equal((await request(u, 'GET', '/api/user/v1/me')).statusCode, 401);
     });
+    await t.test('page identity reads do not wait for wallet settlement locks',async()=>{
+      const u=await account(),lock=await db.pool.connect();
+      try{
+        await lock.query('BEGIN');await lock.query('SELECT id FROM users WHERE id=$1 FOR UPDATE',[u.xufu_user_id]);
+        const result=await Promise.race([identity(db,u.xufu_user_id),new Promise((_,reject)=>setTimeout(()=>reject(Error('page read locked wallet')),1000))]);
+        assert.equal(result.id,u.id);
+      }finally{await lock.query('ROLLBACK');lock.release()}
+    });
+    await t.test('only unified redemption and site administration are accepted',async()=>{
+      const u=await account(1000,0,'admin');
+      for(const [url,payload] of [['/api/admin/v1/redeem-codes',{points:1,count:1}],['/api/user/v1/redeem',{code:'GR-synthetic'}]]){
+        assert.equal((await request(u,'POST',url,payload)).statusCode,409);
+      }
+      assert.equal((await request(u,'PATCH','/api/admin/v1/settings',{announcements:[]})).statusCode,409);
+      assert.equal((await request(u,'PATCH','/api/admin/v1/settings',{orders_open:true})).statusCode,200);
+      assert.equal(await db.one('SELECT count(*)::int AS n FROM platform_redeem_codes').then(x=>x.n),0);
+    });
     await t.test('reserve is atomic, idempotent and does not charge', async () => {
       const u = await account(), key = id();
-      const results = await Promise.all(Array.from({ length: 8 }, () => create(u, 2, key)));
+      const results = await Promise.all(Array.from({ length: 60 }, () => create(u, 2, key)));
       assert.equal(new Set(results.map(r => r.order.id)).size, 1);
       assert.deepEqual(await wallet(u), { balance: 3000, frozen: 1700 });
       assert.equal((await db.one('SELECT count(*)::int n FROM ledger WHERE user_id=$1', [u.xufu_user_id])).n, 1);
@@ -92,9 +109,9 @@ test('unified registration account, wallet and delivery isolation', { timeout: 1
     await t.test('partial delivery charges successes once and preserves subscription freezes', async () => {
       const u = await account(), o = await create(u, 3), rows = await items(o);
       const delivered = credentials();
-      await Promise.all(Array.from({ length: 6 }, () => orders.finish(rows[0].id, delivered)));
+      await Promise.all(Array.from({ length: 40 }, () => orders.finish(rows[0].id, delivered)));
       await orders.finish(rows[1].id, credentials());
-      await Promise.all(Array.from({ length: 6 }, () => orders.finish(rows[2].id, null)));
+      await Promise.all(Array.from({ length: 40 }, () => orders.finish(rows[2].id, null)));
       assert.deepEqual(await wallet(u), { balance: 2000, frozen: 700 });
       const order = await db.one('SELECT status,charged,released,delivered FROM platform_orders WHERE id=$1', [o.order.id]);
       assert.deepEqual(order, { status: 'partial', charged: 10, released: 5, delivered: 2 });
@@ -169,15 +186,6 @@ test('unified registration account, wallet and delivery isolation', { timeout: 1
       assert.deepEqual(await wallet(inviter),{balance:1100,frozen:0});
       assert.equal((await db.one('SELECT amount,rate_percent FROM platform_partner_rewards WHERE order_id=$1',[o.order.id])).rate_percent,20);
       const next=await create(u);assert.equal(await db.one('SELECT * FROM platform_partner_candidates WHERE order_id=$1',[next.order.id]),undefined);
-    });
-    await t.test('legacy keys retain scopes and become invalid after password change', async () => {
-      const u=await account(),token='gr_'+crypto.randomBytes(32).toString('base64url');
-      await db.query("INSERT INTO platform_api_keys(id,user_id,name,hash,prefix,scopes) VALUES($1,$2,'legacy',$3,'gr_test',$4)",[id(),u.id,digest(token),JSON.stringify(['orders:read'])]);
-      const headers={authorization:'Bearer '+token};
-      assert.equal((await request(null,'GET','/open/v1/me',null,headers)).statusCode,200);
-      assert.equal((await request(null,'GET','/open/v1/accounts',null,headers)).statusCode,403);
-      await db.query("UPDATE users SET password_hash='changed' WHERE id=$1",[u.xufu_user_id]);
-      assert.equal((await request(null,'GET','/open/v1/me',null,headers)).statusCode,401);
     });
     await t.test('reinitialization preserves unified balances, registration configuration and subscription settings', async () => {
       const u = await account(1234, 101);

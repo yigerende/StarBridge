@@ -11,7 +11,6 @@
 !scripts/
 !scripts/serve.py
 !scripts/recover_post_payment.py
-!scripts/registration_migrate.py
 !frontend/
 !frontend/**
 **/__pycache__/
@@ -19,3 +18,16 @@
 frontend/node_modules/
 cs-live-source/cs_live
 cs-live-source/cs_live.exe
+
+!scripts/start_app.py
+!services/
+!services/gpt-register/
+!services/gpt-register/**
+services/gpt-register/.runtime/
+services/gpt-register/.local/
+services/gpt-register/node_modules/
+services/gpt-register/web/node_modules/
+services/gpt-register/web/dist/
+services/gpt-register/.env
+**/__pycache__/
+**/*.pyc

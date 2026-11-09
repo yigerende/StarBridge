@@ -2,6 +2,14 @@
 
 2026-11-09 最新授权：完成 GPT Register 整合、统一导航、注册会员减免和品牌图标更名后，提交推送 https://github.com/yigerende/StarBridge.git；正式目录 /opt/1panel/apps/starbridge，对外5876。新安装使用独立空库，仅创建用户指定管理员；原 xufupython、gptreg 保持运行，不迁入其数据配置。Compose project starbridge，四个容器 starbridge-app / starbridge-postgres / starbridge-registration-app / starbridge-registration-worker。后续保留新项目自己的数据库、运行目录和主密钥。读取上级 _codex-memory/starbridge-production-runbook.md。此授权覆盖下述历史未推送限制；历史路径和旧项目操作不适用于本次新部署。
 
+## 当前独立系统约定（2026-11-09，优先于历史记录）
+
+StarBridge 是完全独立的新系统。用户会重新配置全部业务资源，不导入 xufupython、gptreg 或其他项目的数据配置；不提供旧账户、旧兑换码、旧钱包、历史密钥的兼容分支和迁移工具。用户、登录、钱包、兑换码、公告、风控、审计、站点设置均只用统一主应用的一套。原注册引擎核心保持原样，保留其执行能力与原管理台，通过必要的内部接入层使用同一数据库。
+
+本轮开发目标为三个容器：主应用（用户端和运营端）、原注册引擎、独立 PostgreSQL。正式现状仍以 runbook 最近已验证发布为准。后续更新保留 StarBridge 自己产生的数据、配置、密钥；不因“独立新系统”擅自清空已有正式数据。旧两个正式项目继续运行。
+
+测试必须覆盖隔离环境的并发、资金一致性、重复提交、异常恢复、冷/热页面切换和移动端体验，记录实际耗时与错误率，不执行正式真实付费压测。
+
 ## 历史记录
 
 # XUFU Python 独立复刻

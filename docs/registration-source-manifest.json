@@ -437,7 +437,7 @@
     },
     {
       "path": "src/platform/db.js",
-      "sha256": "83c9b6e8521fe18111bb9a96329a561c315f74464fbe8fdf05dc8f5ad88769c4"
+      "sha256": "1bfbde7dfb5a7a66b169703bb56fafba00038ad5fd0cc09f8b9dbc692fced4bc"
     },
     {
       "path": "src/platform/finance.js",
@@ -525,15 +525,42 @@
     },
     {
       "path": "web/src/portal/client.ts",
-      "sha256": "857f735b88b9ed42a2a36294e75873581539b09961806f23165d56943c49ec87"
+      "sha256": "161624c487b5198e032506f592631e4f217cb21e0cd1e17c80ca86e3283a705a",
+      "reason": "Unified native UI and deployment lifecycle adapter; engine core unchanged"
     },
     {
       "path": "web/src/router.tsx",
-      "sha256": "aa1f1810ff4533e5db7b4d37d2d793aabcec12e004a85b741cfc13ce7d7945a3"
+      "sha256": "b25ef7ba72181d911e5cb9e170c27021f6a76205b82620488c845544e777ce58",
+      "reason": "Unified native UI and deployment lifecycle adapter; engine core unchanged"
     },
     {
       "path": "web/vite.config.ts",
       "sha256": "249add2b3ecaa80e1cdbdcab272439ecfd83f9d565588e9dfc975a6ff02320a2"
+    },
+    {
+      "path": "web/src/portal/AdminRisk.tsx",
+      "sha256": "21e8176f295eb69b25f82e1dea377b41e9d506bc36c9d39ad176ab5ac4bafedf",
+      "reason": "Unified native UI and deployment lifecycle adapter; engine core unchanged"
+    },
+    {
+      "path": "docker/worker.js",
+      "sha256": "7ae98edd9ccb66c024a1e96b5bf9ee880aed3cec6ab6c0f3670aaf9f53e507ca",
+      "reason": "Unified native UI and deployment lifecycle adapter; engine core unchanged"
+    },
+    {
+      "path": "web/src/api.ts",
+      "sha256": "8ed58ca146325081ad2a54e7356ae4690598660445308ddde21218121d19614f",
+      "reason": "Unified native UI and deployment lifecycle adapter; engine core unchanged"
+    },
+    {
+      "path": "web/src/session-proxy-api.ts",
+      "sha256": "02eb92ccecd7725d7f0eb1d8dc82ad385e380973d330baa9f4bc2506ef5aceca",
+      "reason": "Unified native UI and deployment lifecycle adapter; engine core unchanged"
+    },
+    {
+      "path": "web/src/portal/AdminFinance.tsx",
+      "sha256": "c0894d039b6f1ac07179007cb4b3483734901aabd1bcdbd40ea0ce31a72ad4c3",
+      "reason": "Unified native UI and deployment lifecycle adapter; engine core unchanged"
     }
   ],
   "hashing": "sha256; text normalized to LF, binary exact"

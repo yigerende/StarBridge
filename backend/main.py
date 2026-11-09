@@ -10,11 +10,13 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI,Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse
+from starlette.middleware.gzip import GZipMiddleware
 from . import db,auth,membership,wallet,admin_accounts,settings,proxies,records,admin_content,renewals,subscription,subscription_cslive_go,subscription_cslive_full
 from .common import *
 from .seed import seed
 from .runtime import worker_mode
 from . import login_slider, customer_api, admin_orders, order_updates, invitations, email_auth, features, custom_menus, branding, regions, country_pool, price_reference
+from . import deployment
 from .request_origin import configured_origin, origin_allowed
 from .auth_runtime import bounded_call
 from . import registration_gateway
@@ -91,11 +93,13 @@ async def lifespan(app):
         stop.set()
         await order_updates.updates.close()
         await asyncio.to_thread(thread.join,115)
+        await registration_gateway.close_transport()
         db.close()
 
 
 app=FastAPI(title='StarBridge API',version='1.0.0',docs_url=None,redoc_url=None,openapi_url=None,lifespan=lifespan)
 
+app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 
 @app.exception_handler(BusinessError)
 async def business_error(request,error):return response({'error':error.message},error.status)
@@ -103,6 +107,10 @@ async def business_error(request,error):return response({'error':error.message},
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request,error):return response({'error':'请求参数格式不正确'},400)
+
+
+@app.exception_handler(db.DatabaseBusyError)
+async def database_busy(request,error):return response({'error':'请求较多，请稍后重试'},503)
 
 
 @app.exception_handler(Exception)
@@ -117,15 +125,21 @@ async def security(request:Request,call_next):
         if request.method not in ('GET','HEAD','OPTIONS'):
             require(request.headers.get('sec-fetch-site')!='cross-site','请求来源不受信任',403)
             require(origin_allowed(request, PUBLIC_ORIGIN),'请求来源不受信任',403)
+            if not request.url.path.startswith(('/api/auth/', '/api/admin/system/')):
+                state=deployment.read_json('status.json', {})
+                stopping=request.url.path.endswith(('/cancel','/stop')) or request.method=='PATCH' and request.url.path.startswith('/registration/api/v1/robots/')
+                require(not deployment.maintenance_active() or state.get('phase')=='waiting' and stopping, '系统正在切换版本，请稍后再试', 503)
         size=request.headers.get('content-length')
         require(not size or size.isdigit() and int(size)<=1048576,'请求内容过大',413)
-        if not request.url.path.startswith('/health/'):
+        if not request.url.path.startswith(('/health/', '/assets/')):
             await run_in_threadpool(bounded_call,check_source,request)
         result=await call_next(request)
     except BusinessError as e:result=response({'error':e.message},e.status)
+    except db.DatabaseBusyError:result=response({'error':'请求较多，请稍后重试'},503)
     except Exception as e:
         log.error('Request failed (%s)',type(e).__name__);result=response({'error':'操作未完成，请稍后重试'},500)
-    for k,v in HEADERS.items():result.headers[k]=v
+    for k,v in HEADERS.items():
+        if k != 'Cache-Control' or k not in result.headers:result.headers[k]=v
     if request.url.path.startswith('/registration/'):
         result.headers['X-Frame-Options']='SAMEORIGIN'
         result.headers['Content-Security-Policy']=HEADERS['Content-Security-Policy'].replace("frame-ancestors 'none'", "frame-ancestors 'self'")
@@ -138,7 +152,7 @@ def check_source(request):
     require(limit('edge:'+source,600),'请求过于频繁',429)
 
 
-for module in (login_slider,auth,email_auth,membership,wallet,admin_accounts,settings,proxies,admin_content,renewals,subscription,subscription_cslive_go,subscription_cslive_full,registration_gateway):app.include_router(module.router)
+for module in (login_slider,auth,email_auth,membership,wallet,admin_accounts,settings,proxies,admin_content,renewals,subscription,subscription_cslive_go,subscription_cslive_full,registration_gateway,deployment):app.include_router(module.router)
 for router in (records.public_router,records.router,records.admin_router,customer_api.router,admin_orders.router,order_updates.router,invitations.router,custom_menus.router,branding.router,regions.router,country_pool.router,price_reference.router,price_reference.admin_router):app.include_router(router)
 
 
@@ -169,6 +183,7 @@ def static(path:str,request:Request):
     require(target.is_relative_to(WEB.resolve()),'文件不存在',404)
     if target.is_file():
         if target.name.startswith('Admin') and target.suffix in ('.js','.css'):authenticate(request,True)
-        return FileResponse(target)
+        cache='private, max-age=31536000, immutable' if path.startswith('assets/') else 'no-cache'
+        return FileResponse(target,headers={'Cache-Control':cache})
     if '.' in Path(path).name:return response({'error':'文件不存在'},404)
     return FileResponse(WEB/'index.html')

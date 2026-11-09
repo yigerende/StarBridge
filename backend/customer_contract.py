@@ -60,7 +60,6 @@ def prepare(request, model, payload):
             value['product_id'] = internal_id(value['product_id'])
             from .team_subscription import promo_code
             code=promo_code(value.pop('promo_code'),value['product_id'])
-            legacy=dict(value)
             if value['product_id']=='team':
                 if 'seats' not in payload:value['seats']=2
                 if 'premium_seats' not in payload:value['premium_seats']=0
@@ -83,15 +82,11 @@ def prepare(request, model, payload):
         os.environ['MASTER_KEY'].encode(), canonical.encode(), hashlib.sha256).hexdigest()
     if model is OrderRequest:
         request.state.customer_payload=value
-        request.state.customer_legacy_hash=''
-        if not code and prefix=='api3:':
-            previous=json.dumps(legacy,sort_keys=True,separators=(',',':'),ensure_ascii=False)
-            request.state.customer_legacy_hash='api2:'+hmac.new(os.environ['MASTER_KEY'].encode(),previous.encode(),hashlib.sha256).hexdigest()
     return value
 
 
 def order_request_matches(request, saved):
-    return saved in {request.state.customer_hash, getattr(request.state,'customer_legacy_hash','')} and bool(saved)
+    return saved == request.state.customer_hash and bool(saved)
 
 
 def order_hash(q, request, legacy):

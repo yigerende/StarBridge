@@ -1,6 +1,7 @@
 """PostgreSQL transactions and parameterized SQL; no business workers here."""
 import os
 import re
+import threading
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
@@ -12,7 +13,12 @@ from psycopg2.pool import ThreadedConnectionPool
 ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT / '.env', override=False)
 _pool = None
+_pool_lock = threading.Lock()
+_slots = threading.BoundedSemaphore(24)
 _request_timeouts = ContextVar('request_database_timeouts', default=False)
+
+
+class DatabaseBusyError(Exception):pass
 
 
 @contextmanager
@@ -27,7 +33,9 @@ def request_timeouts():
 def pool():
     global _pool
     if _pool is None:
-        _pool = ThreadedConnectionPool(1, 24, os.environ['DATABASE_URL'], connect_timeout=5)
+        with _pool_lock:
+            if _pool is None:
+                _pool = ThreadedConnectionPool(8, 24, os.environ['DATABASE_URL'], connect_timeout=5)
     return _pool
 
 
@@ -67,15 +75,20 @@ class Query:
 
 @contextmanager
 def transaction():
-    conn = pool().getconn()
+    if not _slots.acquire(timeout=5):
+        raise DatabaseBusyError('数据库请求繁忙，请稍后重试')
+    conn=None
     try:
+        conn = pool().getconn()
         with conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 if _request_timeouts.get():
                     cursor.execute("SET LOCAL lock_timeout='3s'; SET LOCAL statement_timeout='10s'")
                 yield Query(cursor)
     finally:
-        pool().putconn(conn)
+        try:
+            if conn is not None:pool().putconn(conn)
+        finally:_slots.release()
 
 
 def all(statement, *args):

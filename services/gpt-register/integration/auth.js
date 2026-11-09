@@ -9,7 +9,7 @@ function registerAuth(app, db) {
   app.get('/api/public', async () => {
     const s = await db.settings();
     return { site_name: s.site_name, brand: publicBrand(s.brand), announcement: s.announcement,
-      announcements: activeAnnouncements(s), features: s.features, registration_open: false,
+      announcements: activeAnnouncements({...s,announcements:s.announcements.filter(a=>a.login_visible!==false)}), features: s.features, registration_open: false,
       login_slider_enabled: false, email_verify_enabled: false, email_domains: [],
       password_reset_available: false, orders_open: s.orders_open, price_standard: s.price_standard,
       price_oauth: s.price_oauth, max_quantity: s.max_quantity, unified_account: true };

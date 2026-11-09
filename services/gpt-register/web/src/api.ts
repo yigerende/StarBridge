@@ -1,3 +1,4 @@
+import {servicePath} from './integration';
 import type { PageInfo } from './components/Pagination';
 import { notifySessionExpired } from './auth-navigation';
 import type { DeviceFingerprintFilter, DeviceFingerprintPage } from './device-fingerprint-types';
@@ -19,7 +20,7 @@ class ApiError extends Error {
 }
 
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(`/api/v1${path}`, {
+  const response = await fetch(servicePath(`/api/v1${path}`), {
     ...init,
     headers: {
       'X-Requested-With': 'gptreg',
@@ -41,7 +42,7 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
  * name is preferred over the caller's so the two can never drift.
  */
 async function apiDownload(path: string, init: RequestInit = {}): Promise<{ blob: Blob; fileName: string }> {
-  const response = await fetch(`/api/v1${path}`, {
+  const response = await fetch(servicePath(`/api/v1${path}`), {
     ...init,
     headers: {
       'X-Requested-With': 'gptreg',

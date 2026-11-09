@@ -1,3 +1,4 @@
+import {servicePath} from '../integration';
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Download, RefreshCw, Wallet, CheckCircle2, LockKeyhole, Coins, Mail, MessageSquare } from "lucide-react";
@@ -22,7 +23,7 @@ export default function AdminFinance() {
   const rows=data?.[view]||[];
   const profit=data?.economics;
   async function exportReport() {
-    const response=await fetch(`/api/admin/v1/finance/export?${new URLSearchParams(filter)}`,{credentials:"same-origin"});
+    const response=await fetch(servicePath(`/api/admin/v1/finance/export?${new URLSearchParams(filter)}`),{credentials:"same-origin"});
     if(!response.ok){const e=await response.json();throw new Error(e.error||"导出失败");}
     // Fetch decodes and removes the transport BOM; restore it for Excel.
     download(`财务报表-${filter.start}-${filter.end}.csv`,"\uFEFF"+(await response.text()).replace(/^\uFEFF/,""));

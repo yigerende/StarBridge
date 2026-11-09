@@ -51,13 +51,13 @@ const columns=computed(()=>[{key:'kind',label:'流水类型'},{key:'source',labe
    <button v-if="hasFilters" class="text-btn records-reset" @click="reset">重置</button>
   </div>
   <p v-if="invalidDates" class="records-date-error" role="alert">结束日期不能早于开始日期。</p>
-  <RecordsTable :rows="filtered" :columns="columns" :loading="loading" :filtered="hasFilters" scope="最近 300 条统一流水及迁移前注册流水；汇总随筛选更新" @reset="reset">
+  <RecordsTable :rows="filtered" :columns="columns" :loading="loading" :filtered="hasFilters" scope="最近 300 条资金流水；汇总随筛选更新" @reset="reset">
    <template #kind="{row}"><span class="ledger-kind" :class="'ledger-'+row.kind"><ReceiptText :size="13"/>{{labels[row.kind]||'账户变动'}}</span><small class="mono">#{{row.id}}</small></template>
    <template #source="{row}"><b>{{row.related_order?.product_name||source(row)}}</b><small v-if="row.related_order">服务费 {{cash(row.related_order.fee)}} 积分</small><small v-if="row.related_order" :class="{'positive':Number(row.related_order.price_snapshot?.standard)>row.related_order.fee}">{{discountText(row.related_order)}}</small><small v-else>账户资金</small></template>
    <template #payment="{row}"><b class="record-money">{{upstreamAmount(row.payment).value}}</b><small>{{row.related_order?upstreamAmount(row.payment).label:'不涉及上游付款'}}</small><small v-if="row.payment?.last4" class="mono">自备卡 · 尾号 {{row.payment.last4}}</small></template>
    <template #available="{row}"><b class="record-money" :class="deltaTone(row.available_delta)">{{signed(row.available_delta)}}</b></template>
    <template #frozen="{row}"><b class="record-money" :class="deltaTone(row.frozen_delta)">{{signed(row.frozen_delta)}}</b></template>
-   <template #balance="{row}"><b class="record-money">{{cash(Number(row.balance_after)-Number(row.frozen_after))}} 积分</b><small>冻结 {{cash(row.frozen_after)}} 积分</small><small v-if="row.legacy_registration">迁移前注册账户余额</small></template>
+   <template #balance="{row}"><b class="record-money">{{cash(Number(row.balance_after)-Number(row.frozen_after))}} 积分</b><small>冻结 {{cash(row.frozen_after)}} 积分</small></template>
    <template #related="{row}"><template v-if="row.related_order"><button class="text-btn record-order-link mono" @click="$emit('order',row.related_order)">{{row.related_order.id}}<ArrowUpRight :size="13"/></button><small>{{row.related_order.email}}</small></template><a v-else-if="row.registration_order_id" :href="'/?business=registration#/orders'" class="mono">{{row.registration_order_id}}</a><span v-else class="muted">{{source(row)}}</span></template>
    <template #description="{row}"><p class="record-description">{{ledgerDescription(row)}}</p></template>
    <template #time="{row}"><time>{{date(row.created_at)}}</time></template>

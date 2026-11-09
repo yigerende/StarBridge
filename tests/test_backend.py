@@ -70,7 +70,14 @@ class BackendTests(RegionalPriceTests,CountryPoolTests,TeamSubscriptionTests,Reg
     @classmethod
     def tearDownClass(cls):cls.client.__exit__(None,None,None)
 
-    def setUp(self):db.execute('DELETE FROM rate_buckets')
+    def setUp(self):
+        # The scheduler is mocked. Finish fixtures left by preceding tests so
+        # global queue guards observe only work created by the current test.
+        db.execute('DELETE FROM rate_buckets')
+        db.execute("UPDATE orders SET status='failed' WHERE status IN ('queued','processing','succeeded')")
+        db.execute("UPDATE renewal_tasks SET status='disabled',lease_until=NULL,lease_token=NULL")
+        db.execute("UPDATE proxy_checks SET state='failed',lease_until=NULL,lease_token=NULL WHERE state IN ('queued','running')")
+        db.execute('DELETE FROM proxy_leases')
 
     def test_https_reverse_proxy_login_keeps_csrf_boundary(self):
         from backend.request_origin import configured_origin
@@ -135,7 +142,7 @@ class BackendTests(RegionalPriceTests,CountryPoolTests,TeamSubscriptionTests,Reg
         self.assertEqual(token_client.get('/api/me').status_code,403)
         self.ok(user.delete('/api/keys/'+key['id']))
         self.assertEqual(token_client.get('/api/v1/wallet').status_code,401)
-        admin_asset=next((ROOT/'webui/assets').glob('Admin-*.js'))
+        admin_asset=next(p for p in (ROOT/'webui/assets').glob('*.js') if p.name.startswith('Admin-'))
         self.assertEqual(anonymous.get('/assets/'+admin_asset.name).status_code,401)
         self.assertEqual(user.get('/assets/'+admin_asset.name).status_code,403)
         self.assertEqual(self.client.get('/assets/'+admin_asset.name).status_code,200)
@@ -723,7 +730,7 @@ class BackendTests(RegionalPriceTests,CountryPoolTests,TeamSubscriptionTests,Reg
                 with patch.object(main.order_updates.updates,'start'), patch.object(main.order_updates.updates,'close'), patch.object(main.db,'initialize'), patch.object(main,'seed'), patch.object(main.db,'close'), patch.object(main.threading,'Thread') as thread, patch.object(main.asyncio,'to_thread',side_effect=join_thread):
                     async with main.lifespan(app):
                         thread.return_value.start.assert_called_once()
-                        self.assertEqual(thread.call_args.kwargs['name'],'xufu-scheduler')
+                        self.assertEqual(thread.call_args.kwargs['name'],'starbridge-scheduler')
                         stop=thread.call_args.kwargs['args'][0]
                         self.assertFalse(stop.is_set())
                     self.assertTrue(stop.is_set())

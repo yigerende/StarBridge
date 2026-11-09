@@ -67,7 +67,7 @@ class SiteSecurityTests:
     def test_site_admin_assets_and_menu_never_reach_customer(self):
         from backend.db import ROOT
         _,_,user=self.new_user();anonymous=TestClient(self.client.app)
-        assets=list((ROOT/'webui/assets').glob('Admin*.js'))
+        assets=[p for p in (ROOT/'webui/assets').glob('*.js') if p.name.startswith('Admin')]
         self.assertGreaterEqual(len(assets),2)
         for asset in assets:
             self.assertEqual(user.get('/assets/'+asset.name).status_code,403)

@@ -10,6 +10,24 @@ from starlette.requests import ClientDisconnect
 from .common import BusinessError, ip, require
 
 router = APIRouter()
+_client = None
+
+
+def transport():
+    global _client
+    if _client is None or _client.is_closed:
+        _client = httpx.AsyncClient(timeout=httpx.Timeout(65, connect=5, pool=5),
+            limits=httpx.Limits(max_connections=80, max_keepalive_connections=24),
+            trust_env=False, follow_redirects=False)
+    return _client
+
+
+async def close_transport():
+    global _client
+    if _client is not None:
+        await _client.aclose()
+        _client = None
+
 REQUEST_HEADERS = {'accept', 'content-type', 'cookie', 'authorization', 'origin',
                    'x-requested-with', 'idempotency-key', 'range', 'if-none-match'}
 RESPONSE_HEADERS = {'content-type', 'content-disposition', 'content-length', 'content-encoding',
@@ -48,18 +66,15 @@ async def registration(request: Request, path: str):
     headers.update({'host': request.headers['host'], 'accept-encoding': 'identity',
                     'x-registration-gateway': os.environ['REGISTRATION_GATEWAY_SECRET'],
                     'x-registration-source-ip': ip(request)})
-    client = httpx.AsyncClient(timeout=httpx.Timeout(65, connect=5, pool=5), trust_env=False, follow_redirects=False)
+    client = transport()
     try:
         upstream = await client.send(client.build_request(request.method, target, headers=headers,
                                                           content=await request.body()), stream=True)
     except ClientDisconnect:
-        await client.aclose()
         return Response(status_code=499)
     except httpx.HTTPError:
-        await client.aclose()
         raise BusinessError('注册服务暂不可用，请稍后重试；订阅服务可正常使用', 503) from None
     except BaseException:
-        await client.aclose()
         raise
     outgoing = {k: v for k, v in upstream.headers.items() if k.lower() in RESPONSE_HEADERS}
     location = upstream.headers.get('location')
@@ -70,7 +85,6 @@ async def registration(request: Request, path: str):
             outgoing['location'] = '/registration' + location
         else:
             await upstream.aclose()
-            await client.aclose()
             raise BusinessError('注册服务返回了无效跳转', 502)
 
     async def stream():
@@ -79,5 +93,4 @@ async def registration(request: Request, path: str):
                 yield chunk
         finally:
             await upstream.aclose()
-            await client.aclose()
     return StreamingResponse(stream(), status_code=upstream.status_code, headers=outgoing)

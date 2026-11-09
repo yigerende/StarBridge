@@ -137,3 +137,5 @@ export function NavLink({
     </Link>
   );
 }
+
+export function NativeRouter({children,path,navigate}:{children:ReactNode;path:string;navigate:RouterValue["navigate"]}){return <RouterContext.Provider value={{base:"",path,search:"",navigate}}>{children}</RouterContext.Provider>;}

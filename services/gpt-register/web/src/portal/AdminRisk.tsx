@@ -100,9 +100,9 @@ function Messages({ a }: { a: ReturnType<typeof useRiskAction> }) {
   );
 }
 
-export default function AdminRisk() {
+export default function AdminRisk({controlsOnly=false}:{controlsOnly?:boolean}) {
   const [config, setConfig] = useState(false),
-    [panel, setPanel] = useState("events"),
+    [panel, setPanel] = useState(controlsOnly?"restrictions":"events"),
     [q, setQ] = useState(""),
     [start, setStart] = useState(""),
     [end, setEnd] = useState(""),
@@ -165,7 +165,7 @@ export default function AdminRisk() {
       <header className="p-page-heading">
         <div>
           <span className="p-eyebrow">SECURITY / OPERATIONS</span>
-          <h1>风控监控</h1>
+          <h2>{controlsOnly?"访问规则与统计":"风控监控"}</h2>
           <p>关注异常访问、注册交付与积分变动，按客户和规则定位问题。</p>
         </div>
         <div className="risk-actions">
@@ -208,7 +208,7 @@ export default function AdminRisk() {
           风控记录与异常检查已关闭，历史记录仍可查看。已设为“执行限制”的规则继续生效。
         </div>
       )}
-      <div className="risk-metrics">
+      {!controlsOnly && <div className="risk-metrics">
         {[
           ["访问请求", summary.requests],
           ["访问拦截", summary.blocked],
@@ -223,6 +223,7 @@ export default function AdminRisk() {
           </article>
         ))}
       </div>
+      }
       <div className="risk-filters">
         <label>
           开始日期（北京时间）
@@ -276,7 +277,7 @@ export default function AdminRisk() {
           ["restrictions", "当前限制"],
           ["customers", "客户规则"],
           ["traffic", "访问统计"],
-        ].map(([key, label]) => (
+        ].filter(([key])=>!controlsOnly||key!=="events").map(([key, label]) => (
           <button
             key={key}
             className={panel === key ? "selected" : ""}

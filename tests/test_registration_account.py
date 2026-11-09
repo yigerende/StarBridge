@@ -39,44 +39,36 @@ class RegistrationAccountTests(unittest.TestCase):
             q.execute(sql.SQL('DROP DATABASE {}').format(sql.Identifier(self.name)))
         self.admin.close()
 
-    def test_legacy_redeem_concurrent_once_and_projection(self):
-        from backend.wallet import LEDGER_QUERY
-        code='GR-'+secrets.token_hex(20)
-        db.execute("INSERT INTO platform_redeem_codes(id,hash,prefix,points) VALUES('code',$1,'GR-test',7)",digest(code))
-        def redeem():
-            try:return account.redeem(self.request,code)
+    def test_unified_redeem_is_atomic_under_sixty_concurrent_requests(self):
+        from backend.redeem_codes import redeem
+        code='XP-'+secrets.token_hex(20).upper()
+        db.execute("INSERT INTO redeem_codes(id,code_hash,code_enc,prefix,amount,batch,expires_at) VALUES('code',$1,'','XP-test',700,'parallel',now()+interval '1 day')",digest(code))
+        def attempt(_):
+            try:return redeem(self.request,{'code':code})
             except BusinessError as e:return {'status':e.status}
-        with ThreadPoolExecutor(max_workers=6) as executor:results=list(executor.map(lambda _:redeem(),range(6)))
+        with ThreadPoolExecutor(max_workers=60) as pool:results=list(pool.map(attempt,range(60)))
         self.assertEqual(sum(r.get('ok') is True for r in results),1)
         self.assertEqual(db.one("SELECT balance,frozen FROM users WHERE id='u'"),{'balance':1700,'frozen':300})
-        rows=db.all(LEDGER_QUERY,'u');self.assertEqual(len(rows),1)
-        self.assertEqual((rows[0]['business'],rows[0]['available_delta'],rows[0]['frozen_delta']),('registration',700,0))
+        self.assertEqual(db.scalar('SELECT count(*) FROM ledger'),1)
+        self.assertEqual(db.scalar('SELECT count(*) FROM platform_redeem_codes'),0)
 
-    def test_summary_and_legacy_key_revocation_are_scoped(self):
-        db.execute("INSERT INTO platform_api_keys(id,user_id,name,hash,prefix,scopes) VALUES('k','p','legacy','synthetic','gr_test','[]')")
-        self.assertEqual(account.legacy_keys('u')[0]['id'],'registration:k')
-        self.assertEqual(account.legacy_keys('v'),[])
-        self.assertEqual(account.revoke_key('v','k'),0)
-        self.assertEqual(account.revoke_key('u','k'),1)
-        self.assertEqual(account.summary('u')['orders'],0)
-        self.assertEqual(db.scalar('SELECT count(*) FROM '+account.reward_source()+' r'),0)
+    def test_pool_queues_sixty_four_reads_without_exhaustion(self):
+        def read(_):return db.scalar('SELECT 7 FROM pg_sleep(0.025)')
+        with ThreadPoolExecutor(max_workers=64) as pool:results=list(pool.map(read,range(128)))
+        self.assertEqual(results,[7]*128)
 
-    def test_fractional_registration_ledger_keeps_cent_precision(self):
-        db.execute("INSERT INTO platform_ledger(id,user_id,reference,kind,points_delta,frozen_delta,note,points_after,frozen_after) VALUES('decimal','p','decimal-charge','charge',0,-4.75,'fractional',5.25,0)")
-        row=account.legacy_ledger('u')[0]
-        self.assertEqual((row['amount'],row['available_delta'],row['frozen_delta']),(-475,0,-475))
-        self.assertEqual(account.legacy_spend('u'),475)
-        self.assertEqual(db.scalar("SELECT balance FROM users WHERE id='u'"),1000)
-
-    def test_historical_ledger_is_visible_without_crediting_wallet_again(self):
-        db.execute("INSERT INTO platform_ledger(id,user_id,reference,kind,points_delta,frozen_delta,note,points_after,frozen_after) VALUES('old','p','old-charge','charge',0,-5,'historical',15,0)")
-        rows=account.legacy_ledger('u');self.assertEqual(len(rows),1)
-        self.assertEqual((rows[0]['amount'],rows[0]['available_delta'],rows[0]['frozen_delta']),(-500,0,-500))
-        self.assertTrue(rows[0]['legacy_registration'])
-        self.assertEqual(account.legacy_spend('u'),500)
-        self.assertEqual(account.legacy_ledger('v'),[])
-        self.assertEqual(db.scalar("SELECT balance FROM users WHERE id='u'"),1000)
-        self.assertEqual(db.scalar('SELECT count(*) FROM ledger'),0)
+    def test_risk_and_audit_share_one_console_and_resolve_both_records(self):
+        from backend.admin_content import resolve
+        db.execute("INSERT INTO platform_risk_events(dedupe,kind,category,severity,message,user_id,source_ip) VALUES('risk','abuse','access','critical','test event','p','127.0.0.2')")
+        event=db.one('SELECT * FROM risk_events')
+        self.assertEqual((event['user_id'],event['severity'],event['resolved']),('u','high',False))
+        resolve(event['id'],self.request)
+        self.assertIsNotNone(db.scalar('SELECT resolved_at FROM platform_risk_events'))
+        db.execute('UPDATE platform_risk_events SET occurrences=3')
+        self.assertEqual(db.scalar('SELECT occurrences FROM risk_events'),3)
+        db.execute("INSERT INTO platform_audit(actor_id,action,target,detail) VALUES('p','order.cancel','order','cancelled')")
+        item=db.one("SELECT * FROM audit_events WHERE action='registration.order.cancel'")
+        self.assertEqual(item['actor_id'],'u')
 
     def test_subscription_finance_excludes_registration_credit(self):
         from backend.admin_content import finance_data
@@ -115,7 +107,7 @@ class RegistrationAccountTests(unittest.TestCase):
         self.assertTrue(error['description'])
         self.assertIn('content',error)
 
-    def test_historical_partner_rewards_keep_original_owner_after_identity_merge(self):
+    def test_partner_rewards_keep_order_inviter_at_settlement(self):
         from backend.invitations import listing
         db.execute("INSERT INTO users(id,email,name,password_hash,invite_code) VALUES('old','old@example.test','Old inviter','synthetic','old')")
         db.execute("UPDATE users SET invited_by='v' WHERE id='u'")

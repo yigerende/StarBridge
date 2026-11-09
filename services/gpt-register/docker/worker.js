@@ -34,13 +34,24 @@ async function main() {
   let queue;
   const app = buildApp({ cwd, configPath, deferBootMaintenance: true, sessionProxy,
     onRunCancel: runId => queue.cancelEngineRun(runId) });
+  const pendingWrites = new Set();
   app.addHook("onRequest", async (r, reply) => {
     if (r.url === "/healthz" && r.method === "GET") return;
     if (r.headers.authorization !== `Bearer ${secrets.internal}`)
       return reply
         .code(401)
         .send({ error: "Internal authentication required" });
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(r.method)) pendingWrites.add(r.id);
   });
+  app.addHook('onResponse', async r => { pendingWrites.delete(r.id); });
+  app.addHook('onError', async r => { pendingWrites.delete(r.id); });
+  app.get('/api/v1/maintenance-status', async () => ({
+    pendingWrites: pendingWrites.size,
+    operations: queue.operations.size,
+    chainsBusy: app.services.chainService.snapshot().records.some(r =>
+      r.status === 'running' || r.paymentJobId && ['pending', 'running'].includes(r.paymentStatus)),
+    linkopsStarting: Boolean(app.services.linkops.starting),
+  }));
   queue = new OrderWorker(db, orders, app.services.runManager);
   app.get("/healthz", async () => ({ ok: !queue.closed }));
   app.post("/api/v1/platform/items/:id/resolve", async (r) => {

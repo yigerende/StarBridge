@@ -97,6 +97,7 @@ class Database {
       }
       if (process.env.XUFU_INTEGRATION === '1') {
         await c.query(fs.readFileSync(path.join(__dirname, '../../integration/schema.sql'), 'utf8'));
+        await c.query(fs.readFileSync(path.join(__dirname, '../../integration/telemetry.sql'), 'utf8'));
       } else {
         await c.query('CREATE OR REPLACE VIEW registration_members AS SELECT * FROM platform_users');
       }
@@ -107,9 +108,15 @@ class Database {
       await this.one("SELECT value FROM platform_settings WHERE id=1")
     ).value;
     if (process.env.XUFU_INTEGRATION === '1') {
-      const rows=(await this.query("SELECT key,value FROM settings WHERE key IN ('features','invites','site')")).rows;
+      const rows=(await this.query("SELECT key,value FROM settings WHERE key IN ('features','invites','site','security')")).rows;
       const unified=Object.fromEntries(rows.map(row=>[row.key,row.value]));
       value.site_name=unified.site?.name || '星桥';
+      value.registration_open=unified.security?.registration_open!==false;
+      value.login_slider_enabled=unified.security?.login_slider_enabled!==false;
+      value.email_verify_enabled=unified.security?.email_verify_enabled===true;
+      value.email_domains=unified.security?.email_domain_whitelist||[];
+      value.announcement='';
+      value.announcements=(await this.query('SELECT id,title,body,tone,published AS enabled,login_visible,sort,starts_at,ends_at FROM announcements')).rows;
       value.brand=require('../../integration/branding').unifiedBrand(unified.site);
       value.invitations=unified.invites || {enabled:false,stages:[]};
       value.features={...value.features};

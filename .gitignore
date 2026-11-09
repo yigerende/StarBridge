@@ -17,6 +17,7 @@ bin/
 !services/gpt-register/bin/
 !services/gpt-register/bin/**
 .registration-runtime/
+.maintenance/
 
 # 本地临时凭证测试，严禁提交
 _local-secrets/

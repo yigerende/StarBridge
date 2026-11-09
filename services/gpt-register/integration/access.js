@@ -17,6 +17,12 @@ function registerAccess(app) {
   });
   app.addHook('preHandler', async r => {
     const pathname = new URL(r.url, 'http://local').pathname;
+    if (pathname.startsWith('/api/admin/v1/redeem-codes') || pathname==='/api/user/v1/redeem')
+      fail(false, '请通过统一资金中心和兑换码管理操作', 409);
+    if (r.method==='PATCH' && pathname==='/api/admin/v1/settings') {
+      const shared=['site_name','brand','announcement','announcements','custom_menus','registration_open','login_slider_enabled','email_verify_enabled','email_domains','smtp'];
+      fail(!shared.some(key=>Object.hasOwn(r.body||{},key)), '请通过统一站点设置修改公共配置', 409);
+    }
     if (r.method !== 'GET' && /^\/api\/admin\/v1\/users(?:\/[^/]+)?$/.test(pathname))
       fail(false, '请通过星桥账户管理创建或停用账户', 409);
     if (r.method !== 'GET' && pathname === '/api/admin/v1/invites')

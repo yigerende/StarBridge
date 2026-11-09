@@ -46,7 +46,7 @@ class TeamSubscriptionTests:
             row=db.one('SELECT o.seats,s.premium_seats FROM orders o JOIN subscription_runs s ON s.order_id=o.id WHERE o.id=$1',first['id'])
             self.assertEqual(row,dict(seats=2,premium_seats=0))
 
-    def test_team_new_defaults_do_not_replay_different_seats_but_old_hashes_still_replay(self):
+    def test_team_idempotency_rejects_different_seats_and_unsupported_hashes(self):
         import hashlib,hmac,os
         from backend.customer_contract import OrderRequest
         with self.api_fixture() as (_,client,_):
@@ -55,15 +55,15 @@ class TeamSubscriptionTests:
             payload=dict(self.api_payload(),product_id='team',seats=2,premium_seats=1)
             headers={'Idempotency-Key':uid()}
             first=self.ok(client.post('/api/v1/orders',json=payload,headers=headers))
+            self.assertTrue(self.ok(client.post('/api/v1/orders',json=payload,headers=headers))['replayed'])
             implicit=dict(payload);implicit.pop('premium_seats')
             self.assertEqual(client.post('/api/v1/orders',json=implicit,headers=headers).status_code,409)
-            # Prior deployments used premium=1 when omitted. Replaying those orders is read-only.
+            # Independent installation accepts only its current request contract.
             old=OrderRequest.model_validate(implicit).model_dump();old.pop('promo_code')
             canonical=json.dumps(old,sort_keys=True,separators=(',',':'),ensure_ascii=False)
             old_hash='api2:'+hmac.new(os.environ['MASTER_KEY'].encode(),canonical.encode(),hashlib.sha256).hexdigest()
             db.execute('UPDATE orders SET request_hash=$2 WHERE id=$1',first['id'],old_hash)
-            replay=self.ok(client.post('/api/v1/orders',json=implicit,headers=headers))
-            self.assertEqual(replay['id'],first['id']);self.assertTrue(replay['replayed'])
+            self.assertEqual(client.post('/api/v1/orders',json=implicit,headers=headers).status_code,409)
 
     def test_team_user_price_edit_keeps_hidden_historical_premium_price(self):
         with self.api_fixture() as (owner,_,_):

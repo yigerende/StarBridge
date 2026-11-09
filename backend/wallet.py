@@ -41,9 +41,8 @@ def credit(q,request,user_id,kind,reference,description,amount,require_active=Fa
 
 @router.get('/wallet')
 def wallet(request: Request):
-    from .registration_account import legacy_ledger
     user=current(request)
-    ledger=db.all(LEDGER_QUERY,user['id'])+legacy_ledger(user['id'])
+    ledger=db.all(LEDGER_QUERY,user['id'])
     ledger.sort(key=lambda row:row['created_at'],reverse=True)
     project_ledger(ledger,user)
     return {'balance':user['balance'],'frozen':user['frozen'],'ledger':ledger,'topups':db.all('SELECT * FROM topups WHERE user_id=$1 ORDER BY created_at DESC LIMIT 200',user['id']),
@@ -117,17 +116,13 @@ def cancel_topup(id: str,request: Request):
 async def redeem(request: Request):
     from .redeem_codes import redeem as redeem_transaction
     value=await body(request)
-    if isinstance(value.get('code'),str) and value['code'].strip().startswith('GR-'):
-        from .registration_account import redeem as redeem_registration
-        return await run_in_threadpool(redeem_registration,request,value['code'])
     return await run_in_threadpool(redeem_transaction, request, value)
 
 
 @router.get('/keys')
 def keys(request: Request):
-    from .registration_account import legacy_keys
     user_id=current(request)['id']
-    return {'items':db.all('SELECT id,name,prefix,revoked,last_used,created_at FROM api_keys WHERE user_id=$1 ORDER BY created_at DESC',user_id)+legacy_keys(user_id)}
+    return {'items':db.all('SELECT id,name,prefix,revoked,last_used,created_at FROM api_keys WHERE user_id=$1 ORDER BY created_at DESC',user_id)}
 
 
 @router.post('/keys')
@@ -144,10 +139,6 @@ async def create_key(request: Request):
 
 @router.delete('/keys/{id}')
 def revoke_key(id: str,request: Request):
-    if id.startswith('registration:'):
-        from .registration_account import revoke_key as revoke_registration_key
-        require(revoke_registration_key(current(request)['id'],id.removeprefix('registration:'))==1,'密钥不存在',404)
-        return {'ok':True}
     require(db.execute('UPDATE api_keys SET revoked=true WHERE id=$1 AND user_id=$2',id,current(request)['id'])==1,'密钥不存在',404)
     return {'ok':True}
 

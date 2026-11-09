@@ -80,11 +80,10 @@ def public():
 
 @router.get('/overview')
 def overview(request:Request):
-    from .registration_account import summary,legacy_spend
+    from .registration_account import summary
     user=current(request)
     stats=db.one("SELECT count(*) AS orders,count(*) FILTER(WHERE status='succeeded') AS succeeded,count(*) FILTER(WHERE status IN ('draft','queued','processing','awaiting_payment') AND NOT(workflow='link' AND status='awaiting_payment')) AS pending FROM orders WHERE user_id=$1 AND deleted_at IS NULL",user['id'])
     stats.update(db.one("SELECT COALESCE(sum(-amount) FILTER(WHERE kind='charge'),0) AS used,COALESCE(sum(amount) FILTER(WHERE kind IN ('topup','redeem')),0) AS credited FROM ledger WHERE user_id=$1",user['id']))
-    stats['used']+=legacy_spend(user['id'])
     flags=capabilities(user)
     if not flags['orders']:
         for key in ('orders','succeeded','pending'): stats.pop(key,None)

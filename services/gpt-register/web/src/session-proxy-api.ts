@@ -1,3 +1,4 @@
+import {servicePath} from './integration';
 import { useQuery } from '@tanstack/react-query';
 import { notifySessionExpired } from './auth-navigation';
 export type SessionProxySettings = {
@@ -17,7 +18,7 @@ export type SessionRow = {
 };
 export type SessionPage<T> = { items: T[]; total: number; offset: number; limit: number };
 export async function sessionProxyApi<T>(path = '', method = 'GET', body?: unknown): Promise<T> {
-  const response = await fetch('/api/admin/v1/session-proxy' + path, { method,
+  const response = await fetch(servicePath('/api/admin/v1/session-proxy' + path), { method,
     headers: { 'X-Requested-With': 'gptreg', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
   const result = await response.json();

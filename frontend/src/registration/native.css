@@ -1,0 +1,4 @@
+.portal.registration-native{min-height:0;background:transparent;font-family:inherit;--p-bg:var(--bg,#f5f6f8);--p-green:var(--green,#176d55);--p-line:var(--line,#e5eae8)}
+.registration-native .p-register-workspace{padding:0}
+.registration-native .p-loading{min-height:180px}
+.registration-native .p-modal-backdrop{z-index:120}

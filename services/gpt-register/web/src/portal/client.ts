@@ -1,5 +1,5 @@
 import { notifySessionExpired } from '../auth-navigation';
-import { embedded } from '../integration';
+import { embedded, native, servicePath } from '../integration';
 export type Row = Record<string, any>;
 export class ApiError extends Error {
   constructor(
@@ -15,7 +15,7 @@ export async function call(
   body?: unknown,
   key?: string,
 ): Promise<any> {
-  const response = await fetch(path, {
+  const response = await fetch(servicePath(path), {
     method,
     credentials: "same-origin",
     headers: {
@@ -32,7 +32,7 @@ export async function call(
       data.error || data.message || `请求失败 (${response.status})`,
       response.status,
     );
-  if (embedded && method !== 'GET') window.parent.postMessage({ type: 'registration:wallet-changed' }, location.origin);
+  if (embedded && method !== 'GET') {if(native)window.dispatchEvent(new Event('registration:wallet-changed'));else window.parent.postMessage({ type: 'registration:wallet-changed' }, location.origin);}
   return data;
 }
 export async function currentUser() {

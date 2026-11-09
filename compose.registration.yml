@@ -1,46 +1,29 @@
 services:
   app:
+    init: true
     environment:
-      REGISTRATION_URL: http://registration-app:3210
+      REGISTRATION_URL: http://127.0.0.1:3210
+      XUFU_INTEGRATION: "1"
+      WORKER_URL: http://registration-worker:3211
       REGISTRATION_GATEWAY_SECRET: ${REGISTRATION_GATEWAY_SECRET:?Set a separate registration gateway secret}
-  registration-app:
+    volumes:
+      - ./.registration-runtime:/app/registration/.runtime
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m
+    cap_drop: [ALL]
+  registration-worker:
     image: starbridge-registration:${APP_VERSION:-local}
     build:
       context: ./services/gpt-register
       args:
         VCS_REF: ${APP_VERSION:-local}
-    container_name: starbridge-registration-app
-    restart: unless-stopped
-    init: true
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-starbridge}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-starbridge}
-      XUFU_INTEGRATION: "1"
-      WORKER_URL: http://registration-worker:3211
-      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-}
-      COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      REGISTRATION_GATEWAY_SECRET: ${REGISTRATION_GATEWAY_SECRET:?Set a separate registration gateway secret}
-      TZ: Asia/Shanghai
-    volumes:
-      - ./.registration-runtime:/app/.runtime
-    read_only: true
-    tmpfs: ["/tmp:rw,noexec,nosuid,size=128m"]
-    security_opt: [no-new-privileges:true]
-    cap_drop: [ALL]
-    stop_grace_period: 45s
-    networks: [private]
-    logging:
-      driver: json-file
-      options: {max-size: 10m, max-file: "3"}
-  registration-worker:
-    image: starbridge-registration:${APP_VERSION:-local}
     container_name: starbridge-registration-worker
     command: [node, docker/worker.js]
     restart: unless-stopped
     init: true
     depends_on:
+      app:
+        condition: service_healthy
       postgres:
         condition: service_healthy
     environment:
