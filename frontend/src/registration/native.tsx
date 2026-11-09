@@ -16,7 +16,8 @@ const Accounts=lazy(()=>import('../../../services/gpt-register/web/src/portal/Cu
 const Orders=lazy(()=>import('../../../services/gpt-register/web/src/portal/CustomerCenter').then(m=>({default:m.CustomerOrderCenter})))
 const Admin=lazy(()=>import('../../../services/gpt-register/web/src/portal/AdminPlatform'))
 const Suppliers=lazy(()=>import('../../../services/gpt-register/web/src/portal/AdminSuppliers'))
-type Props={route:string;user:Row;pub:Row;navigate:(path:string)=>void;expired:()=>void}
+const Finance=lazy(()=>import('../../../services/gpt-register/web/src/portal/AdminFinance'))
+type Props={route:string;user:Row;pub:Row;financeFilter?:Row;navigate:(path:string)=>void;expired:()=>void}
 const cache=new QueryClient({defaultOptions:{queries:{staleTime:30000,retry:false,refetchOnWindowFocus:false}}})
 let owner=''
 export function clearRegistrationCache(){owner='';cache.clear()}
@@ -37,6 +38,7 @@ function Page(props:Props){
     path==='/accounts'?<Accounts userId={user.id}/>:
     path==='/orders'?<Orders user={user} pub={pub.data}/>:
     path==='/admin/suppliers'?<Suppliers/>:
+    path==='/admin/finance'?<Finance sharedFilter={props.financeFilter}/>:
     path==='/admin/risk-controls'?<Risk controlsOnly/>:
     path==='/admin/resources'||path==='/admin/engine'?<Resources proxies={path==='/admin/resources'}/>:
     <Admin key={path} tab={path.split('/').pop()}/>

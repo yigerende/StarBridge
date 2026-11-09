@@ -1,5 +1,5 @@
 import {servicePath} from '../integration';
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Download, RefreshCw, Wallet, CheckCircle2, LockKeyhole, Coins, Mail, MessageSquare } from "lucide-react";
 import { call, date, download, type Row } from "./client";
@@ -12,9 +12,10 @@ function initialRange() {
   const end = new Date(Date.now()+8*3600000).toISOString().slice(0,10);
   return { start:new Date(Date.parse(end)-29*86400000).toISOString().slice(0,10),end,period:"day",include_admin:"false",q:"" };
 }
-export default function AdminFinance() {
+export default function AdminFinance({sharedFilter}:{sharedFilter?:Row}={}) {
   const [filter,setFilter]=useState(initialRange),[draft,setDraft]=useState(initialRange);
   const [offset,setOffset]=useState(0),[view,setView]=useState("users"),[kind,setKind]=useState("");
+  useEffect(()=>{if(sharedFilter){setFilter(s=>({...s,...sharedFilter}));setDraft(s=>({...s,...sharedFilter}));setOffset(0);}},[sharedFilter]);
   const a=useAction();
   const params=new URLSearchParams({...filter,limit:"50",offset:String(offset),kind});
   const {data,error,isFetching,refetch}=useQuery({queryKey:["admin-finance",filter,offset,kind],queryFn:()=>call(`/api/admin/v1/finance?${params}`)});
@@ -30,7 +31,7 @@ export default function AdminFinance() {
     return true;
   }
   return <>
-    <form className="p-filter-bar p-finance-filters" onSubmit={e=>{e.preventDefault();setFilter({...draft});setOffset(0);}}>
+    {!sharedFilter&&<form className="p-filter-bar p-finance-filters" onSubmit={e=>{e.preventDefault();setFilter({...draft});setOffset(0);}}>
       <div className="p-segment">{Object.entries({day:"每日",week:"每周",month:"每月",year:"每年"}).map(([k,n])=><button type="button" className={filter.period===k?"selected":""} key={k} onClick={()=>select({period:k})}>{n}</button>)}</div>
       <label>开始日期<input type="date" required aria-label="开始日期" value={draft.start} onChange={e=>setDraft({...draft,start:e.target.value})}/></label>
       <label>结束日期<input type="date" required aria-label="结束日期" min={draft.start} value={draft.end} onChange={e=>setDraft({...draft,end:e.target.value})}/></label>
@@ -39,7 +40,8 @@ export default function AdminFinance() {
       <button className="p-button secondary" disabled={isFetching}>查询</button>
       <button type="button" className="p-button secondary" disabled={isFetching} onClick={()=>refetch()}><RefreshCw size={15} className={isFetching?"p-spin":""}/>刷新</button>
       <button type="button" className="p-button secondary" disabled={a.busy||!data||isFetching} onClick={()=>a.run(exportReport,"财务报表已导出")}><Download size={15}/>{a.busy?"正在导出…":"导出报表"}</button>
-    </form>
+    </form>}
+    {sharedFilter&&<form className="p-filter-bar" onSubmit={e=>{e.preventDefault();select({q:draft.q});}}><input aria-label="搜索注册资金账户" placeholder="搜索客户邮箱或称呼" value={draft.q} onChange={e=>setDraft({...draft,q:e.target.value})}/><button className="p-button secondary" disabled={isFetching}>查询</button><button type="button" className="p-button secondary" disabled={isFetching} onClick={()=>refetch()}>刷新明细</button><button type="button" className="p-button secondary" disabled={a.busy||!data||isFetching} onClick={()=>a.run(exportReport,"注册财务报表已导出")}><Download size={15}/>导出注册报表</button></form>}
     <Feedback a={a}/>
     {error&&<div className="p-alert">{error.message}</div>}
     {!data&&isFetching&&<p role="status" className="p-muted">正在加载财务报表…</p>}
@@ -56,7 +58,7 @@ export default function AdminFinance() {
         <p className="p-supplier-rule"><b>10 积分 = 1 元 · 1 USD = 6.7 元</b>。统计 {data.start} 至 {data.end} 下单的 {profit.orders} 笔订单，收入为截至目前的交付扣分，成本包含这些订单的全部重试；充值与冻结不算收入。{profit.open_orders>0&&` ${profit.open_orders} 笔尚未结束，金额会随交付更新。`} 毛利仅扣除邮箱、短信成本，未含代理、服务器等其他支出。</p>
         {!profit.complete&&<p className="p-notice">以上按已记录费用计算。{profit.missing_attempts>0&&` ${profit.missing_attempts} 次历史执行未保存费用记录。`}{profit.unsupported_currencies.length>0&&` ${profit.unsupported_currencies.join("、")} 尚无换算规则，未计入人民币成本。`}费用不完整时不能视为最终利润。</p>}
       </section>}
-      <div className="p-section-heading p-spaced-heading"><div><span className="p-eyebrow">POINTS & BALANCE</span><h2>积分与账户余额</h2><p className="p-muted p-fine">按流水发生日期统计；充值为预存积分，与上方订单服务收入分开。</p></div></div>
+      {!sharedFilter&&<><div className="p-section-heading p-spaced-heading"><div><span className="p-eyebrow">POINTS & BALANCE</span><h2>积分与账户余额</h2><p className="p-muted p-fine">按流水发生日期统计；充值为预存积分，与上方订单服务收入分开。</p></div></div>
       <StatCards className="p-finance-metrics" items={[
         {name:"区间充值入账",value:data.totals.credited,unit:"积分",hint:"已成功兑换入账",icon:<Wallet size={18}/>},
         {name:"区间服务消费",value:data.totals.spent,unit:"积分",hint:"成功交付的实际扣费",icon:<CheckCircle2 size={18}/>},
@@ -74,7 +76,7 @@ export default function AdminFinance() {
           {!data.trend?.length&&<p className="p-muted">所选期间暂无资金流水</p>}
         </div>
         <p className="p-muted p-fine">{data.start} 至 {data.end} · 北京时间 · {data.include_admin?"包含管理员":"默认排除管理员"}。区间人工调整 {number(data.totals.adjusted)} 积分；未交付退回 {number(data.totals.released)} 积分。预留及退回不计入服务消费，实时余额不等同于区间利润。</p>
-      </section>
+      </section></>}
       <AdminCosts cost={data.execution_cost} title="本期订单的供应商原币成本"/>
       <div className="p-section-heading p-spaced-heading"><div><span className="p-eyebrow">CUSTOMER FINANCES</span><h2>{view==="users"?"每位客户的资金明细":"积分流水明细"}</h2></div><div className="p-segment">
         <button className={view==="users"?"selected":""} onClick={()=>{setView("users");setOffset(0);}}>客户明细</button>

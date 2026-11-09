@@ -27,9 +27,17 @@ class ProductPlanTests:
     def test_new_product_catalog_quote_and_flow_boundary(self):
         with self.api_fixture() as (owner,client,_):
             cfg=db.scalar("SELECT value FROM settings WHERE key='payment'")
-            for flow in ('gener_direct_pay','cslive_full_go','cslive_go_direct_pay'):
+            for flow in ('','gener_direct_pay','cslive_full_go','cslive_go_direct_pay'):
                 db.execute("UPDATE settings SET value=$1 WHERE key='payment'",dict(cfg,subscription_flow=flow))
                 allowed=flow=='cslive_go_direct_pay'
+                admin={p['id']:p for p in self.ok(self.client.get('/api/admin/products'))['items']}
+                public_ids={p['id'] for p in self.ok(client.get('/api/public'))['products']}
+                for product,row in admin.items():
+                    self.assertEqual(row['visible'],product in public_ids)
+                for product in ('plus','promax'):
+                    self.assertTrue(admin[product]['enabled'])
+                    self.assertEqual(bool(admin[product]['availability_reason']),not allowed)
+                    if not flow:self.assertIn('尚未选择',admin[product]['availability_reason'])
                 for path,field in [('/api/public','products'),('/api/v1/catalog','items'),('/api/v1/membership','products')]:
                     ids={p['id'] for p in self.ok(client.get(path))[field]}
                     for product in ('plus','promax'):self.assertEqual(product in ids,allowed)
@@ -42,7 +50,7 @@ class ProductPlanTests:
                         count=db.scalar('SELECT count(*) FROM orders WHERE user_id=$1',owner)
                         for workflow in ('subscription','link'):
                             payload=dict(self.api_payload(workflow),product_id=product)
-                            self.assertEqual(client.post('/api/v1/orders',json=payload,headers={'Idempotency-Key':uid()}).status_code,400)
+                            self.assertEqual(client.post('/api/v1/orders',json=payload,headers={'Idempotency-Key':uid()}).status_code,400 if flow else 503)
                         self.assertEqual(db.one('SELECT balance,frozen FROM users WHERE id=$1',owner),before)
                         self.assertEqual(db.scalar('SELECT count(*) FROM orders WHERE user_id=$1',owner),count)
                 # Direct web routes cannot bypass the flow boundary, including administrators.
@@ -85,6 +93,9 @@ class ProductPlanTests:
                         db.execute("UPDATE orders SET status='failed' WHERE id=$1",oid)
             db.execute("UPDATE products SET enabled=false WHERE id='promax'")
             try:
+                admin=next(p for p in self.ok(self.client.get('/api/admin/products'))['items'] if p['id']=='promax')
+                self.assertFalse(admin['visible'])
+                self.assertFalse(admin['enabled'])
                 self.assertNotIn('promax',{p['id'] for p in self.ok(client.get('/api/v1/catalog'))['items']})
                 self.assertEqual(client.get('/api/v1/quote?product_id=promax').status_code,404)
                 self.assertEqual(client.post('/api/v1/orders',json=dict(self.api_payload(),product_id='promax'),headers={'Idempotency-Key':uid()}).status_code,404)

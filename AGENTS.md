@@ -1,3 +1,7 @@
+## 2026-11-09 后续授权：仅复制正式订阅配置
+
+用户明确要求将正式 xufupython 的相关配置复制到 StarBridge，排除账户、订单及业务数据，注册配置暂不处理。该一次性操作已复制14组设置、6套餐、1代理、10账单模板、210地区、2公告；4项凭据以星桥自身主密钥重新加密。保留星桥品牌、域名、账户/钱包/订单及注册配置，来源项目只读。不增加常驻迁移或兼容代码，后续两套系统独立运行、独立配置；不得默认持续同步。
+
 # 星桥 StarBridge
 
 2026-11-09 最新授权：完成 GPT Register 整合、统一导航、注册会员减免和品牌图标更名后，提交推送 https://github.com/yigerende/StarBridge.git；正式目录 /opt/1panel/apps/starbridge，对外5876。新安装使用独立空库，仅创建用户指定管理员；原 xufupython、gptreg 保持运行，不迁入其数据配置。Compose project starbridge，三个容器 starbridge-app / starbridge-postgres / starbridge-registration-worker。后续保留新项目自己的数据库、运行目录和主密钥。读取上级 _codex-memory/starbridge-production-runbook.md。此授权覆盖下述历史未推送限制；历史路径和旧项目操作不适用于本次新部署。

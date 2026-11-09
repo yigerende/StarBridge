@@ -6,7 +6,7 @@ from fastapi import APIRouter,Depends,Request,Query
 from fastapi.responses import Response
 from . import db
 from .common import *
-from .product_availability import display_product, GO_HTTP_FLOW
+from .product_availability import admin_product, GO_HTTP_FLOW
 
 router=APIRouter(prefix='/api/admin',dependencies=[Depends(administrator)])
 
@@ -15,7 +15,7 @@ router=APIRouter(prefix='/api/admin',dependencies=[Depends(administrator)])
 def products():
     flow=config('payment').get('subscription_flow')
     rows=db.all('SELECT * FROM products ORDER BY sort')
-    return {'items':[display_product(p,flow) for p in rows if flow!=GO_HTTP_FLOW or p['id']!='team_premium']}
+    return {'items':[admin_product(p,flow) for p in rows if flow!=GO_HTTP_FLOW or p['id']!='team_premium']}
 
 
 @router.put('/products/{id}')
@@ -129,6 +129,24 @@ def finance_data(request):
 def finance(request:Request): return finance_data(request)
 
 
+@router.get('/finance/overview')
+def finance_overview(request:Request):
+    args=request.query_params;today=datetime.now(timezone(timedelta(hours=8))).date()
+    start=args.get('start') or (today-timedelta(days=30)).isoformat();end=args.get('end') or today.isoformat()
+    try:s=date.fromisoformat(start);e=date.fromisoformat(end)
+    except ValueError:raise BusinessError('统计日期格式无效')
+    require(e>=s and (e-s).days<=3660,'统计日期范围无效')
+    period=args.get('period','day');require(period in ('day','week','month','year'),'统计周期无效')
+    exclude=args.get('include_admin')!='true'
+    where=' WHERE '+TIME+" AND (NOT $3::bool OR u.role!='admin')"
+    with db.transaction() as q:
+        q.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+        totals=q.one('SELECT '+TOTALS+' FROM ledger l JOIN users u ON u.id=l.user_id'+where,start,end,exclude)
+        trend=q.all("SELECT to_char(date_trunc($4,l.created_at AT TIME ZONE 'Asia/Shanghai'),'YYYY-MM-DD') AS period,"+TOTALS+' FROM ledger l JOIN users u ON u.id=l.user_id'+where+' GROUP BY 1 ORDER BY 1',start,end,exclude,period)
+        current=q.one("SELECT COALESCE(sum(balance-frozen),0) AS available,COALESCE(sum(frozen),0) AS frozen FROM users WHERE (NOT $1::bool OR role!='admin')",exclude)
+    return dict(totals=totals,current=current,trend=trend,start=start,end=end,period=period)
+
+
 @router.get('/finance/export')
 def export_finance(request:Request):
     data=finance_data(request);out=io.StringIO(newline='');writer=csv.writer(out)
@@ -136,6 +154,6 @@ def export_finance(request:Request):
     for u in data['users']:
         row=[]
         for k in ('email','name','credited','spent','adjusted','balance','frozen','orders'):
-            value=str(u[k]);row.append("'"+value if value.startswith(('=','+','-','@','\t','\r')) else value)
+            value=str(u[k]-u['frozen'] if k=='balance' else u[k]);row.append("'"+value if value.startswith(('=','+','-','@','\t','\r')) else value)
         writer.writerow(row)
     return Response(content=b'\xef\xbb\xbf'+out.getvalue().encode('utf-8'),media_type='text/csv; charset=utf-8',headers={'Content-Disposition':'attachment; filename=starbridge-finance.csv'})

@@ -559,8 +559,8 @@
     },
     {
       "path": "web/src/portal/AdminFinance.tsx",
-      "sha256": "c0894d039b6f1ac07179007cb4b3483734901aabd1bcdbd40ea0ce31a72ad4c3",
-      "reason": "Unified native UI and deployment lifecycle adapter; engine core unchanged"
+      "sha256": "49f936d4172e90086e20991e5e8042b919746d2bfcb02be381caf9ebb6a132dd",
+      "reason": "Embed registration finance under shared wallet overview and date filters; preserve cost and profit reports."
     }
   ],
   "hashing": "sha256; text normalized to LF, binary exact"

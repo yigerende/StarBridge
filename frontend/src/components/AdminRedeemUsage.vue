@@ -2,13 +2,12 @@
 import {ref,watch,onUnmounted} from 'vue';
 import {api,cash as formatAmount} from '../lib';
 import {type Period,periods,todayBeijing,shiftPeriod,beijingTime} from '../lib/report-period';
-defineEmits<{back:[]}>();
 type Item={id:string|number;prefix:string;email:string;name:string;note:string;amount:number;redeemed_at:string};
 type Report={items:Item[];summary:{redemptions:number;codes:number;accounts:number;amount:number};total:number;start_date:string;end_date:string};
 const period=ref<Period>('day'),anchor=ref(todayBeijing()),search=ref(''),query=ref(''),page=ref(1),loading=ref(false),error=ref(''),report=ref<Report>();
 let controller:AbortController|undefined;
 async function load(){
- controller?.abort();const current=new AbortController();controller=current;loading.value=true;error.value='';report.value=undefined;
+ controller?.abort();const current=new AbortController();controller=current;loading.value=true;error.value='';
  try{
   if(!anchor.value)throw Error('请选择统计日期');
   const params=new URLSearchParams({period:period.value,date:anchor.value,q:query.value,page:String(page.value),page_size:'50'});
@@ -25,7 +24,7 @@ function searchNow(){if(query.value===search.value.trim())load();else query.valu
 </script>
 <template>
  <section class="usage-report" :aria-busy="loading">
-  <div class="usage-heading"><div><h2>兑换码使用情况</h2><p>按实际兑换时间查看入账明细与统计</p></div><div class="usage-nav"><button class="usage-btn" @click="$emit('back')">返回兑换码</button><button class="usage-btn" :disabled="loading" @click="load">刷新统计</button></div></div>
+  <div class="usage-heading"><p>按实际兑换时间查看入账明细与统计</p><button class="btn secondary" :disabled="loading" @click="load">{{loading?'更新中…':'刷新记录'}}</button></div>
   <div class="usage-controls">
    <div class="usage-segments" role="group" aria-label="统计周期"><button v-for="p in periods" :key="p.key" :aria-pressed="period===p.key" @click="period=p.key">{{p.label}}</button></div>
    <label class="usage-date">统计日期<input v-model="anchor" aria-label="统计日期" type="date" min="1900-01-01" max="9998-12-31"/></label>
@@ -33,7 +32,7 @@ function searchNow(){if(query.value===search.value.trim())load();else query.valu
    <form class="usage-search" @submit.prevent="searchNow"><input v-model="search" type="search" maxlength="200" aria-label="搜索兑换使用记录" placeholder="搜索码标识、备注 / 批次、兑换人"/><button class="usage-btn" type="submit">查询</button><button v-if="search||query" class="usage-btn" type="button" @click="search='';query=''">清空</button></form>
   </div>
   <div v-if="error" class="usage-error" role="alert">{{error}} <button class="usage-btn" @click="load">重试</button></div>
-  <div v-if="loading" class="usage-loading" role="status">正在加载使用情况…</div>
+  <div v-if="loading&&!report" class="usage-loading" role="status">正在加载使用记录…</div>
   <template v-if="report">
    <div class="usage-caption"><strong>{{report.start_date}} 至 {{report.end_date}}</strong><span>北京时间 · 每周从周一开始 · 汇总覆盖全部筛选结果</span></div>
    <div class="usage-metrics"><article><span>兑换次数</span><strong>{{report.summary.redemptions}}</strong></article><article><span>已使用兑换码</span><strong>{{report.summary.codes}}</strong></article><article><span>使用人数</span><strong>{{report.summary.accounts}}</strong></article><article><span>入账积分</span><strong>{{formatAmount(report.summary.amount)}}</strong></article></div>

@@ -77,6 +77,25 @@ class RegistrationAccountTests(unittest.TestCase):
         self.assertEqual(report['totals']['credited'],200)
         self.assertEqual(next(r for r in report['users'] if r['id']=='u')['credited'],200)
 
+    def test_finance_overview_counts_shared_wallet_once_and_both_businesses(self):
+        from backend.admin_content import finance_overview
+        db.execute("INSERT INTO ledger(user_id,kind,amount,balance_after,frozen_after,reference,business,description) VALUES('u','redeem',1000,1000,0,'code','subscription','credit'),('u','charge',-200,800,0,'sub','subscription','charge'),('u','charge',-300,500,0,'reg','registration','charge')")
+        report=finance_overview(self.request)
+        self.assertEqual(report['totals'],dict(credited=1000,spent=500,adjusted=0))
+        self.assertEqual(report['current'],dict(available=700,frozen=300))
+        from backend.admin_content import export_finance
+        import csv,io
+        rows=list(csv.DictReader(io.StringIO(export_finance(self.request).body.decode('utf-8-sig'))))
+        self.assertEqual(next(r for r in rows if r['账户']=='u@example.test')['当前可用分'],'700')
+        db.execute("UPDATE users SET role='admin' WHERE id='u'")
+        self.assertEqual(finance_overview(self.request)['totals']['credited'],0)
+        including=Request({**self.request.scope,'query_string':b'include_admin=true'})
+        self.assertEqual(finance_overview(including)['totals']['spent'],500)
+        self.request.scope['query_string']=b'period=invalid'
+        # Request caches query parameters; use a new request for independent filters.
+        invalid=Request({**self.request.scope,'query_string':b'period=invalid'})
+        with self.assertRaises(BusinessError):finance_overview(invalid)
+
     def test_account_adjustment_cannot_spend_reserved_funds(self):
         from backend.wallet import credit
         with self.assertRaisesRegex(BusinessError,'冻结积分'):
