@@ -16,9 +16,12 @@ cd starbridge
 cp .env.example .env
 # 设置数据库密码、32 字节 Base64 主密钥、初始管理员密码及注册网关密钥。
 docker compose -f compose.yml -f compose.registration.yml build
+sudo install -d -m 0700 -o 1000 -g 1000 .registration-runtime
 docker compose -f compose.yml -f compose.registration.yml up -d postgres
 # 初始化统一表；此进程不启动应用或业务调度。
 docker compose -f compose.yml -f compose.registration.yml run --rm --no-deps app python -c "from backend import db;from backend.seed import seed;db.initialize();seed();db.close()"
+docker compose -f compose.yml -f compose.registration.yml run --rm --no-deps registration-app node integration/initialize.js
+docker compose -f compose.yml -f compose.registration.yml run --rm --no-deps registration-app node -e "require('./docker/runtime').initializeRuntime(process.cwd());require('./src/platform/security').loadSecrets(process.cwd())"
 docker compose -f compose.yml -f compose.registration.yml up -d
 ```
 
