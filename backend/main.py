@@ -18,7 +18,7 @@ from .runtime import worker_mode
 from . import login_slider, customer_api, admin_orders, order_updates, invitations, email_auth, features, custom_menus, branding, regions, country_pool, price_reference
 from . import deployment
 from . import subscription_recovery
-from . import refunds
+from . import refunds, support
 from .request_origin import configured_origin, origin_allowed
 from .auth_runtime import bounded_call
 from . import registration_gateway
@@ -161,6 +161,8 @@ for module in (login_slider,auth,email_auth,membership,wallet,admin_accounts,set
 for router in (records.public_router,records.router,records.admin_router,customer_api.router,admin_orders.router,order_updates.router,invitations.router,custom_menus.router,branding.router,regions.router,country_pool.router,price_reference.router,price_reference.admin_router):app.include_router(router)
 app.include_router(refunds.router)
 app.include_router(refunds.admin)
+app.include_router(support.router)
+app.include_router(support.customer_router)
 
 
 @app.get('/health/live')
@@ -176,7 +178,7 @@ def ready():
 
 @app.get('/api/openapi.json')
 def openapi_document(request:Request):
-    if not features.allowed('docs'): authenticate(request,True)
+    require(features.allowed('docs'),'接口文档暂未开放',403)
     from .registration_docs import document
     return document()
 
@@ -185,7 +187,7 @@ def openapi_document(request:Request):
 def static(path:str,request:Request):
     if path=='api' or path.startswith('api/'):return response({'error':'接口不存在'},404)
     if request.method not in ('GET','HEAD'):return response({'error':'请求方法不支持'},405)
-    if path=='docs' and not features.allowed('docs'): authenticate(request,True)
+    if path=='docs': require(features.allowed('docs'),'接口文档暂未开放',403)
     if path=='admin' or path.startswith('admin/'): authenticate(request,True)
     target=(WEB/path).resolve()
     require(target.is_relative_to(WEB.resolve()),'文件不存在',404)

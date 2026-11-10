@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "星桥 API",
-    "version": "2.3.0",
+    "version": "2.4.0",
     "description": "使用同一个 API 密钥查询账户、订阅套餐、代退报价和积分钱包，提交申请并跟踪办理结果。当前可用功能见 GET /api/v1/me 的 features；重置登录密码后需重新创建 API 密钥。"
   },
   "servers": [
@@ -1132,6 +1132,15 @@
                     "description": "完整 Session 对象，或包含该对象的 JSON 字符串。 来源：由用户提供目标订阅账号登录后的完整 Session JSON；本 API 不生成 Session。POST /api/v1/session/inspect 只返回校验摘要，不能把该摘要作为 session 提交。",
                     "x-input-source": "由用户提供目标订阅账号登录后的完整 Session JSON；本 API 不生成 Session。POST /api/v1/session/inspect 只返回校验摘要，不能把该摘要作为 session 提交。",
                     "x-source-operations": []
+                  },
+                  "workflow": {
+                    "type": "string",
+                    "enum": [
+                      "subscription",
+                      "link",
+                      "renewal"
+                    ],
+                    "description": "可选，指定 Session 的用途并按对应业务权限校验。省略时要求订阅、结账链接或独立续费至少一项可用。"
                   }
                 },
                 "required": [
@@ -1603,7 +1612,7 @@
       "post": {
         "operationId": "create_order",
         "summary": "提交订阅或生成结账链接",
-        "description": "workflow=subscription 提交订阅并冻结服务费；workflow=link 仅生成结账链接，不自动付款，也不收取该笔订阅服务费。保存响应 id 后查询订单详情。响应超时须使用原请求标识和原参数重试。",
+        "description": "workflow=subscription 提交订阅并冻结服务费，要求 features.subscribe=true；workflow=link 仅生成结账链接，不自动付款、不收取该笔订阅服务费，要求 features.links=true。两种功能独立，关闭其中一种不影响另一种。保存响应 id 后查询订单详情；响应超时须使用原请求标识和原参数重试。",
         "tags": [
           "订阅与结账链接"
         ],
@@ -2235,7 +2244,7 @@
       "post": {
         "operationId": "create_renewal",
         "summary": "申请关闭自动续费",
-        "description": "仅申请关闭自动续费，不退款、不取消当前已付费期限；不收取服务费。需 accepted=true。review 状态更新 Session 时使用新请求标识；相同标识只返回原任务。",
+        "description": "仅申请关闭自动续费，不退款、不取消当前已付费期限；不收取服务费。需 accepted=true。review 状态更新 Session 时使用新请求标识；相同标识只返回原任务。 要求 features.renewal=true；此权限只控制独立续费任务，不影响已受理订阅订单中的续费步骤。",
         "tags": [
           "关闭自动续费"
         ],
@@ -2798,7 +2807,7 @@
       "get": {
         "operationId": "get_me",
         "summary": "查询当前账户",
-        "description": "返回密钥所属的星桥账户和会员权益；不是提交订阅的目标账号。",
+        "description": "返回密钥所属星桥账户、会员权益和 features 可用功能。目标订阅账号由下单 Session 指定。调用前可检查对应功能，关闭的功能返回 HTTP 403；keys 关闭时本接口也不可调用。",
         "tags": [
           "账户与套餐"
         ],
@@ -2856,16 +2865,20 @@
                   },
                   "features": {
                     "home": true,
+                    "register": true,
+                    "accounts": true,
                     "subscribe": true,
-                    "orders": true,
-                    "wallet": true,
                     "links": true,
                     "renewal": true,
+                    "refund": true,
+                    "orders": true,
+                    "wallet": true,
                     "keys": true,
                     "invites": true,
                     "membership": true,
                     "docs": true,
-                    "refund": true
+                    "support": true,
+                    "profile": true
                   },
                   "navigation": [
                     {
@@ -6211,23 +6224,23 @@
           },
           "features": {
             "type": "object",
-            "description": "当前账户可用功能。false 表示该功能不可用。",
+            "description": "当前可用功能。false 时对应用户接口返回 HTTP 403；keys=false 时所有 Bearer API 调用暂停。register、subscribe、links、renewal、refund 分别独立控制。",
             "properties": {
               "home": {
                 "type": "boolean",
                 "description": "工作台是否开放。"
               },
+              "register": {
+                "type": "boolean",
+                "description": "注册办理是否开放。"
+              },
+              "accounts": {
+                "type": "boolean",
+                "description": "我的账号与账号交付是否开放。"
+              },
               "subscribe": {
                 "type": "boolean",
                 "description": "订阅办理是否开放。"
-              },
-              "orders": {
-                "type": "boolean",
-                "description": "订单中心是否开放。"
-              },
-              "wallet": {
-                "type": "boolean",
-                "description": "资金账户是否开放。"
               },
               "links": {
                 "type": "boolean",
@@ -6235,7 +6248,19 @@
               },
               "renewal": {
                 "type": "boolean",
-                "description": "续费管理是否开放。"
+                "description": "独立续费管理是否开放。"
+              },
+              "refund": {
+                "type": "boolean",
+                "description": "代退办理是否开放。"
+              },
+              "orders": {
+                "type": "boolean",
+                "description": "订单查询是否开放。"
+              },
+              "wallet": {
+                "type": "boolean",
+                "description": "资金与充值是否开放。"
               },
               "keys": {
                 "type": "boolean",
@@ -6251,11 +6276,15 @@
               },
               "docs": {
                 "type": "boolean",
-                "description": "API 文档是否开放。"
+                "description": "接口文档是否开放。"
               },
-              "refund": {
+              "support": {
                 "type": "boolean",
-                "description": "代退办理是否可用。"
+                "description": "联系客服是否开放。"
+              },
+              "profile": {
+                "type": "boolean",
+                "description": "个人设置是否开放。"
               }
             }
           },
@@ -6267,7 +6296,7 @@
               "properties": {
                 "id": {
                   "type": "string",
-                  "description": "菜单标识，与 features 对应；profile 为始终保留的个人设置。"
+                  "description": "菜单标识，与 features 中的同名字段对应。"
                 },
                 "path": {
                   "type": "string",
@@ -6281,9 +6310,10 @@
                   "type": "string",
                   "enum": [
                     "main",
-                    "tools"
+                    "tools",
+                    "registration"
                   ],
-                  "description": "导航分组：main 为业务办理与资金，tools 为工具与账户。"
+                  "description": "导航分组：main 为业务与资金，tools 为工具与账户，registration 为注册办理下的我的账号。"
                 }
               }
             }

@@ -2,6 +2,7 @@
 import {computed,onMounted,ref} from 'vue'
 import {ArrowRight,CheckCircle2,LockKeyhole,Upload,RotateCcw,ShieldCheck,UserRound,Users,Crown} from 'lucide-vue-next'
 import {api,cash,type Row} from '../lib'
+import {featureAllowed} from '../featureAccess'
 import {parseAccounts} from '../refund/import'
 const props=defineProps<{user:Row}>(),emit=defineEmits<{refresh:[]}>()
 const quote=ref<Row>(),mode=ref('single'),email=ref(''),password=ref(''),totp=ref(''),raw=ref(''),authorized=ref(false),busy=ref(false),error=ref(''),created=ref<string[]>([])
@@ -26,8 +27,8 @@ async function submit(){
 onMounted(load)
 </script>
 <template>
- <div class="page-heading"><div><span class="eyebrow">REFUND SERVICE</span><h1>代退办理</h1><p>提交账号，统一跟进办理进度与服务费结算。</p></div><a href="#/orders?business=refund" class="btn secondary">查看代退订单<ArrowRight :size="16"/></a></div>
- <div v-if="created.length" class="panel refund-result" role="status"><CheckCircle2/><div><b>已受理 {{created.length}} 笔申请</b><p>服务费已冻结，办理完成后结算。账号敏感资料已从此表单清除。</p></div><a class="btn primary" :href="'#/orders?business=refund&order_id='+created[0]">查看进度</a></div>
+ <div class="page-heading"><div><span class="eyebrow">REFUND SERVICE</span><h1>代退办理</h1><p>提交账号，统一跟进办理进度与服务费结算。</p></div><a v-if="featureAllowed(user.features,'orders')" href="#/orders?business=refund" class="btn secondary">查看代退订单<ArrowRight :size="16"/></a></div>
+ <div v-if="created.length" class="panel refund-result" role="status"><CheckCircle2/><div><b>已受理 {{created.length}} 笔申请</b><p>服务费已冻结，办理完成后结算。账号敏感资料已从此表单清除。</p></div><a v-if="featureAllowed(user.features,'orders')" class="btn primary" :href="'#/orders?business=refund&order_id='+created[0]">查看进度</a></div>
  <p v-if="error" class="refund-error" role="alert">{{error}}</p>
  <div class="refund-layout">
   <section class="panel refund-form">

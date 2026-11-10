@@ -2,6 +2,7 @@ import os
 from . import db
 from .common import password_hash, uid
 from .regions import DEFAULT_REGIONS
+from .features import FEATURES
 
 TIERS = [
     {'code':'L1','name':'启程会员','threshold':0,'discount':100,'description':'从第一笔成功订单开始积累'},
@@ -14,11 +15,11 @@ TIERS = [
 DEFAULTS = {
     'regions': {'items':DEFAULT_REGIONS},
     'custom_menus': {'items':[]},
-    'features': {name: True for name in ('home','refund','subscribe','orders','wallet','links','renewal','keys','invites','membership','docs')},
+    'features': {name: True for name in FEATURES},
     'security': {'registration_open':True,'email_verify_enabled':False,'email_domain_whitelist':[],'login_slider_enabled':True},
     'mail': {'enabled':False,'host':'','port':465,'username':'','password_enc':'','from_email':'','from_name':'','encryption':'ssl'},
     'invites': {'enabled':True,'stages':[{'until_days':30,'rate_percent':10},{'until_days':60,'rate_percent':5},{'until_days':90,'rate_percent':2}]},
-    'site': {'sidebar_default_expanded':False,'icon':'','name':'星桥','english_name':'StarBridge','tagline':'连接每一份服务，让订阅与注册清晰有序。','registration_open':True,'support_url':'','terms':'请仅提交本人或已获授权的账号与银行卡。服务费与上游订阅费用分别结算，订单处理结果以订单记录为准。','billing_country':'US','billing_mode':'customer_review','invite_rate':0},
+    'site': {'sidebar_default_expanded':False,'icon':'','name':'星桥','english_name':'StarBridge','tagline':'连接每一份服务，让订阅与注册清晰有序。','registration_open':True,'support_url':'','telegram_group_url':'','terms':'请仅提交本人或已获授权的账号与银行卡。服务费与上游订阅费用分别结算，订单处理结果以订单记录为准。','billing_country':'US','billing_mode':'customer_review','invite_rate':0},
     'risk': {'login_per_minute':10,'api_per_minute':120,'order_per_minute':5,'max_open_orders':10,'max_topup':10000000,'session_hours':24,'event_retention_days':90},
     'scheduler': {'paused':False,'max_parallel':2,'per_user_parallel':1,'retry_limit':2,'retry_delay_seconds':30,'task_timeout_seconds':180,'queue_limit':500,'default_country':'PH','link_mode':'long','engine':'not_connected'},
     'billing': {'country':'US','allow_customer_edit':True,'address_templates':[]},

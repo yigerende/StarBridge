@@ -98,7 +98,7 @@ def overview(user, *, admin=False, start='', end='', days=7, include_admin=False
         installed = bool(q.scalar("SELECT to_regclass('registration_reservations')"))
         reg = q.scalar('SELECT value FROM platform_settings WHERE id=1', default={}) if installed else {}
         reg = reg or {}
-        reg_enabled = lambda key: installed and (user['role']=='admin' or reg.get('features', {}).get(key, True) is not False)
+        reg_enabled = lambda key: installed and (admin or flags.get(key,False))
         reg_orders = reg_enabled('orders')
         source = order_source(installed if admin else reg_orders, admin or flags['orders'], admin or flags['orders'])
         scope = "(u.role<>'admin' OR $2::bool)" if admin else 'u.id=$1'

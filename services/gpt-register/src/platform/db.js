@@ -120,7 +120,7 @@ class Database {
       value.brand=require('../../integration/branding').unifiedBrand(unified.site);
       value.invitations=unified.invites || {enabled:false,stages:[]};
       value.features={...value.features};
-      for(const key of ['home','wallet','keys','docs'])value.features[key]=unified.features?.[key]!==false;
+      for(const key of ['home','register','orders','accounts','wallet','keys','docs'])value.features[key]=unified.features?.[key]!==false;
       value.features.partners=unified.features?.invites!==false && value.invitations.enabled===true;
     }
     return {

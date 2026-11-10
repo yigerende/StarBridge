@@ -46,7 +46,14 @@ async function listOrders(db, owner, query) {
       `SELECT o.*,u.email ${where} ORDER BY o.created_at DESC,o.id DESC LIMIT $5 OFFSET $6`,
       [...values, p.limit, p.offset],
     ),
-    db.one(`SELECT count(*)::int AS total ${where}`, values),
+    db.one(`SELECT count(*)::int AS total${owner ? "" : `,
+      count(*) FILTER(WHERE o.status='queued')::int AS queued,
+      count(*) FILTER(WHERE o.status='running')::int AS running,
+      count(*) FILTER(WHERE o.status='review')::int AS review,
+      count(*) FILTER(WHERE o.status='completed')::int AS completed,
+      count(*) FILTER(WHERE o.status='partial')::int AS partial,
+      count(*) FILTER(WHERE o.status IN ('failed','cancelled'))::int AS closed
+    `} ${where}`, values),
   ]);
   const items = rows.rows.map((o) => ({
     ...publicOrder(o),
@@ -55,6 +62,7 @@ async function listOrders(db, owner, query) {
   return {
     items: owner ? items : await attachCosts(db, items),
     total: count.total,
+    ...(owner ? {} : { summary: Object.fromEntries(Object.entries(count).filter(([key]) => key !== "total")) }),
     ...p,
   };
 }

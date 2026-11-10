@@ -68,16 +68,25 @@ class OrderUpdates:
 updates = OrderUpdates()
 
 
-def visible(event, user):
+def visible(event, user, admin=False):
     from .features import capabilities
-    if user['role']=='admin': return True
+    if admin and user['role']=='admin': return True
     flags=capabilities(user)
     return flags['orders'] and (event.get('resync') or event.get('user_id') == user['id'])
 
 
 @router.get('/order-updates')
 async def order_updates(request: Request):
-    user = await asyncio.to_thread(authenticate, request)
+    return await stream_orders(request)
+
+
+@router.get('/admin/order-updates')
+async def admin_order_updates(request: Request):
+    return await stream_orders(request, admin=True)
+
+
+async def stream_orders(request: Request, admin=False):
+    await asyncio.to_thread(authenticate, request, admin)
     require(len(updates.clients) < 256, '实时连接繁忙，请稍后重试', 503)
     queue = asyncio.Queue(maxsize=64)
     updates.clients.add(queue)
@@ -94,13 +103,14 @@ async def order_updates(request: Request):
                     return
                 # Revalidate on every update/heartbeat; revocation takes effect
                 # without waiting for a long-lived stream to reconnect.
-                try: active_user = await asyncio.to_thread(authenticate, request, False, False)
-                except BusinessError:
-                    yield 'event: revoked\ndata: {}\n\n'
+                try: active_user = await asyncio.to_thread(authenticate, request, admin, False)
+                except BusinessError as error:
+                    name = 'revoked' if error.status == 401 else 'forbidden'
+                    yield f'event: {name}\ndata: {{}}\n\n'
                     return
                 if event is None:
                     yield ': keepalive\n\n'
-                elif visible(event, active_user):
+                elif visible(event, active_user, admin):
                     data = {'id': event['id']} if event.get('id') else {}
                     yield 'event: order\ndata: ' + json.dumps(data) + '\n\n'
         finally: updates.clients.discard(queue)

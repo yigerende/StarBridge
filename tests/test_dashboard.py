@@ -129,8 +129,7 @@ class DashboardTests(unittest.TestCase):
 
     def test_closed_features_do_not_leak_account_data(self):
         self.sub('s');self.reg('r');self.account('a1','r')
-        db.execute("INSERT INTO settings(key,value) VALUES('features',$1)",{'orders':False,'wallet':False})
-        db.execute("UPDATE platform_settings SET value=jsonb_set(value,'{features}',$1) WHERE id=1",{'orders':False,'accounts':False,'register':False})
+        db.execute("INSERT INTO settings(key,value) VALUES('features',$1)",{'orders':False,'wallet':False,'accounts':False,'register':False})
         result=overview(self.user)
         self.assertIsNone(result['wallet'])
         self.assertEqual(result['recent_orders'],[])

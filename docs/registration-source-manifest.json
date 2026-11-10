@@ -429,15 +429,18 @@
     },
     {
       "path": "src/platform/app.js",
-      "sha256": "4d31871310158e0053ca515f8a2eba767478ba18a1efbde92437c2a2f9600177"
+      "sha256": "41d0ab0942e9a40d8bb70d36ad3fe6766997216ac54fb1efd0bf25e560d6c9d3",
+      "reason": "Enforce unified customer feature switches for member and admin sessions, API keys, documentation and profile summaries; retain separate administrator routes."
     },
     {
       "path": "src/platform/customer-center.js",
-      "sha256": "72d9e0427d111cc6407288b0a38e71658fd77bace60a38f81423370c646c0704"
+      "sha256": "09e81d0edd30cd591f7264aa8ed791a6baa18f131e62b98af6c59a0f43c83577",
+      "reason": "Respect unified order and wallet visibility in registration customer projections, including admin customer sessions."
     },
     {
       "path": "src/platform/db.js",
-      "sha256": "1bfbde7dfb5a7a66b169703bb56fafba00038ad5fd0cc09f8b9dbc692fced4bc"
+      "sha256": "a9790f8b46447c1f855d5304dc0a22f4bed5e59882a069010a520cd21a14444a",
+      "reason": "Project shared StarBridge feature switches into the registration integration; registration execution core unchanged."
     },
     {
       "path": "src/platform/finance.js",
@@ -461,8 +464,8 @@
     },
     {
       "path": "src/platform/reports.js",
-      "sha256": "0af5ed3783a304b62dd93019b809fc894a5eca626d2b71288be07f49a3b1ebad",
-      "reason": "Unified dashboard deep links and administrator scope; registration engine unchanged"
+      "sha256": "21eac8d1b89fea67d43db312f6e8c0dd10d7ddf12ab2eb9d70125b673094e610",
+      "reason": "Add filtered administrator registration order aggregates without changing the customer API contract."
     },
     {
       "path": "src/platform/risk-config.js",
@@ -506,8 +509,8 @@
     },
     {
       "path": "web/src/portal/AdminPlatform.tsx",
-      "sha256": "cf6ffbe4c27119370802e21607a2b74c587ccc67013ab38935590d0c13c54f7f",
-      "reason": "Unified dashboard deep links and administrator scope; registration engine unchanged"
+      "sha256": "7ea4ab1fd98f6957da59fb9f25bda3a678483474e46e11b1b3e636a7e7761d4a",
+      "reason": "Show shared order-center statistic cards from filtered registration aggregates."
     },
     {
       "path": "web/src/portal/AdminSiteControls.tsx",
@@ -523,8 +526,8 @@
     },
     {
       "path": "web/src/portal/Workspace.tsx",
-      "sha256": "270610dcdbd4a6d90580bdbae9bd8ddac30d0941132e5b969ef8793974ce0a56",
-      "reason": "Pass native route search parameters and correct unified link hrefs; registration engine core unchanged"
+      "sha256": "b646c56a7bb09edfb6399b653bc6b96cb2bc3ba5c4af1900ef1f39f8ac53bdb7",
+      "reason": "Retain registration workflow and membership pricing; suppress order-detail fetches and links when the shared order center is disabled."
     },
     {
       "path": "web/src/portal/client.ts",
@@ -572,8 +575,8 @@
     },
     {
       "path": "web/src/portal/CustomerCenter.tsx",
-      "sha256": "b5b45fc8fa914220dc202fe0451b576f8012adb59d4cdd49b0c4b0c1a4de21e3",
-      "reason": "Unified dashboard deep links and administrator scope; registration engine unchanged"
+      "sha256": "f3583814987fb66a8ce5f00ce5b058999be80aa75fe5fcdb1dab962416158eb2",
+      "reason": "Use unified customer capabilities for registration actions and account-delivery links."
     }
   ],
   "hashing": "sha256; text normalized to LF, binary exact"

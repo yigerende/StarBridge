@@ -21,7 +21,7 @@ import { Feedback, Modal, OrderDetail, Status, useAction } from "./Workspace";
 import { Filters, Pagination, ledgerNames, number } from "./Insights";
 
 const allowed = (user: Row, pub: Row, key: string) =>
-  user.role === "admin" || pub.features?.[key] !== false;
+  user.features ? user.features[key] !== false : user.role === "admin" || pub.features?.[key] !== false;
 const signed = (v: number) => `${v > 0 ? "+" : ""}${number(v)}`;
 type Column = { title: string; render: (row: Row) => ReactNode };
 function Records({

@@ -59,7 +59,7 @@ def document():
         if category!='securitySchemes':
             result['components'].setdefault(category,{}).update({'Registration'+name:adapt(value) for name,value in values.items()})
     result['tags'].extend({**tag,'name':'注册 · '+tag['name']} for tag in registration['tags'])
-    result['info'].update(title='星桥用户开放 API',version='2.3.0',description='使用同一个 API 密钥接入注册与账号交付、订阅办理、代退办理及积分钱包。先查询服务与报价，提交后保存订单编号并查询办理结果。密钥只能访问所属账户的数据。')
+    result['info'].update(title='星桥用户开放 API',version='2.4.0',description='使用同一个 API 密钥接入注册与账号交付、订阅办理、代退办理及积分钱包。先查询服务与报价，提交后保存订单编号并查询办理结果。密钥只能访问所属账户的数据，可用功能见 GET /api/v1/me 的 features。')
     result['x-guides'].append({'id':'registration','title':'注册与账号交付','create':'registration_create_order','detail':'registration_get_order','example':'standard','steps':[
         '查询注册服务与价格、可选注册地区，并核对统一钱包的可用积分。',
         '提交 quantity、need_oauth 和可选 registration_region，保存 Idempotency-Key 与响应订单 id。新订单返回 HTTP 202，幂等重放返回 200。',
@@ -68,6 +68,33 @@ def document():
     ]})
     result['x-registration-order-states']=registration.get('x-order-states',{})
     result['x-registration-item-states']=registration.get('x-item-states',{})
+    result['x-feature-access']=[
+        {'feature':'register','service':'注册办理','usage':'注册报价、可选地区与创建注册订单'},
+        {'feature':'accounts','service':'我的账号','usage':'查询交付账号、读取凭据与批量导出'},
+        {'feature':'subscribe','service':'订阅办理','usage':'POST /api/v1/orders，workflow=subscription'},
+        {'feature':'links','service':'结账链接','usage':'POST /api/v1/orders，workflow=link；不影响订阅办理'},
+        {'feature':'renewal','service':'独立续费管理','usage':'创建和查询独立续费任务；不影响订阅订单内的续费步骤'},
+        {'feature':'refund','service':'代退办理','usage':'查询代退报价、创建代退订单'},
+        {'feature':'orders','service':'订单中心','usage':'查询注册、订阅与代退订单；关闭受理功能后，只要 orders 仍开启，就可继续查询原单'},
+        {'feature':'wallet','service':'资金中心','usage':'查询钱包、流水、充值申请与兑换；不影响已受理订单按结果结算'},
+        {'feature':'home / membership','service':'工作台 / 会员中心','usage':'分别控制概览与会员查询；会员计费权益仍然有效'},
+    ]
+    requirements={
+        'registration_get_products':'register','registration_get_registration_regions':'register','registration_create_order':'register',
+        'registration_list_orders':'orders','registration_get_order':'orders',
+        'registration_list_accounts':'accounts','registration_get_credentials':'accounts','registration_export_accounts':'accounts',
+        'get_wallet':'wallet','list_ledger':'wallet','list_topups':'wallet','create_topup':'wallet','cancel_topup':'wallet','redeem_code':'wallet',
+        'get_overview':'home','get_membership':'membership','list_orders':'orders','get_order':'orders',
+        'create_renewal':'renewal','list_renewals':'renewal','get_renewal':'renewal',
+        'refund_quote':'refund','refund_create':'refund','refund_list':'orders','refund_detail':'orders','refund_cancel':'orders',
+        'get_catalog':'subscribe / links / membership（至少一项）','get_quote':'subscribe / links（至少一项）',
+        'create_order':'按 workflow：subscription → subscribe；link → links',
+        'inspect_session':'按 workflow 指定用途；省略时 subscribe / links / renewal 至少一项',
+    }
+    for methods in result['paths'].values():
+        for op in methods.values():
+            if isinstance(op,dict) and 'operationId' in op:
+                op['x-required-feature']=requirements.get(op['operationId'],'keys')
     # Business order is shared with navigation: registration, subscription, refund.
     tag_order = ['注册 · 账户与服务', '注册 · 注册订单', '注册 · 账号交付',
                  '账户与套餐', '订阅与结账链接', '关闭自动续费', '账号检查', '代退办理', '资金与充值']

@@ -25,7 +25,7 @@ onMounted(async()=>{try{spec.value=await api('/openapi.json');await nextTick();i
     <a href="/#/home" class="brand"><span class="brand-icon"><img :src="site?.icon_url||'/site-icon'" alt=""/></span><b>{{site?.name||'星桥'}}<small>DEVELOPERS</small></b></a>
     <button class="icon-btn docs-close" @click="mobile=false" aria-label="收起文档菜单"><X/></button>
     <p class="eyebrow">接入指引</p>
-    <a href="/docs#start" @click="mobile=false">快速开始</a><a href="/docs#auth" @click="mobile=false">鉴权与数据约定</a>
+    <a href="/docs#start" @click="mobile=false">快速开始</a><a href="/docs#auth" @click="mobile=false">鉴权与数据约定</a><a href="/docs#availability" @click="mobile=false">可用功能与权限</a>
     <template v-for="guide in spec['x-guides']" :key="guide.id">
       <a v-if="guide.id==='registration'" href="/docs#registration" @click="mobile=false">注册与账号交付</a>
       <template v-if="guide.id==='subscribe'"><a href="/docs#product-ids" @click="mobile=false">订阅套餐标识</a><a href="/docs#input-sources" @click="mobile=false">订阅字段来源与调用顺序</a></template>
@@ -55,6 +55,11 @@ onMounted(async()=>{try{spec.value=await api('/openapi.json');await nextTick();i
       <div class="docs-table"><table><thead><tr><th>接口范围</th><th>金额单位</th><th>可用余额</th></tr></thead><tbody><tr><td><code>/api/v1/</code></td><td>积分最小单位，100 = 1 积分</td><td><code>(balance − frozen) / 100</code> 积分</td></tr><tr><td><code>/registration/open/v1/</code></td><td>积分，最多两位小数</td><td><code>points</code> 已是可用积分，不再减 frozen</td></tr></tbody></table></div><p>两类接口共用同一账户和钱包。下单前核对金额单位，不要重复换算。</p>
       <p>套餐以 <code>GET /api/v1/catalog</code> 返回的 <code>items[].id</code> 为准，作为报价和下单的 <code>product_id</code>。Pro 20x 使用 <code>pro20x</code>；后续开放的新套餐同样传对应标识。</p><p>订阅与代退优先使用该服务专属价，其次账户通用价，否则使用会员折扣；注册费用以注册服务报价为准。<code>price_source</code> 说明本次计价来源。专属价为 0 也有效。</p><p>使用 HTTPS 从服务端调用；密钥、Session、银行卡及兑换码不要放入 URL、前端代码或日志。接口不开放跨域浏览器调用。</p>
       <p>Session 检查仅核对格式、账号与有效期，不验证上游登录和订阅状态。办理时请提供最新完整 Session，并保留其中的 sessionToken 或会话 Cookie，以便需要时刷新登录态。</p>
+    </section>
+    <section id="availability" class="panel docs-section">
+      <h2>可用功能与权限</h2><p>通过 <code>GET /api/v1/me</code> 的 <code>features</code> 查看当前可用功能。所有 Bearer API 都要求 <code>keys=true</code>；对应功能不可用时返回 HTTP 403。请停止该功能的新请求，确认恢复后再调用，不要反复重试。</p>
+      <div class="docs-table"><table><thead><tr><th>功能</th><th>features 字段</th><th>影响范围</th></tr></thead><tbody><tr v-for="item in spec['x-feature-access']" :key="item.feature"><td>{{item.service}}</td><td><code>{{item.feature}}</code></td><td>{{item.usage}}</td></tr></tbody></table></div>
+      <p>例如 <code>links=false</code>、<code>subscribe=true</code> 时，只能提交 <code>workflow=subscription</code>，不能提交 <code>workflow=link</code>。共享的套餐、报价与 Session 检查按接口所列条件开放。</p><p>功能暂停不会取消已受理任务。订单查询仍可用时，继续用原编号查询；付款结果未知时不要创建新订单或再次付款。HTTP 403 表示本次请求未获准执行，不代表原订单失败或未扣款。</p>
     </section>
     <section id="registration" class="panel docs-section">
       <h2>注册与账号交付</h2>
@@ -105,6 +110,7 @@ onMounted(async()=>{try{spec.value=await api('/openapi.json');await nextTick();i
     <section v-for="x in operations" :key="x.id" :id="x.id" class="panel docs-section">
       <div class="endpoint"><b :class="x.method">{{x.method.toUpperCase()}}</b><code>{{x.path}}</code></div>
       <h2>{{x.op.summary}}</h2><p>{{x.op.description}}</p>
+      <p v-if="x.op['x-required-feature']" class="muted small">所需功能：<code>{{x.op['x-required-feature']}}</code>。所有调用同时要求 <code>keys=true</code>。</p>
       <p v-if="['get_catalog','get_quote','create_order'].includes(x.id)"><a href="/docs#product-ids">查看 product_id 可传值与套餐名称对照</a></p>
       <div v-if="x.op.parameters?.length" class="docs-table"><table><thead><tr><th>参数</th><th>位置</th><th>要求</th><th>说明与范围</th></tr></thead><tbody>
         <tr v-for="p in x.op.parameters" :key="p.name"><td><code>{{p.name}}</code></td><td>{{p.in}}</td><td>{{p.required?'必填':'可选'}}</td><td>{{p.description}}<div v-if="p['x-source-operations']?.length" class="field-source-links"><a v-for="link in p['x-source-operations']" :key="link.operationId" :href="'/docs#'+link.operationId">查看来源：{{link.label}}</a></div><span v-if="p.schema.default!==undefined"> 默认：{{p.schema.default}}。</span><span v-if="p.schema.minLength"> 长度：{{p.schema.minLength}}～{{p.schema.maxLength}}。</span><span v-if="p.schema.minimum!==undefined"> 范围：{{p.schema.minimum}}～{{p.schema.maximum}}。</span><span v-if="p.schema.enum"> 可选：{{p.schema.enum.join(' / ')}}。</span></td></tr>

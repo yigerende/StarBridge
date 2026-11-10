@@ -76,9 +76,13 @@ function buildPlatform({
       if (admin) fail(r.user.role === "admin", "需要管理员权限", 403);
       const settings = await db.settings();
       const feature = requestFeature(pathname, r.method);
+      if (!admin && process.env.XUFU_INTEGRATION === '1' && pathname === '/api/user/v1/profile-summary') {
+        const shared = await db.one("SELECT value FROM settings WHERE key='features'");
+        fail(shared?.value?.profile !== false, "此功能暂未开放", 403);
+      }
       if (!admin && feature === "partners")
         fail(settings.invitations.enabled, "伙伴计划暂未开放", 403);
-      if (!admin && r.user.role !== "admin") {
+      if (!admin && (process.env.XUFU_INTEGRATION === '1' || r.user.role !== "admin")) {
         fail(
           !feature || settings.features[feature] !== false,
           "此功能暂未开放",
@@ -98,7 +102,7 @@ function buildPlatform({
       try {
         await authenticate(db, r, false);
       } catch {}
-      fail(r.user?.role === "admin", "接口文档暂未开放", 403);
+      fail(process.env.XUFU_INTEGRATION !== "1" && r.user?.role === "admin", "接口文档暂未开放", 403);
     }
   });
   app.setErrorHandler((e, r, reply) => {

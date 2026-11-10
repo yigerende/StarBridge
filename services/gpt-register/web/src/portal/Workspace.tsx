@@ -264,7 +264,7 @@ export default function Workspace({
     user.id,
     new URLSearchParams(search).get("oauth") === "1",
     (id) => {
-      setDetail(id);
+      if (user.features?.orders !== false) setDetail(id);
       void q.invalidateQueries({ queryKey: ["me"] });
       void q.invalidateQueries({ queryKey: ["workspace-list"] });
       void q.invalidateQueries({ queryKey: ["public"] });
@@ -330,7 +330,7 @@ export default function Workspace({
           {submission.pending && (
             <div className="p-notice">
               有一笔提交尚未确认，已保留原数量、模式和地区；刷新页面后也可继续确认。
-              <Link to="/orders">查看订单中心</Link>
+              {user.features?.orders !== false && <Link to="/orders">查看订单中心</Link>}
             </div>
           )}
           <div className="p-page-heading">

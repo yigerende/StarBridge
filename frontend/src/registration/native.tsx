@@ -35,11 +35,11 @@ function Page(props:Props){
  useEffect(()=>{if((me.error as any)?.status===401)props.expired()},[me.error])
  if(me.error||pub.error)return <div className="p-alert">{(me.error||pub.error)?.message}<button className="p-button secondary" onClick={()=>{void me.refetch();void pub.refetch()}}>重试</button></div>
  if(!me.data||!pub.data)return <div className="p-loading" role="status">正在读取服务信息…</div>
- const user={...me.data,points:(Number(props.user.balance)-Number(props.user.frozen))/100,frozen:Number(props.user.frozen)/100}
+ const user={...me.data,features:props.user.features,points:(Number(props.user.balance)-Number(props.user.frozen))/100,frozen:Number(props.user.frozen)/100}
  const path=props.route
  if(path.startsWith('/admin/')&&user.role!=='admin')return <div className="p-alert">此页面仅对管理员开放</div>
  const feature=path==='/register'?'register':path==='/accounts'?'accounts':path==='/orders'?'orders':null
- if(feature&&user.role!=='admin'&&pub.data.features?.[feature]===false)return <div className="p-card"><h2>此功能暂未开放</h2></div>
+ if(feature&&props.user.features?.[feature]===false)return <div className="p-card"><h2>此功能暂未开放</h2></div>
  return <NativeRouter path={path} search={props.search} hrefFor={nativeHref} navigate={to=>{if(to.startsWith('/admin/engine'))location.assign('/registration'+to);else props.navigate(unifiedTarget(to))}}>
   <Suspense key={path+(props.search||'')} fallback={<div className="p-loading" role="status">正在加载…</div>}>
    {path==='/register'?<Workspace page="register" user={user} pub={pub.data}/>:

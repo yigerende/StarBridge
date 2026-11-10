@@ -62,7 +62,8 @@ export default function AdminPlatform({ tab = "overview" }: { tab?: string }) {
     queryKey: ["admin", tab, offset, filters, days],
     queryFn: () => call(`/api/admin/v1/${endpoint}?${params}`),
     refetchInterval: (query) =>
-      tab === "orders" && query.state.data?.items?.some(orderPending)
+      tab === "orders" && (query.state.data?.items?.some(orderPending) ||
+        query.state.data?.summary?.queued > 0 || query.state.data?.summary?.running > 0 || query.state.data?.summary?.review > 0)
         ? 5000
         : false,
     refetchOnReconnect: !settingsPage,
@@ -114,6 +115,14 @@ export default function AdminPlatform({ tab = "overview" }: { tab?: string }) {
           </p>
         </div>
       </div>
+      {tab === "orders" && data?.summary && (
+        <div className="order-center-summary" aria-label="注册订单统计" aria-busy={isFetching}>
+          {[
+            ["queued", "排队中"], ["running", "办理中"], ["review", "自动恢复中"],
+            ["completed", "已完成"], ["partial", "部分交付"], ["closed", "失败 / 已取消"],
+          ].map(([key, label]) => <article key={key} className="order-center-summary-card"><span>{label}</span><b>{number(data.summary[key])}</b></article>)}
+        </div>
+      )}
       <div className="p-admin-toolbar" hidden={tab === "orders"}>
         {tab === "codes" && <button className="p-button secondary" onClick={()=>setCodesUsage(!codesUsage)}>{codesUsage?"返回兑换码":"使用情况"}</button>}
         {tab === "users" && (

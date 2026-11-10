@@ -87,7 +87,7 @@ def project_ledger(rows,user):
         if row['kind'] in ('topup','redeem','adjustment','invite_reward','invite_reversal'):
             row['business']='shared'
     if not allowed('orders',user):
-        for row in rows: row.update(order_id=None,related_order=None,payment={})
+        for row in rows: row.update(order_id=None,registration_order_id=None,refund_order_id=None,related_order=None,payment={})
     return rows
 
 

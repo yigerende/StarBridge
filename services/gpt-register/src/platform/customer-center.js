@@ -18,7 +18,7 @@ function registerCustomerCenter(app, db) {
   app.get("/api/user/v1/profile-summary", async (r) => {
     const settings = await db.settings();
     const enabled = (key) =>
-      r.user.role === "admin" || settings.features[key] !== false;
+      (process.env.XUFU_INTEGRATION !== "1" && r.user.role === "admin") || settings.features[key] !== false;
     const stats = await db.one(
       "SELECT count(*)::int AS orders,count(*) FILTER(WHERE status='completed')::int AS completed,count(*) FILTER(WHERE status IN ('queued','running'))::int AS pending,count(*) FILTER(WHERE status='review')::int AS review,coalesce(sum(charged),0)::float8 AS spent FROM platform_orders WHERE user_id=$1",
       [r.user.id],
@@ -52,7 +52,7 @@ function registerCustomerCenter(app, db) {
     fail(!start || !end || start <= end, "结束日期不能早于开始日期");
     const settings = await db.settings(),
       showOrders =
-        r.user.role === "admin" || settings.features.orders !== false;
+        (process.env.XUFU_INTEGRATION !== "1" && r.user.role === "admin") || settings.features.orders !== false;
     const values = [r.user.id, search(r.query.q), kind, tab, start, end];
     const from = `FROM platform_ledger l
       LEFT JOIN platform_items i ON l.kind IN ('charge','release') AND i.id=split_part(l.reference,':',2)

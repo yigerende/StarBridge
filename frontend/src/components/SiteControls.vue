@@ -7,16 +7,20 @@ const form=ref<Row>({}),domains=ref(''),busy=ref(false),error=ref(''),testEmail=
 watch(()=>props.value,value=>{form.value=JSON.parse(JSON.stringify(value));domains.value=(value.email_domain_whitelist||[]).join('\n')},{immediate:true})
 const sections=[
  {id:'home',title:'工作台',description:'客户首页、业务概览与快捷入口'},
+ {id:'register',title:'注册办理',description:'注册服务报价、地区与创建注册订单'},
+ {id:'accounts',title:'我的账号',description:'查询、领取与导出已交付的注册账号'},
  {id:'subscribe',title:'订阅办理',description:'创建站内付款订阅订单'},
- {id:'refund',title:'代退办理',description:'授权账号的代退服务申请'},
+ {id:'links',title:'结账链接',description:'仅生成结账链接的网页与 API；不影响订阅办理'},
+ {id:'renewal',title:'续费管理',description:'独立取消自动续费；不影响订阅订单内的续费处理'},
+ {id:'refund',title:'代退办理',description:'授权账号的代退服务申请与报价'},
  {id:'orders',title:'订单中心',description:'查询订单列表、详情及办理进度'},
  {id:'wallet',title:'资金账户',description:'余额、资金流水、充值和兑换'},
- {id:'links',title:'结账链接',description:'提交并生成结账链接'},
- {id:'renewal',title:'续费管理',description:'单独提交取消自动续费任务'},
  {id:'keys',title:'开发接入',description:'管理 API 密钥及调用用户 API；关闭后已有密钥也暂停使用'},
  {id:'invites',title:'伙伴计划',description:'查看邀请关系与邀请奖励'},
  {id:'membership',title:'会员中心',description:'查看会员成长及权益；已有等级计价仍按原规则执行'},
- {id:'docs',title:'API 文档',description:'访问接口文档和 OpenAPI 文件'}
+ {id:'docs',title:'接口文档',description:'访问接口文档和 OpenAPI 文件'},
+ {id:'support',title:'联系客服',description:'查看客服账号、群组与联系入口'},
+ {id:'profile',title:'个人设置',description:'查看个人设置和修改账户资料；不影响登录与退出'}
 ]
 const title=computed(()=>({features:'功能开关',security:'安全与认证',mail:'邮件设置'}[props.group]))
 async function save(){
@@ -34,9 +38,10 @@ onMounted(()=>{if(props.group==='mail')void loadLogs()})
   <div v-if="error" class="alert danger" role="alert">{{error}}</div>
   <form @submit.prevent="save">
    <template v-if="group==='features'">
-    <div class="callout">关闭后菜单不显示，对应网页接口与用户 API 也会拒绝访问。管理员管理权限不受影响，已受理的任务继续完成。个人设置始终保留。</div>
+    <div class="callout">关闭后，用户菜单、页面入口及对应 API 同时停用；管理员进入用户端也遵循这些开关。运营管理接口和已受理任务不受影响，会员计费权益继续按原规则执行。注册、订阅、代退独立控制。</div>
     <div class="feature-grid"><label v-for="feature in sections" :key="feature.id" class="control-row"><span><b>{{feature.title}}</b><small>{{feature.description}}</small></span><input class="toggle" type="checkbox" v-model="form[feature.id]" :aria-label="feature.title"/></label></div>
-    <p v-if="!form.orders&&(form.subscribe||form.links)" class="callout">订单中心已关闭：客户仍可提交已开放的服务，但无法查询订单记录和进度。</p>
+    <p v-if="!form.orders&&(form.register||form.subscribe||form.links||form.refund)" class="callout">订单中心已关闭：客户仍可提交已开放的服务，但无法查询订单记录和进度。</p>
+    <p class="muted small">自定义菜单在“自定义菜单”中按条目启用或关闭，关闭后对应页面接口也会拒绝访问。</p>
    </template>
    <template v-else-if="group==='security'">
     <label class="control-row"><span><b>登录滑动验证</b><small>登录前完成滑块验证，验证结果由服务器校验且仅可使用一次。</small></span><input class="toggle" type="checkbox" v-model="form.login_slider_enabled"/></label>

@@ -6,7 +6,7 @@ const snapshots=new Map<string,Row>()
 export function clearDashboardCache(){snapshots.clear()}
 
 /** Keep a user's last snapshot on navigation; never retain it across sign-out. */
-export function useDashboard(owner:string,path:Ref<string>){
+export function useDashboard(owner:string,path:Ref<string>,canReadOrders:()=>boolean=()=>true){
  const cacheKey=()=>owner+':'+path.value
  const data=ref<Row|undefined>(snapshots.get(cacheKey())),loading=ref(false),error=ref('')
  let controller:AbortController|undefined,timer:ReturnType<typeof setTimeout>|undefined,eventTimer:ReturnType<typeof setTimeout>|undefined,disposed=false,lastRead=0,pending=false
@@ -31,7 +31,7 @@ export function useDashboard(owner:string,path:Ref<string>){
   if(loading.value){pending=true;return}
   clearTimeout(eventTimer);eventTimer=setTimeout(()=>void refresh(),Math.max(100,1500-(Date.now()-lastRead)))
  }
- useOrderUpdates(id=>{if(id)queueChange()})
+ useOrderUpdates(id=>{if(id)queueChange()},{admin:path.value.startsWith('/admin/'),enabled:canReadOrders})
  onMounted(()=>{void refresh();document.addEventListener('visibilitychange',visible)})
  onUnmounted(()=>{disposed=true;controller?.abort();clearTimeout(timer);clearTimeout(eventTimer);document.removeEventListener('visibilitychange',visible)})
  return {data,loading,error,refresh}

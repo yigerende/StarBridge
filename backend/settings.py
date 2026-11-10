@@ -1,5 +1,4 @@
 import secrets
-from urllib.parse import urlsplit
 from fastapi import APIRouter, Depends, Request
 from starlette.concurrency import run_in_threadpool
 from . import db
@@ -19,7 +18,7 @@ RANGES = {
  'proxy': {'request_timeout_seconds':(10,120)}, 'site': {'invite_rate':(0,0)}
 }
 RANGES['payment']['post_payment_delay_seconds'] = (0,MAX_SECONDS)
-OPTIONAL = {'site': {'icon','sidebar_default_expanded'}, 'proxy': {'global_id','mode'}, 'payment': {'checkout_flow','subscription_flow','checkout_type','checkout_types','network_restart_limit','post_payment_delay_seconds','cslive_go_visit_return','cslive_go_refresh_before_renewal'}}
+OPTIONAL = {'site': {'icon','sidebar_default_expanded','telegram_group_url'}, 'proxy': {'global_id','mode'}, 'payment': {'checkout_flow','subscription_flow','checkout_type','checkout_types','network_restart_limit','post_payment_delay_seconds','cslive_go_visit_return','cslive_go_refresh_before_renewal'}}
 
 
 def validate_config(key, v):
@@ -106,8 +105,9 @@ def validate_config(key, v):
         for name,lo,hi in [('name',1,50),('english_name',1,50),('tagline',1,200),('support_url',0,500),('terms',10,5000)]:
             require(lo<=length(v[name])<=hi,name+' 内容长度无效')
         require(v['billing_country']=='US' and v['billing_mode']=='customer_review','账单配置无效')
-        if v['support_url']:
-            u=urlsplit(v['support_url']);require(u.scheme in ('http','https') and u.hostname,'客服链接须为 http(s) 地址')
+        from .support import contact_url
+        v['support_url']=contact_url(v['support_url'])
+        if 'telegram_group_url' in v:v['telegram_group_url']=contact_url(v['telegram_group_url'],group=True)
     if key=='billing':
         require(v['country']=='US','账单国家固定 US')
         arr=v['address_templates'];require(isinstance(arr,list) and len(arr)<=100,'地址模版应为最多 100 项的列表')
@@ -138,6 +138,7 @@ def validate_config(key, v):
 @router.get('/settings')
 def settings():
     result = {r['key']:r['value'] for r in db.all('SELECT key,value FROM settings ORDER BY key')}
+    result['features']={**DEFAULTS['features'],**result.get('features',{})}
     result.pop('country_pool',None)
     result['proxy'].setdefault('mode','manual')
     result['payment'].setdefault('post_payment_delay_seconds', DEFAULT_SECONDS)

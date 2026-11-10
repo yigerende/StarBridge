@@ -56,6 +56,9 @@ def icon_url(site=None):
 
 def public_site():
     site=config('site')
+    from .features import allowed
+    if not allowed('support'):
+        site={**site,'support_url':'','telegram_group_url':''}
     site.setdefault('sidebar_default_expanded',False)
     return {**{k:v for k,v in site.items() if k!='icon'},'icon_url':icon_url(site)}
 

@@ -4,7 +4,7 @@ import {Search,RefreshCw,Plus,Copy,ArrowUpRight,CreditCard} from 'lucide-vue-nex
 import {cash,date,action,copy,orderLabel,orderTone,regionLabel,type Row} from '../lib'
 import {feeStates,paymentStates,renewalStates,paymentState,renewalState,upstreamAmount,discountText} from '../record-format'
 import RecordsTable from './RecordsTable.vue'
-const props=defineProps<{rows:Row[];loading:boolean;initialFilter?:Row}>()
+const props=defineProps<{rows:Row[];loading:boolean;initialFilter?:Row;canSubscribe?:boolean}>()
 defineEmits<{order:[row:Row];refresh:[];'clear-filter':[]}>()
 const q=ref(''),payment=ref(''),renewal=ref(''),product=ref(''),status=ref('')
 const products=computed(()=>[...new Set(props.rows.map(r=>r.product_name))])
@@ -19,7 +19,7 @@ function reset(){q.value='';payment.value='';renewal.value='';product.value='';s
 const columns=[{key:'order',label:'订单 / 订阅账号',wide:true},{key:'product',label:'套餐 / 地区'},{key:'fee',label:'服务费 / 优惠'},{key:'payment',label:'支付卡 / 上游金额'},{key:'status',label:'付款 / 办理状态',wide:true},{key:'renewal',label:'自动续费'},{key:'time',label:'更新时间'},{key:'action',label:'操作',wide:true}]
 </script>
 <template>
- <div class="page-heading"><div><span class="eyebrow">EVERY ORDER, IN ONE PLACE</span><h1>订单中心</h1><p>查订单、核付款、看续费，每一笔都有据可循。</p></div><a href="#/subscribe" class="btn primary"><Plus :size="17"/>办理订阅</a></div>
+ <div class="page-heading"><div><span class="eyebrow">EVERY ORDER, IN ONE PLACE</span><h1>订单中心</h1><p>查订单、核付款、看续费，每一笔都有据可循。</p></div><a v-if="canSubscribe" href="#/subscribe" class="btn primary"><Plus :size="17"/>办理订阅</a></div>
  <p v-if="initialFilter&&(initialFilter.q||initialFilter.status||initialFilter.attention)" class="callout">已按工作台待办筛选订单{{initialFilter.q?' · '+initialFilter.q:''}}。<button class="text-btn" @click="$emit('clear-filter')">查看全部订单</button></p><section class="panel record-panel">
   <div class="records-heading"><div><h2>全部订单</h2><p>付款、生效与续费分别记录，查看详情可跟进完整进度。</p></div><button class="btn secondary" :disabled="loading" @click="$emit('refresh')"><RefreshCw :size="15" :class="{'records-spin':loading}"/>刷新</button></div>
   <div class="records-filters">

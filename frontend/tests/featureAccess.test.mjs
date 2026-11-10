@@ -4,7 +4,8 @@ import {featureAllowed,routeAllowed,customerFeatures} from '../src/featureAccess
 test('closed customer features cannot render by hash navigation',()=>{
  const flags=Object.fromEntries(customerFeatures.map(key=>[key,false]))
  for(const feature of customerFeatures)assert.equal(routeAllowed(flags,'/'+feature),false)
- assert.equal(routeAllowed(flags,'/profile'),true)
+ assert.equal(routeAllowed(flags,'/profile'),false)
+ assert.equal(routeAllowed(flags,'/support'),false)
  assert.equal(routeAllowed(flags,'/admin/settings'),false)
  assert.equal(routeAllowed(flags,'/unknown'),false)
  flags.wallet=true

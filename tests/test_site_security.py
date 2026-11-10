@@ -44,12 +44,14 @@ class SiteSecurityTests:
             self.assertEqual(user.get('/docs').status_code,403)
             self.assertEqual(user.get('/api/openapi.json').status_code,403)
             me=self.ok(user.get('/api/me'))
-            self.assertEqual([n['id'] for n in me['navigation']],['profile'])
+            self.assertEqual([n['id'] for n in me['navigation']],[])
             for field in ('balance','frozen','invite_code','fee_override'):self.assertNotIn(field,me)
             self.assertIsNone(me['membership'])
             pub=self.ok(user.get('/api/public'))
             self.assertEqual(pub['products'],[]);self.assertFalse(pub['payment_connected'])
-            self.ok(self.client.get('/api/admin/settings'));self.ok(self.client.get('/api/orders'));self.ok(self.client.get('/api/openapi.json'))
+            self.ok(self.client.get('/api/admin/settings'));self.ok(self.client.get('/api/admin/orders'))
+            self.assertEqual(self.client.get('/api/orders').status_code,403)
+            self.assertEqual(self.client.get('/api/openapi.json').status_code,403)
             flags['links']=True;flags['keys']=True;flags['home']=True
             self.ok(self.client.put('/api/admin/settings/features',json=flags))
             for prefix in ('','/v1','/cslive-go','/cslive-full'):

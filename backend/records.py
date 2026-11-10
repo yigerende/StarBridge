@@ -206,8 +206,21 @@ def admin_orders(q:str='',status:str='',attention:str='',include_admin:bool=True
     rows=db.all('SELECT '+ORDER_FIELDS+',o.user_id,o.note,u.email AS owner'+where+' ORDER BY o.created_at DESC,o.id DESC LIMIT $3 OFFSET $4',q,status,page_size,(page-1)*page_size)
     for r in rows:
         r['payment']=_order_list_payment(r)
-    total=db.scalar('SELECT count(*)'+where,q,status)
-    return {'items':rows,'total':total,'page':page,'page_size':page_size,'has_more':page*page_size<total}
+    # Aggregate the same filtered set as the list, before pagination. Payment
+    # success alone does not mean activation and renewal follow-up are complete.
+    followup="o.status='succeeded' AND o.workflow='subscription' AND (o.activation='review' OR o.renewal='review')"
+    settling="o.status='succeeded' AND o.workflow='subscription' AND (o.activation='pending' OR o.renewal IN ('pending','retrying'))"
+    counts=db.one(f"""SELECT count(*) AS total,
+        count(*) FILTER(WHERE o.status='queued') AS queued,
+        count(*) FILTER(WHERE o.status='processing' OR (({settling}) AND NOT ({followup}))) AS running,
+        count(*) FILTER(WHERE o.status='review') AS review,
+        count(*) FILTER(WHERE {followup}) AS followup,
+        count(*) FILTER(WHERE (o.status='succeeded' AND NOT ({followup}) AND NOT ({settling}))
+            OR (o.workflow='link' AND o.status='awaiting_payment')) AS completed,
+        count(*) FILTER(WHERE o.status IN ('failed','cancelled')) AS closed
+        """+where,q,status)
+    total=counts.pop('total')
+    return {'items':rows,'total':total,'summary':counts,'page':page,'page_size':page_size,'has_more':page*page_size<total}
 
 
 @admin_router.get('/orders/{id}')

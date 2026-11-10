@@ -20,7 +20,7 @@ function registerAccess(app) {
     if (pathname.startsWith('/api/admin/v1/redeem-codes') || pathname==='/api/user/v1/redeem')
       fail(false, '请通过统一资金中心和兑换码管理操作', 409);
     if (r.method==='PATCH' && pathname==='/api/admin/v1/settings') {
-      const shared=['site_name','brand','announcement','announcements','custom_menus','registration_open','login_slider_enabled','email_verify_enabled','email_domains','smtp'];
+      const shared=['features','site_name','brand','announcement','announcements','custom_menus','registration_open','login_slider_enabled','email_verify_enabled','email_domains','smtp'];
       fail(!shared.some(key=>Object.hasOwn(r.body||{},key)), '请通过统一站点设置修改公共配置', 409);
     }
     if (r.method !== 'GET' && /^\/api\/admin\/v1\/users(?:\/[^/]+)?$/.test(pathname))
