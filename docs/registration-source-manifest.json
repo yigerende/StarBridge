@@ -439,8 +439,8 @@
     },
     {
       "path": "src/platform/db.js",
-      "sha256": "a9790f8b46447c1f855d5304dc0a22f4bed5e59882a069010a520cd21a14444a",
-      "reason": "Project shared StarBridge feature switches into the registration integration; registration execution core unchanged."
+      "sha256": "068dfa419959718e77c10a070313c5a08dfaee71c68d7332306542af476a72ab",
+      "reason": "统一主入口按 IP 限流，管理员鉴权后豁免请求频率限制。"
     },
     {
       "path": "src/platform/finance.js",
@@ -478,10 +478,6 @@
     {
       "path": "src/platform/risk-scan.js",
       "sha256": "023f6ee2b0f823623f1cd5129214f50a4e52450f803d89572521ad0493f9f441"
-    },
-    {
-      "path": "src/platform/risk-store.js",
-      "sha256": "83bf939fc20e5ec7e02cdb825cd475eb5883da04d6504a7b9bb22488cbfd12f6"
     },
     {
       "path": "src/platform/suppliers.js",
@@ -577,6 +573,15 @@
       "path": "web/src/portal/CustomerCenter.tsx",
       "sha256": "f3583814987fb66a8ce5f00ce5b058999be80aa75fe5fcdb1dab962416158eb2",
       "reason": "Use unified customer capabilities for registration actions and account-delivery links."
+    },
+    {
+      "path": "src/platform/risk.js",
+      "sha256": "e4768f9a8207e06accabdcd3aab6dac8f2717b6c06f000c28e30cfe05dad8229",
+      "reason": "接入层使用主应用的 IP 预算，不重复叠加账号和密钥限流。"
+    },
+    {
+      "path": "src/platform/risk-store.js",
+      "sha256": "83bf939fc20e5ec7e02cdb825cd475eb5883da04d6504a7b9bb22488cbfd12f6"
     }
   ],
   "hashing": "sha256; text normalized to LF, binary exact"

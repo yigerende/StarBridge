@@ -196,7 +196,6 @@ def acquire(q,id,seconds):
 @router.post('/resources/{id}/test')
 def quick_test(id:str,request:Request):
     from .country_pool import mode
-    require(limit('proxytest:'+current(request)['id'],10),'测试过于频繁',429)
     with db.transaction() as q:
         q.execute('SELECT pg_advisory_xact_lock(1886003)')
         require(mode(q)=='manual','当前启用国家代理池，请在国家代理池中测试',409)
@@ -219,7 +218,6 @@ async def start_check(id:str,request:Request):
 def start_check_value(id,request,v):
     from .country_pool import mode
     kind=v.get('kind');require(kind in ('quality','openai'),'请选择评分或 OpenAI 测试')
-    require(limit('proxytest:'+current(request)['id'],10),'测试过于频繁',429)
     with db.transaction() as q:
         q.execute('SELECT pg_advisory_xact_lock(1886003)')
         require(mode(q)=='manual','当前启用国家代理池，请在国家代理池中测试',409)

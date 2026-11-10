@@ -131,6 +131,7 @@ class Database {
     };
   }
   async limit(key, max, seconds = 60) {
+    if (process.env.XUFU_INTEGRATION === '1') return true;
     const r = await this.one(
       "INSERT INTO platform_rate_limits(key,hits,expires_at) VALUES($1,1,now()+$2*interval '1 second') ON CONFLICT(key) DO UPDATE SET hits=CASE WHEN platform_rate_limits.expires_at<now() THEN 1 ELSE platform_rate_limits.hits+1 END,expires_at=CASE WHEN platform_rate_limits.expires_at<now() THEN now()+$2*interval '1 second' ELSE platform_rate_limits.expires_at END RETURNING hits",
       [key, seconds],

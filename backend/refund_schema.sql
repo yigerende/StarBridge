@@ -106,3 +106,4 @@ ALTER TABLE refund_settings ADD COLUMN IF NOT EXISTS accepting boolean NOT NULL 
 ALTER TABLE refund_settings ADD COLUMN IF NOT EXISTS service_fee bigint NOT NULL DEFAULT 10000 CHECK(service_fee BETWEEN 0 AND 10000000);
 ALTER TABLE ledger ADD COLUMN IF NOT EXISTS refund_order_id text REFERENCES refunds(id);
 CREATE UNIQUE INDEX IF NOT EXISTS refund_settle_once ON ledger(refund_order_id) WHERE business='refund' AND kind='charge';
+CREATE INDEX IF NOT EXISTS ledger_activity_order ON ledger(user_id,business,(COALESCE(order_id,registration_order_id,refund_order_id)));

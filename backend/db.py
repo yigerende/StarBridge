@@ -36,6 +36,10 @@ def pool():
         with _pool_lock:
             if _pool is None:
                 _pool = ThreadedConnectionPool(8, 24, os.environ['DATABASE_URL'], connect_timeout=5)
+                # Start with eight connections, then retain connections opened
+                # during bursts. psycopg2 otherwise closes every idle connection
+                # above minconn, repeatedly reconnecting under concurrent load.
+                _pool.minconn = _pool.maxconn
     return _pool
 
 

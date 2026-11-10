@@ -250,7 +250,7 @@ async def request_refresh(request: Request):
             cfg = settings(q)
             key = value['kind'] + '_requested_at'
             # Coalesce repeated manual requests; do not restart a batch already queued.
-            require(clock() - cfg.get(key, 0) >= 60, '更新已安排，请稍后刷新查看', 429)
+            if clock() - cfg.get(key, 0) < 60:return {'queued': True}
             cfg[key] = clock()
             write(CONFIG_KEY, cfg, q)
             audit(q, request, 'region_prices.refresh', value['kind'], '安排地区参考价数据更新')

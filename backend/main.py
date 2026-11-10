@@ -18,7 +18,7 @@ from .runtime import worker_mode
 from . import login_slider, customer_api, admin_orders, order_updates, invitations, email_auth, features, custom_menus, branding, regions, country_pool, price_reference
 from . import deployment
 from . import subscription_recovery
-from . import refunds, support
+from . import refunds, support, activity
 from .request_origin import configured_origin, origin_allowed
 from .auth_runtime import bounded_call
 from . import registration_gateway
@@ -107,7 +107,10 @@ app=FastAPI(title='StarBridge API',version='1.0.0',docs_url=None,redoc_url=None,
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 
 @app.exception_handler(BusinessError)
-async def business_error(request,error):return response({'error':error.message},error.status)
+async def business_error(request,error):
+    result=response({'error':error.message},error.status)
+    if hasattr(error,'retry_after'):result.headers['Retry-After']=str(error.retry_after)
+    return result
 
 
 @app.exception_handler(RequestValidationError)
@@ -139,7 +142,7 @@ async def security(request:Request,call_next):
         if not request.url.path.startswith(('/health/', '/assets/')):
             await run_in_threadpool(bounded_call,check_source,request)
         result=await call_next(request)
-    except BusinessError as e:result=response({'error':e.message},e.status)
+    except BusinessError as e:result=await business_error(request,e)
     except db.DatabaseBusyError:result=response({'error':'请求较多，请稍后重试'},503)
     except Exception as e:
         log.error('Request failed (%s)',type(e).__name__);result=response({'error':'操作未完成，请稍后重试'},500)
@@ -152,9 +155,14 @@ async def security(request:Request,call_next):
 
 
 def check_source(request):
+    from . import rate_limits
+    verified_identity(request)
+    if rate_limits.administrator(request):return
+    # Login verifies administrator credentials before applying IP limits.
+    if request.url.path=='/api/auth/login':return
     source=ip(request)
     require(not db.scalar('SELECT ip FROM blocked_ips WHERE ip=$1 AND expires_at>now()',source),'当前来源暂不可访问',403)
-    require(limit('edge:'+source,600),'请求过于频繁',429)
+    rate_limits.enforce(request,'edge','edge_per_minute')
 
 
 for module in (login_slider,auth,email_auth,membership,wallet,admin_accounts,settings,proxies,admin_content,renewals,subscription,subscription_cslive_go,subscription_cslive_full,registration_gateway,deployment):app.include_router(module.router)
@@ -163,6 +171,8 @@ app.include_router(refunds.router)
 app.include_router(refunds.admin)
 app.include_router(support.router)
 app.include_router(support.customer_router)
+app.include_router(activity.router)
+app.include_router(activity.admin_router)
 
 
 @app.get('/health/live')

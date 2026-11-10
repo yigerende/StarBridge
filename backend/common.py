@@ -131,18 +131,32 @@ def response(value, status=200):
 USER_FIELDS = 'u.id,u.email,u.name,u.role,u.status,u.balance,u.frozen,u.invite_code,u.fee_override,u.created_at'
 
 
-def authenticate(request: Request, admin=False, apply_limit=True):
+def verified_identity(request: Request, refresh=False):
+    if not refresh and hasattr(request.state, 'verified_identity'):
+        return request.state.verified_identity
     authorization = request.headers.get('authorization')
+    user = None
     if authorization:
-        require(not admin and request.url.path.startswith('/api/v1/'), '此接口不接受 API 密钥', 403)
-        token = authorization.removeprefix('Bearer ')
-        user = db.one('SELECT '+USER_FIELDS+' FROM users u JOIN api_keys k ON k.user_id=u.id WHERE k.hash=$1 AND NOT k.revoked AND u.deleted_at IS NULL', digest(token))
-        if user:
-            db.execute('UPDATE api_keys SET last_used=now() WHERE hash=$1', digest(token))
+        match = re.fullmatch(r'Bearer ([A-Za-z0-9_-]{20,160})', authorization)
+        if match and request.url.path.startswith(('/api/v1/', '/registration/open/v1/')):
+            token = match[1]
+            user = db.one('SELECT '+USER_FIELDS+', (k.secret_enc IS NULL) AS key_needs_secret, (k.last_used IS NULL OR k.last_used<now()-interval \'1 minute\') AS key_needs_touch FROM users u JOIN api_keys k ON k.user_id=u.id WHERE k.hash=$1 AND NOT k.revoked AND u.deleted_at IS NULL AND u.status=\'active\'', digest(token))
+            if user:
+                needs_secret=user.pop('key_needs_secret');needs_touch=user.pop('key_needs_touch')
+                if needs_secret or needs_touch:
+                    db.execute("UPDATE api_keys SET last_used=now(),secret_enc=COALESCE(secret_enc,$2) WHERE hash=$1 AND NOT revoked AND (secret_enc IS NULL OR last_used IS NULL OR last_used<now()-interval '1 minute')", digest(token), encrypt(token) if needs_secret else None)
     else:
         token = request.cookies.get('xupay_session')
-        require(bool(token), '请先登录', 401)
-        user = db.one('SELECT '+USER_FIELDS+' FROM users u JOIN sessions s ON s.user_id=u.id WHERE s.hash=$1 AND s.expires_at>now() AND u.deleted_at IS NULL', digest(token))
+        if token:
+            user = db.one('SELECT '+USER_FIELDS+' FROM users u JOIN sessions s ON s.user_id=u.id WHERE s.hash=$1 AND s.expires_at>now() AND u.deleted_at IS NULL AND u.status=\'active\'', digest(token))
+    request.state.verified_identity = user
+    return user
+
+
+def authenticate(request: Request, admin=False, apply_limit=True):
+    if request.headers.get('authorization'):
+        require(not admin and request.url.path.startswith(('/api/v1/', '/registration/open/v1/')), '此接口不接受 API 密钥', 403)
+    user = verified_identity(request,refresh=not apply_limit)
     require(user is not None and user['status'] == 'active', '登录已失效或账户已停用', 401)
     request.state.user = user
     if admin and user['role'] != 'admin':
@@ -151,9 +165,9 @@ def authenticate(request: Request, admin=False, apply_limit=True):
     if not admin:
         from .features import enforce
         enforce(request, user)
-    if apply_limit and not limit('api:'+user['id'], config('risk').get('api_per_minute',120)):
-        event(request, 'rate_limit', 'medium', '账户请求频率超限')
-        raise BusinessError('操作频繁，请稍后再试', 429)
+    if apply_limit:
+        from .rate_limits import enforce
+        enforce(request, 'api', 'api_per_minute')
     return user
 
 

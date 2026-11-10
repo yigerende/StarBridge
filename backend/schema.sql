@@ -12,6 +12,7 @@ ALTER TABLE users DROP CONSTRAINT IF EXISTS users_email_key;
 CREATE UNIQUE INDEX IF NOT EXISTS users_live_email_unique ON users(email) WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS api_keys (id text PRIMARY KEY,user_id text NOT NULL REFERENCES users(id),name text NOT NULL,hash text UNIQUE NOT NULL,prefix text NOT NULL,revoked boolean NOT NULL DEFAULT false,last_used timestamptz,created_at timestamptz DEFAULT now());
+ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS secret_enc text;
 
 CREATE TABLE IF NOT EXISTS settings (key text PRIMARY KEY,value jsonb NOT NULL);
 CREATE TABLE IF NOT EXISTS email_challenges (
@@ -141,6 +142,7 @@ CREATE TABLE IF NOT EXISTS renewal_tasks (
 CREATE UNIQUE INDEX IF NOT EXISTS renewal_account_pending ON renewal_tasks(account_hash) WHERE status IN ('queued','processing','checking','review');
 
 CREATE INDEX IF NOT EXISTS renewal_tasks_queue ON renewal_tasks(next_at) WHERE status IN ('queued','processing','checking');
+CREATE INDEX IF NOT EXISTS renewal_user_time ON renewal_tasks(user_id,created_at DESC);
 
 CREATE TABLE IF NOT EXISTS renewal_request_keys (
  user_id text NOT NULL REFERENCES users(id),key text NOT NULL,account_hash text NOT NULL,

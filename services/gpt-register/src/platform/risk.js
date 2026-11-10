@@ -95,6 +95,8 @@ function registerRisk(app, db) {
       )
         return;
     }
+    // StarBridge enforces the shared IP policy at its authenticated gateway.
+    if (process.env.XUFU_INTEGRATION === '1') return;
     const decisions = await consume(db, m, r.user, login);
     for (const d of decisions) {
       if (d.blocked) {

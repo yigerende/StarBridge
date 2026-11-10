@@ -23,7 +23,7 @@ class RegistrationGatewayTests(unittest.TestCase):
     def test_path_preserves_query_without_allowing_url_escape(self):
         env={'REGISTRATION_URL':'http://registration-app:3210','REGISTRATION_GATEWAY_SECRET':'s'*40}
         with patch.dict('os.environ',env):
-            for raw in (b'/registration//evil.test',b'/registration/%2e%2e/secrets',b'/registration/a%5cb'):
+            for raw in (b'/registration//evil.test',b'/registration/%2e%2e/secrets',b'/registration/a%5cb',b'/registration/.runtime/platform-secrets.json',b'/registration/%2eenv',b'/registration/src/platform/db.js'):
                 request=Request({'type':'http','raw_path':raw,'query_string':b''})
                 with self.assertRaises(BusinessError):gateway.destination(request)
             request=Request({'type':'http','raw_path':b'/registration/api/v1/runs/x/events','query_string':b'tail=1&reveal=1'})
@@ -39,7 +39,7 @@ class RegistrationGatewayTests(unittest.TestCase):
         real=httpx.AsyncClient
         def client(**kwargs):return real(transport=httpx.MockTransport(handler),**kwargs)
         app=FastAPI();app.include_router(gateway.router)
-        with patch.dict('os.environ',{'REGISTRATION_URL':'http://registration-app:3210','REGISTRATION_GATEWAY_SECRET':'s'*40}),patch.object(gateway,'ip',return_value='127.0.0.1'),patch.object(gateway.httpx,'AsyncClient',client):
+        with patch.dict('os.environ',{'REGISTRATION_URL':'http://registration-app:3210','REGISTRATION_GATEWAY_SECRET':'s'*40}),patch.object(gateway,'ip',return_value='127.0.0.1'),patch.object(gateway,'authorize'),patch.object(gateway.httpx,'AsyncClient',client):
             response=TestClient(app).get('/registration/api/user/v1/accounts/export',headers={'Cookie':'xupay_session=test','x-registration-gateway':'forged','x-registration-source-ip':'8.8.8.8'})
         self.assertEqual(response.status_code,200)
         self.assertEqual(response.content,b'synthetic-export')

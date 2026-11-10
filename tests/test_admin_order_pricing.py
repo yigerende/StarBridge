@@ -257,7 +257,7 @@ class AdminOrderPricingTests:
                 for parameter in operation.get('parameters',[]):
                     self.assertTrue(parameter.get('description','').strip(),(path,parameter['name']))
         self.assertEqual(len(operation_ids),len(set(operation_ids)))
-        self.assertEqual(len(operation_ids),32)
+        self.assertEqual(len(operation_ids),33)
         def visit(value):
             if isinstance(value,dict):
                 if '$ref' in value:

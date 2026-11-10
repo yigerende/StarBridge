@@ -124,10 +124,6 @@ def deliver(delivery_id, recipient, purpose, code=None, fingerprint=None):
     return ''
 
 
-def daily_limit(key, maximum):
-    return db.scalar("INSERT INTO rate_buckets(key,hits,expires_at) VALUES($1,1,now()+interval '1 day') ON CONFLICT(key) DO UPDATE SET hits=CASE WHEN rate_buckets.expires_at<now() THEN 1 ELSE rate_buckets.hits+1 END,expires_at=CASE WHEN rate_buckets.expires_at<now() THEN now()+interval '1 day' ELSE rate_buckets.expires_at END RETURNING hits", key) <= maximum
-
-
 @router.post('/auth/email-code')
 async def send_code(request: Request, background: BackgroundTasks):
     from .auth_runtime import run_auth
@@ -144,15 +140,17 @@ def send_code_sync(request, background, value):
         require(cfg.get('email_verify_enabled') is True, '当前注册无需邮箱验证码', 403)
         require(email_allowed(email, cfg), '此邮箱域名暂不支持注册')
     require(mail_ready(), '邮件服务暂未开放，请联系管理员', 503)
-    require(limit('email-code:' + ip(request), 5) and daily_limit('email-day-ip:' + ip(request), 100), '发送过于频繁，请稍后再试', 429)
+    from . import rate_limits
+    rate_limits.enforce(request,'email-code','email_per_minute')
+    rate_limits.enforce(request,'email-day-ip','email_per_day',86400)
+    cooldown=rate_limits.settings(request)['email_cooldown_seconds']
     code = f'{secrets.randbelow(1000000):06d}'
     fingerprint = code_hash(email, purpose, code)
     delivery_id = None
     with db.transaction() as q:
         q.execute('SELECT pg_advisory_xact_lock(1886030,hashtext($1))', purpose + ':' + email)
         previous = q.one('SELECT created_at FROM email_challenges WHERE email=$1 AND purpose=$2', email, purpose)
-        require(not previous or (now() - previous['created_at']).total_seconds() >= 60, '请在 60 秒后重新获取验证码', 429)
-        require(daily_limit('email-day-recipient:' + digest(email), 20), '此邮箱今日发送次数已达上限，请明天再试', 429)
+        require(rate_limits.administrator(request) or not previous or (now() - previous['created_at']).total_seconds() >= cooldown, f'请在 {cooldown} 秒后重新获取验证码', 429)
         user = q.one('SELECT id,password_hash,status FROM users WHERE email=$1 AND deleted_at IS NULL', email)
         eligible = not user if purpose == 'register' else bool(user and user['status'] == 'active')
         q.execute("INSERT INTO email_challenges(email,purpose,secret_hash,user_id,credential_hash,expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '15 minutes') ON CONFLICT(email,purpose) DO UPDATE SET secret_hash=EXCLUDED.secret_hash,user_id=EXCLUDED.user_id,credential_hash=EXCLUDED.credential_hash,expires_at=EXCLUDED.expires_at,created_at=now(),attempts=0,delivered=false",
@@ -162,7 +160,7 @@ def send_code_sync(request, background, value):
             q.execute('INSERT INTO mail_deliveries(id,recipient,purpose) VALUES($1,$2,$3)', delivery_id, email, purpose)
     if delivery_id: background.add_task(deliver, delivery_id, email, purpose, code, fingerprint)
     # Same response for unknown/disabled/existing accounts to avoid account enumeration.
-    return {'ok': True, 'retry_after': 60, 'expires_in': CODE_SECONDS,
+    return {'ok': True, 'retry_after': cooldown, 'expires_in': CODE_SECONDS,
             'message': '若邮箱符合条件，验证码将发送到该邮箱，请检查收件箱或垃圾邮件。'}
 
 
@@ -178,7 +176,6 @@ async def test_delivery(request: Request):
     recipient = str(value.get('email', '')).strip().lower()
     require(email_valid(recipient), '请输入有效的测试收件邮箱')
     require(mail_ready(), '请先保存并启用邮件配置')
-    require(limit('mail-test:' + current(request)['id'], 3), '测试过于频繁，请稍后再试', 429)
     delivery_id = uid()
     db.execute("INSERT INTO mail_deliveries(id,recipient,purpose) VALUES($1,$2,'test')", delivery_id, recipient)
     error = await run_in_threadpool(deliver, delivery_id, recipient, 'test')

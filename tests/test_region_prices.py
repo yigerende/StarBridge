@@ -159,7 +159,7 @@ class RegionalPriceTests:
             prices.refresh_tick()
             fetch.assert_not_called()
             self.ok(self.client.post('/api/admin/region-prices/refresh', json={'kind': 'prices'}))
-            self.assertEqual(self.client.post('/api/admin/region-prices/refresh', json={'kind': 'prices'}).status_code, 429)
+            self.assertEqual(self.ok(self.client.post('/api/admin/region-prices/refresh', json={'kind': 'prices'})), {'queued': True})
             prices.refresh_tick()
             self.assertEqual(fetch.call_count, 2)
             prices.refresh_tick()

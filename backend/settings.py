@@ -18,11 +18,17 @@ RANGES = {
  'proxy': {'request_timeout_seconds':(10,120)}, 'site': {'invite_rate':(0,0)}
 }
 RANGES['payment']['post_payment_delay_seconds'] = (0,MAX_SECONDS)
+from .rate_limits import RANGES as RATE_RANGES, DEFAULTS as RATE_DEFAULTS
+RANGES['risk'].update(RATE_RANGES)
 OPTIONAL = {'site': {'icon','sidebar_default_expanded','telegram_group_url'}, 'proxy': {'global_id','mode'}, 'payment': {'checkout_flow','subscription_flow','checkout_type','checkout_types','network_restart_limit','post_payment_delay_seconds','cslive_go_visit_return','cslive_go_refresh_before_renewal'}}
 
 
 def validate_config(key, v):
     require(key in DEFAULTS, '不支持的配置组')
+    if key=='risk':
+        require(isinstance(v,dict),'风控配置格式无效')
+        saved=config('risk')
+        for name,default in RATE_DEFAULTS.items():v.setdefault(name,saved.get(name,default))
     if key=='invites':
         require(isinstance(v,dict) and set(v)=={'enabled','stages'} and type(v['enabled']) is bool,'邀请配置字段无效')
         stages=v['stages'];require(isinstance(stages,list) and len(stages)==3,'请配置三个奖励阶段')
@@ -139,6 +145,7 @@ def validate_config(key, v):
 def settings():
     result = {r['key']:r['value'] for r in db.all('SELECT key,value FROM settings ORDER BY key')}
     result['features']={**DEFAULTS['features'],**result.get('features',{})}
+    result['risk']={**DEFAULTS['risk'],**result.get('risk',{})}
     result.pop('country_pool',None)
     result['proxy'].setdefault('mode','manual')
     result['payment'].setdefault('post_payment_delay_seconds', DEFAULT_SECONDS)

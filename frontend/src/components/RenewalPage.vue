@@ -36,7 +36,7 @@ async function submit(){
  catch(e){if(!disposed)error.value=(e as Error).name==='TimeoutError'?'提交结果未确认，可再次提交查询原任务。':(e as Error).message}
  finally{if(!disposed)busy.value=false}
 }
-onMounted(()=>{refresh();poll=setInterval(()=>{now.value=Date.now();if(!busy.value&&document.visibilityState==='visible')refresh()},4000)})
+onMounted(()=>{refresh();const selected=new URLSearchParams(location.hash.split('?')[1]||'').get('task_id');if(selected)void select(selected);poll=setInterval(()=>{now.value=Date.now();if(!busy.value&&document.visibilityState==='visible')refresh()},4000)})
 onUnmounted(()=>{disposed=true;revision++;detailRevision++;clearTimeout(timer);clearInterval(poll);inspectController?.abort();lifetime.abort();session.value='';info.value=null})
 </script>
 

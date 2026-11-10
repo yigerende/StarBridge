@@ -36,15 +36,21 @@ async def login(request: Request):
 
 
 def login_sync(request, v):
-    if not limit('login:'+ip(request),config('risk').get('login_per_minute',10)):
-        event(request,'login_rate','high','登录尝试频繁')
-        raise BusinessError('登录尝试过多，请一分钟后再试',429)
+    from . import rate_limits
+    require(isinstance(v.get('password'),str) and length(v['password'])<=72,'账号或密码不正确',401)
+    user = db.one('SELECT id,password_hash,status,role FROM users WHERE email=$1 AND deleted_at IS NULL',str(v.get('email','')).strip().lower())
+    dummy = '$2b$12$vuCQLWceDWoxSWQG6TLbqep2q5iYtXvwi5ok8gQ9MluCb8FH13H96'
+    valid = None
+    if user and user['role']=='admin' and user['status']=='active':
+        valid=password_matches(v['password'],user['password_hash'])
+        if valid:request.state.verified_identity=user
+    if not rate_limits.administrator(request):
+        require(not db.scalar('SELECT ip FROM blocked_ips WHERE ip=$1 AND expires_at>now()',ip(request)),'当前来源暂不可访问',403)
+    rate_limits.enforce(request,'edge','edge_per_minute')
+    rate_limits.enforce(request,'login','login_per_minute')
     from .login_slider import consume as consume_slider
     consume_slider(request,v.get('slider_proof'))
-    require(isinstance(v.get('password'),str) and length(v['password'])<=72,'账号或密码不正确',401)
-    user = db.one('SELECT id,password_hash,status FROM users WHERE email=$1 AND deleted_at IS NULL',str(v.get('email','')).strip().lower())
-    dummy = '$2b$12$vuCQLWceDWoxSWQG6TLbqep2q5iYtXvwi5ok8gQ9MluCb8FH13H96'
-    valid = password_matches(str(v.get('password','')),user['password_hash'] if user else dummy)
+    if valid is None:valid=password_matches(v['password'],user['password_hash'] if user else dummy)
     if not user or not valid or user['status'] != 'active':
         event(request,'login_failed','medium','账号或密码校验失败')
         raise BusinessError('账号或密码不正确，或账户已停用',401)
@@ -68,7 +74,8 @@ async def register(request: Request):
 def register_sync(request, v):
     cfg = security_config()
     require(cfg['registration_open'],'暂未开放注册',403)
-    require(limit('register:'+ip(request),5),'请稍后再试',429)
+    from .rate_limits import enforce
+    enforce(request,'register','register_per_minute')
     email = str(v.get('email','')).strip().lower(); name=v.get('name',''); pw=v.get('password','')
     require(email_valid(email) and isinstance(name,str) and 1 <= length(name.strip()) <= 80 and 10 <= length(pw) <= 72,'请填写有效邮箱、用户名和 10～72 位密码')
     require(email_allowed(email,cfg), '此邮箱域名暂不支持注册')
@@ -104,7 +111,8 @@ async def reset_password(request: Request):
 
 
 def reset_password_sync(request, v):
-    require(limit('password-reset:'+ip(request),10), '尝试过于频繁，请稍后再试',429)
+    from .rate_limits import enforce
+    enforce(request,'password-reset','reset_per_minute')
     email=str(v.get('email','')).strip().lower();pw=v.get('password','')
     require(email_valid(email) and 10 <= length(pw) <= 72, '请填写有效邮箱和 10～72 位新密码')
     hashed=password_hash(pw)
@@ -114,7 +122,7 @@ def reset_password_sync(request, v):
         if not error:
             q.execute('UPDATE users SET password_hash=$2,updated_at=now() WHERE id=$1',user['id'],hashed)
             q.execute('DELETE FROM sessions WHERE user_id=$1',user['id'])
-            q.execute('UPDATE api_keys SET revoked=true WHERE user_id=$1',user['id'])
+            q.execute('UPDATE api_keys SET revoked=true,secret_enc=NULL WHERE user_id=$1',user['id'])
             q.execute("INSERT INTO audit_events(actor_id,action,target,detail,ip) VALUES($1,'password.reset',$1,'通过邮箱重置密码并撤销登录会话和 API 密钥',$2)",user['id'],ip(request))
     require(not error,error)
     return {'ok':True,'message':'密码已重置，请使用新密码登录。原登录会话和 API 密钥已失效。'}

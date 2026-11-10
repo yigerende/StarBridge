@@ -127,25 +127,49 @@ async def redeem(request: Request):
 @router.get('/keys')
 def keys(request: Request):
     user_id=current(request)['id']
-    return {'items':db.all('SELECT id,name,prefix,revoked,last_used,created_at FROM api_keys WHERE user_id=$1 ORDER BY created_at DESC',user_id)}
+    return {'items':db.all('SELECT id,name,prefix,revoked,last_used,created_at,(secret_enc IS NOT NULL AND NOT revoked) AS copyable FROM api_keys WHERE user_id=$1 ORDER BY created_at DESC',user_id)}
 
 
 @router.post('/keys')
 async def create_key(request: Request):
     v=await body(request);name=v.get('name','');u=current(request)
-    require(1<=length(name)<=80,'请填写密钥名称')
+    require(isinstance(name,str) and 1<=length(name.strip())<=80,'请填写 1～80 字节的密钥用途名称')
+    name=name.strip()
     with db.transaction() as q:
         q.one('SELECT id FROM users WHERE id=$1 FOR UPDATE',u['id'])
         require(q.scalar('SELECT count(*) FROM api_keys WHERE user_id=$1 AND NOT revoked',u['id'])<10,'最多保留 10 个有效密钥')
         key='xp_live_'+secrets.token_urlsafe(32);id=uid()
-        q.execute('INSERT INTO api_keys(id,user_id,name,hash,prefix) VALUES($1,$2,$3,$4,$5)',id,u['id'],name,digest(key),key[:16]+'…'+key[-4:])
+        q.execute('INSERT INTO api_keys(id,user_id,name,hash,prefix,secret_enc) VALUES($1,$2,$3,$4,$5,$6)',id,u['id'],name,digest(key),key[:16]+'…'+key[-4:],encrypt(key))
+        audit(q,request,'key.created',id,'创建访问密钥')
     return {'id':id,'key':key}
 
 
 @router.delete('/keys/{id}')
 def revoke_key(id: str,request: Request):
-    require(db.execute('UPDATE api_keys SET revoked=true WHERE id=$1 AND user_id=$2',id,current(request)['id'])==1,'密钥不存在',404)
+    with db.transaction() as q:
+        require(q.execute('UPDATE api_keys SET revoked=true,secret_enc=NULL WHERE id=$1 AND user_id=$2',id,current(request)['id'])==1,'密钥不存在',404)
+        audit(q,request,'key.revoked',id,'撤销访问密钥')
     return {'ok':True}
+
+
+@router.patch('/keys/{id}')
+async def rename_key(id: str,request: Request):
+    value=await body(request);name=value.get('name','')
+    require(set(value)=={'name'} and isinstance(name,str) and 1<=length(name.strip())<=80,'请填写 1～80 字节的密钥用途名称')
+    with db.transaction() as q:
+        require(q.execute('UPDATE api_keys SET name=$3 WHERE id=$1 AND user_id=$2',id,current(request)['id'],name.strip())==1,'密钥不存在',404)
+        audit(q,request,'key.renamed',id,'修改密钥用途名称')
+    return {'ok':True}
+
+
+@router.post('/keys/{id}/reveal')
+def reveal_key(id: str,request: Request):
+    with db.transaction() as q:
+        row=q.one('SELECT secret_enc FROM api_keys WHERE id=$1 AND user_id=$2 AND NOT revoked FOR SHARE',id,current(request)['id'])
+        require(row is not None,'密钥不存在或已撤销',404)
+        require(row['secret_enc'],'此密钥尚未保存原文，下一次有效 API 调用后即可复制',409)
+        audit(q,request,'key.copied',id,'复制访问密钥')
+        return {'key':decrypt(row['secret_enc'])}
 
 
 @router.get('/invites')

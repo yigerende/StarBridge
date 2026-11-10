@@ -26,7 +26,7 @@ def delete_accounts(request, ids):
                 skipped.append({'id':row['id'],'email':row['email'],'reason':reason});continue
             q.execute("UPDATE users SET deleted_at=now(),status='disabled',password_hash='',updated_at=now() WHERE id=$1",row['id'])
             q.execute('DELETE FROM sessions WHERE user_id=$1',row['id'])
-            q.execute('UPDATE api_keys SET revoked=true WHERE user_id=$1',row['id'])
+            q.execute('UPDATE api_keys SET revoked=true,secret_enc=NULL WHERE user_id=$1',row['id'])
             q.execute('DELETE FROM email_challenges WHERE email=$1 OR user_id=$2',row['email'],row['id'])
             audit(q,request,'user.deleted',row['id'],'删除账户 '+row['email']+'；保留历史订单、资金及已受理任务')
             deleted.append(row['id'])
@@ -113,7 +113,7 @@ async def update_user(id: str,request: Request):
             account_options(q,request,id,v)
             if pw:q.execute('UPDATE users SET password_hash=$2 WHERE id=$1',id,password_hash(pw))
             if pw or status!='active' or role!=old['role']:
-                q.execute('DELETE FROM sessions WHERE user_id=$1',id);q.execute('UPDATE api_keys SET revoked=true WHERE user_id=$1',id)
+                q.execute('DELETE FROM sessions WHERE user_id=$1',id);q.execute('UPDATE api_keys SET revoked=true,secret_enc=NULL WHERE user_id=$1',id)
             audit(q,request,'user.updated',id,'资料、角色或单价修改')
     except UniqueViolation:
         raise BusinessError('邮箱已存在或修改失败')

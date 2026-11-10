@@ -7,6 +7,7 @@ from fastapi.responses import Response
 from . import db
 from .common import *
 from .product_availability import admin_product, GO_HTTP_FLOW
+from .rate_limits import settings as risk_settings
 
 router=APIRouter(prefix='/api/admin',dependencies=[Depends(administrator)])
 
@@ -70,7 +71,7 @@ def risk(severity:str='',q:str='',category:str='',state:str='',start:str='',end:
     rows=db.all('SELECT e.*,u.email,u.name AS user_name,COALESCE(e.last_seen,e.created_at) AS last_seen'+where+' ORDER BY COALESCE(e.last_seen,e.created_at) DESC,e.id DESC LIMIT $7 OFFSET $8',*args,page_size,(page-1)*page_size)
     blocks=db.all('SELECT * FROM blocked_ips WHERE expires_at>now() ORDER BY created_at DESC')
     return {'items':rows,'total':totals['total'],'page':page,'page_size':page_size,'summary':dict(totals,blocks=len(blocks)),
-            'blocks':blocks,'config':config('risk'),'categories':[r['category'] for r in db.all('SELECT DISTINCT category FROM risk_events ORDER BY category')],
+            'blocks':blocks,'config':risk_settings(),'categories':[r['category'] for r in db.all('SELECT DISTINCT category FROM risk_events ORDER BY category')],
             'generated_at':now(),'start':first,'end':last,'all_time':all_time}
 
 

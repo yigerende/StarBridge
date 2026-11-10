@@ -37,7 +37,7 @@ class FeatureControlTests(unittest.TestCase):
                 self.assertEqual(me.json()['navigation'],[])
                 self.assertTrue(all(value is False for value in me.json()['features'].values()))
                 self.assertEqual(client.patch('/api/me',json={}).status_code,403)
-                for path in ('overview','orders','wallet','keys','invites','membership','renewals','support','order-updates'):
+                for path in ('activity','overview','orders','wallet','keys','invites','membership','renewals','support','order-updates'):
                     self.assertEqual(client.get('/api/'+path).status_code,403,path)
             self.assertEqual(key.get('/api/v1/me').status_code,403)
             self.assertEqual(admin.get('/api/admin/settings').status_code,200)

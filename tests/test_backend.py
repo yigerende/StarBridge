@@ -58,9 +58,10 @@ from test_regions import RegionTests
 from test_team_subscription import TeamSubscriptionTests
 from test_country_pool import CountryPoolTests
 from test_region_prices import RegionalPriceTests
+from test_launch_audit import LaunchAuditTests
 
 
-class BackendTests(SubscriptionRecoveryTests,SubscriptionPaymentResultTests,RegionalPriceTests,CountryPoolTests,TeamSubscriptionTests,RegionTests,ProxyEditingTests,ProductPlanTests,RedeemUsageTests,AuthSecurityTests,RedeemCodeTests,CheckoutDiagnosticTests,BrandingTests,CustomMenuTests,AccountDeletionTests,SiteSecurityTests,InvitationTests,ExperienceTests,PaymentDelaySettingsTests,AdminOrderPricingTests,CustomerApiTests,unittest.TestCase):
+class BackendTests(LaunchAuditTests,SubscriptionRecoveryTests,SubscriptionPaymentResultTests,RegionalPriceTests,CountryPoolTests,TeamSubscriptionTests,RegionTests,ProxyEditingTests,ProductPlanTests,RedeemUsageTests,AuthSecurityTests,RedeemCodeTests,CheckoutDiagnosticTests,BrandingTests,CustomMenuTests,AccountDeletionTests,SiteSecurityTests,InvitationTests,ExperienceTests,PaymentDelaySettingsTests,AdminOrderPricingTests,CustomerApiTests,unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         with patch('backend.main.worker_loop'):
@@ -76,6 +77,9 @@ class BackendTests(SubscriptionRecoveryTests,SubscriptionPaymentResultTests,Regi
         # The scheduler is mocked. Finish fixtures left by preceding tests so
         # global queue guards observe only work created by the current test.
         db.execute('DELETE FROM rate_buckets')
+        # Unrelated business cases use generous IP budgets; rate policy has
+        # dedicated boundary/concurrency tests with deliberately small budgets.
+        db.execute("UPDATE settings SET value=value||$1::jsonb WHERE key='risk'",{'login_per_minute':1000,'api_per_minute':10000,'order_per_minute':1000,'edge_per_minute':100000})
         db.execute("UPDATE orders SET status='failed' WHERE status IN ('queued','processing','succeeded')")
         db.execute("UPDATE renewal_tasks SET status='disabled',lease_until=NULL,lease_token=NULL")
         db.execute("UPDATE proxy_checks SET state='failed',lease_until=NULL,lease_token=NULL WHERE state IN ('queued','running')")
@@ -732,7 +736,7 @@ class BackendTests(SubscriptionRecoveryTests,SubscriptionPaymentResultTests,Regi
             async def join_thread(join,*args):
                 return join(*args)
             async def exercise():
-                with patch.object(main.order_updates.updates,'start'), patch.object(main.order_updates.updates,'close'), patch.object(main.db,'initialize'), patch.object(main,'seed'), patch.object(main.db,'close'), patch.object(main.threading,'Thread') as thread, patch.object(main.asyncio,'to_thread',side_effect=join_thread):
+                with patch.object(main.refunds,'start'), patch.object(main.refunds,'stop'), patch.object(main.registration_gateway,'close_transport'), patch.object(main.order_updates.updates,'start'), patch.object(main.order_updates.updates,'close'), patch.object(main.db,'initialize'), patch.object(main,'seed'), patch.object(main.db,'close'), patch.object(main.threading,'Thread') as thread, patch.object(main.asyncio,'to_thread',side_effect=join_thread):
                     async with main.lifespan(app):
                         thread.return_value.start.assert_called_once()
                         self.assertEqual(thread.call_args.kwargs['name'],'starbridge-scheduler')
@@ -1190,7 +1194,7 @@ class BackendTests(SubscriptionRecoveryTests,SubscriptionPaymentResultTests,Regi
         actual={(path,method) for path,operations in app.openapi()['paths'].items() if path.startswith('/api/v1/') for method in operations}
         documented={(path,method) for path,operations in spec['paths'].items() for method in operations}
         self.assertEqual(documented,actual)
-        self.assertEqual(len(documented),23)
+        self.assertEqual(len(documented),24)
         user_id,_,user=self.new_user()
         try:
             key=self.ok(user.post('/api/keys',json={'name':'contract test'}))['key']

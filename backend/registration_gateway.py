@@ -7,7 +7,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import Response, StreamingResponse
 from starlette.requests import ClientDisconnect
 
-from .common import BusinessError, ip, require
+from .common import BusinessError, ip, require, authenticate
+from starlette.concurrency import run_in_threadpool
 
 router = APIRouter()
 _client = None
@@ -31,7 +32,19 @@ async def close_transport():
 REQUEST_HEADERS = {'accept', 'content-type', 'cookie', 'authorization', 'origin',
                    'x-requested-with', 'idempotency-key', 'range', 'if-none-match'}
 RESPONSE_HEADERS = {'content-type', 'content-disposition', 'content-length', 'content-encoding',
-                    'cache-control', 'etag', 'last-modified', 'accept-ranges', 'content-range'}
+                    'cache-control', 'etag', 'last-modified', 'accept-ranges', 'content-range', 'retry-after'}
+
+
+def authorize(request, path):
+    from .rate_limits import enforce
+    path='/'+path
+    admin=path.startswith(('/api/admin/', '/api/v1/', '/admin/', '/admin-assets/')) or path=='/admin'
+    if admin or path.startswith(('/api/user/', '/open/v1/')):
+        authenticate(request,admin=admin)
+        if request.method=='POST' and path.endswith('/registration-orders'):
+            enforce(request,'order','order_per_minute')
+        if path.endswith('/accounts/export') or path.endswith('/credentials'):
+            enforce(request,'export','export_per_minute')
 
 
 def enabled():
@@ -49,6 +62,9 @@ def destination(request):
     require(path.startswith('/') and not path.startswith('//') and '\\' not in path
             and not any(part in ('.', '..') for part in path.split('/'))
             and not any(ord(c) < 32 for c in path), '请求路径无效', 400)
+    require(not any(part.startswith('.') for part in path.split('/') if part)
+            and not path.startswith(('/src/','/services/','/backend/','/node_modules/')),
+            '页面不存在', 404)
     query = request.scope.get('query_string', b'').decode('ascii')
     return configured + raw + ('?' + query if query else '')
 
@@ -62,6 +78,7 @@ def registration_root():
 async def registration(request: Request, path: str):
     require(enabled(), '注册服务暂不可用，请稍后重试；订阅服务可正常使用', 503)
     target = destination(request)
+    await run_in_threadpool(authorize,request,unquote(path))
     headers = {k: v for k, v in request.headers.items() if k.lower() in REQUEST_HEADERS}
     headers.update({'host': request.headers['host'], 'accept-encoding': 'identity',
                     'x-registration-gateway': os.environ['REGISTRATION_GATEWAY_SECRET'],

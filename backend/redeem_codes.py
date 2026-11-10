@@ -31,10 +31,8 @@ def redeem(request, value):
     code = value.get('code', '')
     require(isinstance(code, str) and 1 <= len(code.strip()) <= 100, '兑换码无效')
     code = code.strip().upper()
-    # Keep rejected attempts counted even when the redemption transaction rolls back.
-    with transaction() as q:
-        hits = q.scalar("INSERT INTO rate_buckets(key,hits,expires_at) VALUES($1,1,now()+interval '1 minute') ON CONFLICT(key) DO UPDATE SET hits=CASE WHEN rate_buckets.expires_at<now() THEN 1 ELSE rate_buckets.hits+1 END,expires_at=CASE WHEN rate_buckets.expires_at<now() THEN now()+interval '1 minute' ELSE rate_buckets.expires_at END RETURNING hits", 'redeem:'+user['id'])
-    require(hits <= 10, '兑换过于频繁', 429)
+    from .rate_limits import enforce
+    enforce(request,'redeem','redeem_per_minute')
     with transaction() as q:
         row = q.one('SELECT id,amount,status,expires_at FROM redeem_codes WHERE code_hash=$1 FOR UPDATE', digest(code))
         require(row is not None and row['status'] == 'active' and row['expires_at'] > now(), '兑换码无效、已过期或已使用')

@@ -30,12 +30,12 @@ class RefundTests(unittest.TestCase):
         slots=patch.object(db,'_slots',threading.BoundedSemaphore(12));slots.start();self.addCleanup(slots.stop)
         for key,value in DEFAULTS.items():
             db.execute('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT DO NOTHING',key,value)
-        db.execute("UPDATE settings SET value=jsonb_set(value,'{api_per_minute}','10000') WHERE key='risk'")
+        db.execute("UPDATE settings SET value=value||$1::jsonb WHERE key='risk'",{'api_per_minute':10000,'order_per_minute':1000,'edge_per_minute':100000})
         db.execute("UPDATE users SET balance=200000,frozen=0,fee_override=500 WHERE id='u'")
         db.execute("INSERT INTO users(id,email,name,password_hash,invite_code,role) VALUES('a','admin@refund.test','Admin','synthetic','admin-fixture','admin')")
         for user in ('u','v','a'):
             db.execute("INSERT INTO sessions(hash,user_id,expires_at) VALUES($1,$2,now()+interval '1 hour')",digest('test-session-'+user),user)
-        db.execute("INSERT INTO api_keys(id,user_id,name,hash,prefix) VALUES('testkey','u','fixture',$1,'fixture')",digest('fixture-api-key'))
+        db.execute("INSERT INTO api_keys(id,user_id,name,hash,prefix) VALUES('testkey','u','fixture',$1,'fixture')",digest('fixture-api-key-long-enough'))
 
     def test_http_wallet_permissions_idempotency_and_parallel_reads(self):
         asyncio.run(self.scenario())
@@ -48,7 +48,7 @@ class RefundTests(unittest.TestCase):
                 self.assertEqual((await c.get('/api/refund/orders')).status_code,401)
                 for path in ('/api/admin/refund/settings','/api/admin/refund/orders','/api/admin/refund/orders/none/timeline'):
                     self.assertEqual((await c.get(path,headers=session('u'))).status_code,403)
-                    self.assertEqual((await c.get(path,headers={'Authorization':'Bearer fixture-api-key'})).status_code,403)
+                    self.assertEqual((await c.get(path,headers={'Authorization':'Bearer fixture-api-key-long-enough'})).status_code,403)
                 price=(await c.get('/api/refund/quote',headers=session('u'))).json()
                 # Refund admission must remain independent of subscription/link access.
                 db.execute("UPDATE settings SET value=value || '{\"links\":false,\"subscribe\":false}'::jsonb WHERE key='features'")
@@ -66,7 +66,7 @@ class RefundTests(unittest.TestCase):
                 self.assertEqual(db.scalar("SELECT count(*) FROM ledger WHERE business='refund'"),1)
                 self.assertEqual((await c.get('/api/refund/orders/'+id,headers=session('v'))).status_code,404)
                 self.assertEqual((await c.post('/api/refund/orders/'+id+'/cancel',headers=session('v'),json={})).status_code,404)
-                key={'Authorization':'Bearer fixture-api-key'}
+                key={'Authorization':'Bearer fixture-api-key-long-enough'}
                 public_data={k:v for k,v in data.items() if k!='idempotency_key'}
                 self.assertEqual((await c.post('/api/v1/refund/orders',headers=key,json=public_data)).status_code,400)
                 self.assertEqual((await c.post('/api/v1/refund/orders',headers=key,json=data)).status_code,400)

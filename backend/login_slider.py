@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request
 from . import db
 from .common import config, digest, limit, ip, require, response, body
 from .request_source import cookie_secure
+from .rate_limits import enforce
 
 router=APIRouter(prefix='/api/auth/slider')
 COOKIE='login_slider'
@@ -12,7 +13,7 @@ COOKIE='login_slider'
 
 @router.get('')
 def challenge(request:Request):
-    require(limit('slider:'+ip(request),30),'验证请求过多，请稍后重试',429)
+    enforce(request,'slider','slider_per_minute')
     if not config('security').get('login_slider_enabled',True):return {'enabled':False}
     binding=request.cookies.get(COOKIE) or secrets.token_urlsafe(32)
     ident=secrets.token_hex(24);x=secrets.randbelow(171)+90
@@ -26,7 +27,7 @@ def challenge(request:Request):
 
 @router.post('/verify')
 async def verify(request:Request):
-    require(limit('slider-verify:'+ip(request),60),'验证请求过多，请稍后重试',429)
+    enforce(request,'slider-verify','slider_verify_per_minute')
     v=await body(request);x=v.get('x');ident=v.get('id','')
     require(type(x) in (int,float) and 0<=x<=284 and isinstance(ident,str) and len(ident)<=64,'请重新完成滑动验证')
     # Consume the challenge even on an incorrect attempt; failures cannot be brute-forced.

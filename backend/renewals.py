@@ -59,7 +59,8 @@ def credentials(s,info):
 @router.post('/v1/session/inspect')
 async def inspect_session(request:Request):
     v=await body(request)
-    require(limit('session-inspect:'+current(request)['id'],20),'检查过于频繁',429)
+    from .rate_limits import enforce
+    enforce(request,'session-inspect','inspect_per_minute')
     _,info=inspect(v.get('session'));return info
 
 
@@ -79,7 +80,9 @@ def task(id:str,request:Request):
 async def create_task(request:Request):
     v=await body(request);require(v.get('accepted') is True,'请确认关闭自动续费')
     s,info=inspect(v.get('session'));key=request.headers.get('Idempotency-Key','');require(8<=len(key)<=120,'请提供 8～120 位 Idempotency-Key')
-    user=current(request);cfg=config('risk');require(limit('renewal-create:'+user['id'],cfg['order_per_minute']),'提交过于频繁',429)
+    user=current(request);cfg=config('risk')
+    from .rate_limits import enforce
+    enforce(request,'order','order_per_minute')
     c,expiry=credentials(s,info);enc=encrypt(json.dumps(c));ah=digest(info['account_id'])
     with db.transaction() as q:
         q.execute('SELECT pg_advisory_xact_lock(1886002)')

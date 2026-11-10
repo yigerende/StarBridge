@@ -198,7 +198,8 @@ async def create_order(request: Request):
     risk = config('risk')
     require(cfg.get('enabled') is True, '订阅办理暂未开放', 403)
     require(cfg.get('subscription_flow') == FLOW, '当前配置不支持此办理方式', 403)
-    require(limit('order:' + user['id'], risk.get('order_per_minute', 5)), '提交过于频繁', 429)
+    from .rate_limits import enforce
+    enforce(request,'order','order_per_minute')
 
     if workflow not in ('subscription', 'link'):
         raise BusinessError('不支持的工作流', 400)

@@ -15,6 +15,7 @@ const sections=[
  {id:'refund',title:'代退办理',description:'授权账号的代退服务申请与报价'},
  {id:'orders',title:'订单中心',description:'查询订单列表、详情及办理进度'},
  {id:'wallet',title:'资金账户',description:'余额、资金流水、充值和兑换'},
+ {id:'activity',title:'办理总览',description:'分页查看全部业务记录与办理统计；完整订单详情仍由订单中心控制'},
  {id:'keys',title:'开发接入',description:'管理 API 密钥及调用用户 API；关闭后已有密钥也暂停使用'},
  {id:'invites',title:'伙伴计划',description:'查看邀请关系与邀请奖励'},
  {id:'membership',title:'会员中心',description:'查看会员成长及权益；已有等级计价仍按原规则执行'},
@@ -40,7 +41,7 @@ onMounted(()=>{if(props.group==='mail')void loadLogs()})
    <template v-if="group==='features'">
     <div class="callout">关闭后，用户菜单、页面入口及对应 API 同时停用；管理员进入用户端也遵循这些开关。运营管理接口和已受理任务不受影响，会员计费权益继续按原规则执行。注册、订阅、代退独立控制。</div>
     <div class="feature-grid"><label v-for="feature in sections" :key="feature.id" class="control-row"><span><b>{{feature.title}}</b><small>{{feature.description}}</small></span><input class="toggle" type="checkbox" v-model="form[feature.id]" :aria-label="feature.title"/></label></div>
-    <p v-if="!form.orders&&(form.register||form.subscribe||form.links||form.refund)" class="callout">订单中心已关闭：客户仍可提交已开放的服务，但无法查询订单记录和进度。</p>
+    <p v-if="!form.orders&&(form.register||form.subscribe||form.links||form.refund)" class="callout">订单中心已关闭：客户仍可提交已开放的服务，完整订单详情不可用；办理总览开启时仍可查看汇总进度。</p>
     <p class="muted small">自定义菜单在“自定义菜单”中按条目启用或关闭，关闭后对应页面接口也会拒绝访问。</p>
    </template>
    <template v-else-if="group==='security'">

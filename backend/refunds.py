@@ -107,6 +107,8 @@ def quote(request:Request):return pricing(current(request))
 @router.post('/refund/orders')
 @router.post('/v1/refund/orders')
 async def create(request:Request):
+    from .rate_limits import enforce
+    await asyncio.to_thread(enforce,request,'order','order_per_minute')
     v=await body(request)
     require(isinstance(v,dict) and v.get('authorized') is True,'请确认账号授权及服务说明')
     public=request.url.path.startswith('/api/v1/')
