@@ -101,4 +101,5 @@ onMounted(async()=>{try{await loadPublic();try{await refresh()}catch{user.value=
 .customer-submenu{list-style:none;padding:0 0 0 12px;margin:2px 0 8px 22px;border-left:1px solid var(--line)}
 .sidebar .customer-submenu a{gap:9px;padding:10px 9px;font-size:11px}
 @media(max-width:700px){.admin-shell .topbar .wallet-chip{display:none}}
+@media(max-width:700px){.customer-shell .topbar{gap:12px}.customer-shell .top-actions{min-width:0;gap:7px}.customer-shell .wallet-chip{min-width:0}.customer-shell .wallet-chip b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.customer-shell .wallet-chip small{display:none}.customer-shell .avatar{flex-shrink:0}}
 </style>
