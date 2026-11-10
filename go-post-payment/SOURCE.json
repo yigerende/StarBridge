@@ -2,7 +2,12 @@
   "chatgpt_client.go": {
     "extracted_sha256": "26710780522511d61ee5121c1d652f5f039c9475adbd041de0b140408e523851",
     "selection": "chatgpt_PlatformBase chatgpt_Platform chatgpt_PlatformHeaderOptions chatgpt_PlatformCallOptions chatgpt_NewPlatform chatgpt_Observation Absorb Headers Call Refresh",
-    "source_sha256": "5a89b7d6fe56639d9abf43be3757a55cf780bcd5f636b2b091b3eae34be2bce5"
+    "source_sha256": "5a89b7d6fe56639d9abf43be3757a55cf780bcd5f636b2b091b3eae34be2bce5",
+    "starbridge_recovery_change": {
+      "date": "2026-11-10",
+      "sha256_lf": "67bd91ec384db2c92d67fe419aaa2bb11e2bce6a790ed79b91bbbd34e8f7fa3b",
+      "reason": "Recognize only the exact cancellation business 404 as cancellation_not_ready."
+    }
   },
   "chatgpt_parsing.go": {
     "extracted_sha256": "d088354ec25c3b3c80852ceeb52a474afbfdcef37c3ae54e0f2e3bbe9e2cf243",
@@ -12,7 +17,12 @@
   "chatgpt_subscriptions.go": {
     "extracted_sha256": "93eb74fa10a3cbb0a2aa13961ca5013867069e20c9994c65c95c57a56cdc72dc",
     "selection": "chatgpt_subscriptionsPath chatgpt_subscriptionNotFoundDetail chatgpt_subscriptionErrorBodyLimit Subscriptions chatgpt_isSubscriptionNotFound",
-    "source_sha256": "7aba78239ca89a9e352a969cb71aaf4ed121a9e615c3600d77a34d0fe2a3a211"
+    "source_sha256": "7aba78239ca89a9e352a969cb71aaf4ed121a9e615c3600d77a34d0fe2a3a211",
+    "starbridge_recovery_change": {
+      "date": "2026-11-10",
+      "sha256_lf": "ad85573058a3cdcfc17c608ddd61c2fff8714263597acbfcdad000bea5c08541",
+      "reason": "Share strict duplicate-key-safe detail parsing for subscription/cancellation 404."
+    }
   },
   "fingerprint_clock.go": {
     "extracted_sha256": "b0ac0efa04767449b590ccf579e06357e7ed8887bac3c4c6d0a1f4c779365b34",
@@ -22,7 +32,12 @@
   "gptpay_flow_recovery.go": {
     "extracted_sha256": "2a4c413eec64e1336dfbed12b7905f2dc11b0ccaccccfd9197fffcfd055c4889",
     "selection": "finishPayment confirmActivation disableRenewal",
-    "source_sha256": "75884e79454e931088f227da8da8d33f5948df3f1c0102ed4c2232916e5c47ea"
+    "source_sha256": "75884e79454e931088f227da8da8d33f5948df3f1c0102ed4c2232916e5c47ea",
+    "starbridge_recovery_change": {
+      "date": "2026-11-10",
+      "sha256_lf": "5b422f71103c857a63d539a27f7e5edb128f2fbcf005d922235dadf83e1d2bd7",
+      "reason": "Refresh saved session on renewal read/cancellation 401 even after proactive refresh."
+    }
   },
   "model_catalog.go": {
     "extracted_sha256": "f2f0daa9bdf30fa3c2087a749b227d1176d15db9f6755c04f763165780f3189d",
@@ -112,6 +127,11 @@
   "transport_transport.go": {
     "extracted_sha256": "03abc86273d7c99b7d48ba7de0f0978a28539cccdfa8fa782c3da12a064d9116",
     "selection": "*",
-    "source_sha256": "41ee8f343c6cc0e9696a5a3dcb47904d7766f4161c2b5aaf2a045bb2f23f8a6e"
+    "source_sha256": "41ee8f343c6cc0e9696a5a3dcb47904d7766f4161c2b5aaf2a045bb2f23f8a6e",
+    "starbridge_recovery_change": {
+      "date": "2026-11-10",
+      "sha256_lf": "75b3718aced10916d01a19c84b064b1282ff48939e14a74e814a088229eb0cc7",
+      "reason": "Discard failed idle connections before existing bounded network retries; keep original proxy."
+    }
   }
 }

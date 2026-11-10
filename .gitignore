@@ -4,6 +4,7 @@
 __pycache__/
 .pytest_cache/
 frontend/node_modules/
+services/refund-core/runtime/manager_oauth/node_modules/
 *.log
 *.zip
 *.dump

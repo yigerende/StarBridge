@@ -34,6 +34,8 @@ export function fieldRules(v:Row):string {
   if(v.maximum!==undefined)rules.push('最大：'+v.maximum)
   if(v.minLength!==undefined)rules.push('最短 '+v.minLength+' 字符')
   if(v.maxLength!==undefined)rules.push('最长 '+v.maxLength+' 字符')
+  if(v.minItems!==undefined)rules.push('至少 '+v.minItems+' 项')
+  if(v.maxItems!==undefined)rules.push('最多 '+v.maxItems+' 项')
   if(v.pattern)rules.push('格式：'+v.pattern)
   if(v.format)rules.push('格式：'+v.format)
   if(v.examples?.length)rules.push('示例：'+JSON.stringify(v.examples[0]))

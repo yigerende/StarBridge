@@ -1,0 +1,327 @@
+{
+  "source": "llm-refund",
+  "revision": "ecb0294989f90621d0812fcfd66afbfd3688cea9",
+  "hash_normalization": "UTF-8 source with CRLF normalized to LF",
+  "files": [
+    {
+      "path": "go.mod",
+      "source_sha256": "fb0d42105ab69918a2042219acbfb8fa4dc9e50e2da141a20e7b372c2eaa3621",
+      "sha256": "fb0d42105ab69918a2042219acbfb8fa4dc9e50e2da141a20e7b372c2eaa3621"
+    },
+    {
+      "path": "go.sum",
+      "source_sha256": "a0855a6768f26a1a2911735c9f5ab68e1c09de80f8435927dbfeb8de4517db7f",
+      "sha256": "a0855a6768f26a1a2911735c9f5ab68e1c09de80f8435927dbfeb8de4517db7f"
+    },
+    {
+      "path": "internal/refundworker/diagnostics.go",
+      "source_sha256": "c553fdf92b03b7b5492e9b444e80409036a8b9ba848c15bb3d5a18440c9aa09b",
+      "sha256": "c553fdf92b03b7b5492e9b444e80409036a8b9ba848c15bb3d5a18440c9aa09b"
+    },
+    {
+      "path": "internal/refundworker/probe.go",
+      "source_sha256": "0c4be5adb41816d759761f4da8be3302f60e7530be68caae9ca87c81901cdd34",
+      "sha256": "0c4be5adb41816d759761f4da8be3302f60e7530be68caae9ca87c81901cdd34"
+    },
+    {
+      "path": "internal/refundworker/testdata/login_steps_runner.py",
+      "source_sha256": "fbd5665aaca5fe0817809dfed4434f8c9d5b11b1fd365f1957bdc0a81d8ad176",
+      "sha256": "fbd5665aaca5fe0817809dfed4434f8c9d5b11b1fd365f1957bdc0a81d8ad176"
+    },
+    {
+      "path": "internal/refundworker/testdata/transport_runner.py",
+      "source_sha256": "ba1c1bd6f9eddab34b7f1b793ae90e4d00ff765edd3b02336ee422f5a8245e92",
+      "sha256": "ba1c1bd6f9eddab34b7f1b793ae90e4d00ff765edd3b02336ee422f5a8245e92"
+    },
+    {
+      "path": "internal/refundworker/testdata/verification_runner.py",
+      "source_sha256": "cf85d677f858b224bf496b1620151f00a829179a123dd373b38e85c70be2a4a9",
+      "sha256": "cf85d677f858b224bf496b1620151f00a829179a123dd373b38e85c70be2a4a9"
+    },
+    {
+      "path": "internal/refundworker/worker.go",
+      "source_sha256": "b65d9e08dab7c57af92a6c45c2c827be83853b911efb0c7077faae75c5134f0c",
+      "sha256": "b65d9e08dab7c57af92a6c45c2c827be83853b911efb0c7077faae75c5134f0c"
+    },
+    {
+      "path": "internal/store/mother_credentials.go",
+      "source_sha256": "0a9499f99d06196f4a493cfdd227e9e687bb2f87ff4a3b7c8f433813ec3e453b",
+      "sha256": "0a9499f99d06196f4a493cfdd227e9e687bb2f87ff4a3b7c8f433813ec3e453b"
+    },
+    {
+      "path": "internal/store/mother_probe.go",
+      "source_sha256": "579909cb4792057322fc14f7c804e7d473bca9abc03c5b25e02123830fe47ff2",
+      "sha256": "579909cb4792057322fc14f7c804e7d473bca9abc03c5b25e02123830fe47ff2"
+    },
+    {
+      "path": "internal/store/proxy_url.go",
+      "source_sha256": "0259a1377f7b2094f9fb601396bc495f59bf501852250f23a252ea23da2117d0",
+      "sha256": "0259a1377f7b2094f9fb601396bc495f59bf501852250f23a252ea23da2117d0"
+    },
+    {
+      "path": "internal/store/refund_auto_release.go",
+      "source_sha256": "8761ff33306555447f385f8f8ea450234486accd2ba9f7998564daeeb237d95a",
+      "sha256": "8761ff33306555447f385f8f8ea450234486accd2ba9f7998564daeeb237d95a"
+    },
+    {
+      "path": "internal/store/refund_diagnostics.go",
+      "source_sha256": "892271dab4e19d636413203cf97bb2b17c143abd0292905ca83123c3b44558a9",
+      "sha256": "892271dab4e19d636413203cf97bb2b17c143abd0292905ca83123c3b44558a9"
+    },
+    {
+      "path": "internal/store/refund_execution.go",
+      "source_sha256": "a4818dd74885d0221b42fe569249837d869df2a31fbed8191ebea69462901dcc",
+      "sha256": "004b54cd6326901e6a3bfc37b5dce7fdfeae8af8eb4ee302456754239fc09fe0",
+      "adaptation": "Match StarBridge active/deleted users and pause new claims while its updater drains ongoing work. Original execution and recovery transitions are unchanged."
+    },
+    {
+      "path": "internal/store/refund_invite_recovery.go",
+      "source_sha256": "1dfb621a0698badad25b9d318975ad34135ff8408306192d4ad6b108158758bf",
+      "sha256": "1dfb621a0698badad25b9d318975ad34135ff8408306192d4ad6b108158758bf"
+    },
+    {
+      "path": "internal/store/refund_login_result.go",
+      "source_sha256": "6592e422a1ad1506db1076d1e41415d9ab88c3e24de0fc304c79a10581b98e8e",
+      "sha256": "6592e422a1ad1506db1076d1e41415d9ab88c3e24de0fc304c79a10581b98e8e"
+    },
+    {
+      "path": "internal/store/refund_monitor.go",
+      "source_sha256": "ca561ae87a3f0154ab0130cfc23a2ecb80678ad548e9682cbb95505b31aab81e",
+      "sha256": "ca561ae87a3f0154ab0130cfc23a2ecb80678ad548e9682cbb95505b31aab81e"
+    },
+    {
+      "path": "internal/store/refund_mother_failover.go",
+      "source_sha256": "35b490721607cb1c4198c84bf9b11226890737d6144c5e093e353544fe6d9e73",
+      "sha256": "35b490721607cb1c4198c84bf9b11226890737d6144c5e093e353544fe6d9e73"
+    },
+    {
+      "path": "internal/store/refund_personal_plan_view.go",
+      "source_sha256": "e7f30de5f676be21d4ea1918bd6878659145fe862a6a55feac42596bc7d3ab49",
+      "sha256": "e7f30de5f676be21d4ea1918bd6878659145fe862a6a55feac42596bc7d3ab49"
+    },
+    {
+      "path": "internal/store/refund_plan_fallback.go",
+      "source_sha256": "de1a9f1696addd24c95995bff8ac7690dac2d5447c77c14ed0f41961a6b9c54a",
+      "sha256": "de1a9f1696addd24c95995bff8ac7690dac2d5447c77c14ed0f41961a6b9c54a"
+    },
+    {
+      "path": "internal/store/refund_public.go",
+      "source_sha256": "9423c5361c615376b65e2383799ecb30b77039c1b20745070e14152e88c68496",
+      "sha256": "9423c5361c615376b65e2383799ecb30b77039c1b20745070e14152e88c68496"
+    },
+    {
+      "path": "internal/store/refund_recovery.go",
+      "source_sha256": "a726c1f1912a79d0adc885df45c52d10990acea87d07b27e8da95be1b9422963",
+      "sha256": "a726c1f1912a79d0adc885df45c52d10990acea87d07b27e8da95be1b9422963"
+    },
+    {
+      "path": "internal/store/refund_settings.go",
+      "source_sha256": "0e510a8592ad24e48db15e9bf4ce6795d582e48a40548db2959839c66216bf26",
+      "sha256": "0e510a8592ad24e48db15e9bf4ce6795d582e48a40548db2959839c66216bf26"
+    },
+    {
+      "path": "internal/store/refund_timeline.go",
+      "source_sha256": "46ce9a30cb8077b4f3203aa5cd187b8a6dd46573d37faa92a95688a473bbe1a2",
+      "sha256": "46ce9a30cb8077b4f3203aa5cd187b8a6dd46573d37faa92a95688a473bbe1a2"
+    },
+    {
+      "path": "internal/store/refund_workspace_observation.go",
+      "source_sha256": "656ff949ed0c5b76f09b7eb0a60085a9ed7f1dcc5cf50382e257b265f530ab09",
+      "sha256": "656ff949ed0c5b76f09b7eb0a60085a9ed7f1dcc5cf50382e257b265f530ab09"
+    },
+    {
+      "path": "internal/store/resource_check.go",
+      "source_sha256": "0b7a0af0f0770c91fdbba7a5d854d7d5f976d7f7f3a0af5d4492935f9f299e91",
+      "sha256": "0b7a0af0f0770c91fdbba7a5d854d7d5f976d7f7f3a0af5d4492935f9f299e91"
+    },
+    {
+      "path": "runtime/README.md",
+      "source_sha256": "0f8943d1ba4ccc25e17284eb149de63c89030cca95f8c29dfc5ef70cd72cd166",
+      "sha256": "0f8943d1ba4ccc25e17284eb149de63c89030cca95f8c29dfc5ef70cd72cd166"
+    },
+    {
+      "path": "runtime/diagnostics.py",
+      "source_sha256": "da898b3792390743d86fecf84ca3eefcf977251398329f33a397edc328e26e0c",
+      "sha256": "da898b3792390743d86fecf84ca3eefcf977251398329f33a397edc328e26e0c"
+    },
+    {
+      "path": "runtime/manager_oauth/PORT.md",
+      "source_sha256": "579243128af52d7067a6095c1ecc42dd9781a73cdd8f49c7a83492f0f983e9a9",
+      "sha256": "579243128af52d7067a6095c1ecc42dd9781a73cdd8f49c7a83492f0f983e9a9"
+    },
+    {
+      "path": "runtime/manager_oauth/__init__.py",
+      "source_sha256": "e007e9b8272ba4f03be1f31cc13d8ba250feb752cf5898048a9d33effef7c783",
+      "sha256": "e007e9b8272ba4f03be1f31cc13d8ba250feb752cf5898048a9d33effef7c783"
+    },
+    {
+      "path": "runtime/manager_oauth/adapter.py",
+      "source_sha256": "150de9d8d659f7da5b8ff8fb242ebf36c00d799519da58c9fa22c865251ffd3b",
+      "sha256": "150de9d8d659f7da5b8ff8fb242ebf36c00d799519da58c9fa22c865251ffd3b"
+    },
+    {
+      "path": "runtime/manager_oauth/bridge.py",
+      "source_sha256": "8dfb589e717ce2ebab2ff0b658105427ecd9c08e5bacba396abbde7ee4aa78a8",
+      "sha256": "8dfb589e717ce2ebab2ff0b658105427ecd9c08e5bacba396abbde7ee4aa78a8"
+    },
+    {
+      "path": "runtime/manager_oauth/merge_v2.py",
+      "source_sha256": "4fb2abd89c5401fe35bfc1f30d43d5341024ce063333894f4589e18b6c06950d",
+      "sha256": "4fb2abd89c5401fe35bfc1f30d43d5341024ce063333894f4589e18b6c06950d"
+    },
+    {
+      "path": "runtime/manager_oauth/openai_sentinel_token.cjs",
+      "source_sha256": "9cff7901357c6c6f97f3d6cbbb830c785acde8400b7185abc233b574385a1043",
+      "sha256": "9cff7901357c6c6f97f3d6cbbb830c785acde8400b7185abc233b574385a1043"
+    },
+    {
+      "path": "runtime/manager_oauth/package-lock.json",
+      "source_sha256": "3bafd39927b4a380d0da594018c1df21f8d873e72f26fee99ca920dbff115cc4",
+      "sha256": "3bafd39927b4a380d0da594018c1df21f8d873e72f26fee99ca920dbff115cc4"
+    },
+    {
+      "path": "runtime/manager_oauth/package.json",
+      "source_sha256": "214fd6701c1c5fe209c07d9770ca8410551128ca26238a4d414973811b24a807",
+      "sha256": "214fd6701c1c5fe209c07d9770ca8410551128ca26238a4d414973811b24a807"
+    },
+    {
+      "path": "runtime/manager_oauth/sentinel_vm.py",
+      "source_sha256": "cfd1318c136a719cdd43b89662e2288a8be55250766dac236cd33ae9de2620ef",
+      "sha256": "cfd1318c136a719cdd43b89662e2288a8be55250766dac236cd33ae9de2620ef"
+    },
+    {
+      "path": "runtime/manager_oauth/sms_providers.py",
+      "source_sha256": "380d3fed93b4226bf405ec295de8ee1714ef573e10faf0c96ce21be6d10b803e",
+      "sha256": "380d3fed93b4226bf405ec295de8ee1714ef573e10faf0c96ce21be6d10b803e"
+    },
+    {
+      "path": "runtime/manager_oauth/tls.py",
+      "source_sha256": "27013ed09cc5e64bb23e129af21f3ecb713e584a128d1466e01db33014a175fc",
+      "sha256": "27013ed09cc5e64bb23e129af21f3ecb713e584a128d1466e01db33014a175fc"
+    },
+    {
+      "path": "runtime/manager_oauth/upstream.py",
+      "source_sha256": "f597031e839ea106581a8a7876da2e8682ed4e6ec78ce8b23b1f83315005e996",
+      "sha256": "f597031e839ea106581a8a7876da2e8682ed4e6ec78ce8b23b1f83315005e996"
+    },
+    {
+      "path": "runtime/personal_plan_observation.py",
+      "source_sha256": "32e52d64d9bd3b41b770c594d1ec39288000c5e47dc8e2dbfa8e7eada5238c16",
+      "sha256": "32e52d64d9bd3b41b770c594d1ec39288000c5e47dc8e2dbfa8e7eada5238c16"
+    },
+    {
+      "path": "runtime/refund_plan_fallback.py",
+      "source_sha256": "cdbc9eb9c82b74ad71031b25d8ab6c19d69d31c24710c81917ba5c2c25f79abc",
+      "sha256": "cdbc9eb9c82b74ad71031b25d8ab6c19d69d31c24710c81917ba5c2c25f79abc"
+    },
+    {
+      "path": "runtime/refund_recovery.py",
+      "source_sha256": "77feb09bab2747bec14d9344f8876c6f213ca6c4d45fa22b6f193ce3f0a1bbe8",
+      "sha256": "77feb09bab2747bec14d9344f8876c6f213ca6c4d45fa22b6f193ce3f0a1bbe8"
+    },
+    {
+      "path": "runtime/refund_runner.py",
+      "source_sha256": "3319f0b871c973a13f140bbb07bdcf6d1a07752b4d7d6aa3edb11f6c33e9a947",
+      "sha256": "3319f0b871c973a13f140bbb07bdcf6d1a07752b4d7d6aa3edb11f6c33e9a947"
+    },
+    {
+      "path": "runtime/requirements.txt",
+      "source_sha256": "178cde84ed48746389c524bd3b922d2f166388d7c703ea6ec40bd6dbe4f367eb",
+      "sha256": "178cde84ed48746389c524bd3b922d2f166388d7c703ea6ec40bd6dbe4f367eb"
+    },
+    {
+      "path": "runtime/resource_probe.py",
+      "source_sha256": "10890b08c9185562b37b2f2e6a684054c8328935e77e0aa8f19ed4c23a8eddf6",
+      "sha256": "10890b08c9185562b37b2f2e6a684054c8328935e77e0aa8f19ed4c23a8eddf6"
+    },
+    {
+      "path": "runtime/test_diagnostics.py",
+      "source_sha256": "4dde8857a407973b841b4a7ad5b4aae8295e08d7b3628ea0f95d621310bc029b",
+      "sha256": "4dde8857a407973b841b4a7ad5b4aae8295e08d7b3628ea0f95d621310bc029b"
+    },
+    {
+      "path": "runtime/test_export_tls.py",
+      "source_sha256": "8db439ac1a014f39b5e2212f1ee7152eb2bb1ff9f150c43909d65ef1bd72a865",
+      "sha256": "8db439ac1a014f39b5e2212f1ee7152eb2bb1ff9f150c43909d65ef1bd72a865"
+    },
+    {
+      "path": "runtime/test_login_steps.py",
+      "source_sha256": "92c540e8857155b113e86caad5168bd2f45939ccbef3d5714169db9f4a44c528",
+      "sha256": "92c540e8857155b113e86caad5168bd2f45939ccbef3d5714169db9f4a44c528"
+    },
+    {
+      "path": "runtime/test_login_transient_http.py",
+      "source_sha256": "96053a27bdb4a91bfdd270986edb0ebba4f1779a64b20c8bbc4ce3ea03ecba27",
+      "sha256": "96053a27bdb4a91bfdd270986edb0ebba4f1779a64b20c8bbc4ce3ea03ecba27"
+    },
+    {
+      "path": "runtime/test_member_completion.py",
+      "source_sha256": "fa3730269e923cee8fcfc1531297b9c156e72d6505740b542bac0757bfed10dc",
+      "sha256": "fa3730269e923cee8fcfc1531297b9c156e72d6505740b542bac0757bfed10dc"
+    },
+    {
+      "path": "runtime/test_merge_v2.py",
+      "source_sha256": "681c8b6a35a04234b260795a14aac1075bc1b13834180fd2a10a9c9b8ca3bdc1",
+      "sha256": "681c8b6a35a04234b260795a14aac1075bc1b13834180fd2a10a9c9b8ca3bdc1"
+    },
+    {
+      "path": "runtime/test_password_failure.py",
+      "source_sha256": "5172e27d3513332d828a70acac0ee45bc5f22e0490971fe03b656e4122f6cc2b",
+      "sha256": "5172e27d3513332d828a70acac0ee45bc5f22e0490971fe03b656e4122f6cc2b"
+    },
+    {
+      "path": "runtime/test_personal_plan_observation.py",
+      "source_sha256": "b825fcc696a62cd5ddd2ed17e9e546e3e83e22db605246a2f9ba99110e4eda5b",
+      "sha256": "b825fcc696a62cd5ddd2ed17e9e546e3e83e22db605246a2f9ba99110e4eda5b"
+    },
+    {
+      "path": "runtime/test_refund_plan_fallback.py",
+      "source_sha256": "3830468ae9b26661759eedf1f7b8db6b33e518176775396787415720e51de9d1",
+      "sha256": "3830468ae9b26661759eedf1f7b8db6b33e518176775396787415720e51de9d1"
+    },
+    {
+      "path": "runtime/test_refund_recovery.py",
+      "source_sha256": "814fae3b166245f5c8854d5b62fe82932b700dce01c8dee3632c0a16f3f8ce3e",
+      "sha256": "814fae3b166245f5c8854d5b62fe82932b700dce01c8dee3632c0a16f3f8ce3e"
+    },
+    {
+      "path": "runtime/test_refund_runner.py",
+      "source_sha256": "45a7a1ea172743c0dcc4d099bc06651618013ee2e83700e431adb3c516cc28e7",
+      "sha256": "45a7a1ea172743c0dcc4d099bc06651618013ee2e83700e431adb3c516cc28e7"
+    },
+    {
+      "path": "runtime/test_refund_transport.py",
+      "source_sha256": "4acced7257bad4658b9d1386a3b02222a5847945ecaf5e6a1ed0ae0dc43a3c53",
+      "sha256": "4acced7257bad4658b9d1386a3b02222a5847945ecaf5e6a1ed0ae0dc43a3c53"
+    },
+    {
+      "path": "runtime/test_resource_probe.py",
+      "source_sha256": "7df475fee42a1ed764b986c1a07433ebfef5fadd6e233ee80de1fc1d06abdf40",
+      "sha256": "7df475fee42a1ed764b986c1a07433ebfef5fadd6e233ee80de1fc1d06abdf40"
+    },
+    {
+      "path": "runtime/test_workspace_observation.py",
+      "source_sha256": "6d9eff252fbdda1178effcac4e08332d9abb487a21d47b09e4e832a015ea6497",
+      "sha256": "6d9eff252fbdda1178effcac4e08332d9abb487a21d47b09e4e832a015ea6497"
+    },
+    {
+      "path": "runtime/workspace_observation.py",
+      "source_sha256": "d53872d85f6ec4a59cd14d428d6c0028d700efcfe962f8965be1dd63096da5f1",
+      "sha256": "d53872d85f6ec4a59cd14d428d6c0028d700efcfe962f8965be1dd63096da5f1"
+    },
+    {
+      "path": "internal/store/store.go",
+      "source_path": "internal/store/store.go",
+      "source_sha256": "103b019b0310cbeca74a06d30ba9d0f30a2d6c53c85ad178d9011b8944b5831f",
+      "sha256": "74666cc0f14d36534bde422cd97c75386ce80cb8be4f1f1ad220118ede4bfa1e",
+      "adaptation": "Extract refund admission/read/transaction primitives; use shared StarBridge user status, balance, ledger deltas, audit and refund idempotency table. No legacy users, wallets or notification center."
+    },
+    {
+      "path": "internal/refundprovider/account.go",
+      "source_path": "internal/refundprovider/provider.go",
+      "source_sha256": "c3087e8a50283570687cc74ac4270e83eeb11df385ffd1fe0eb1517b5db04522",
+      "sha256": "b2273d51b1a6a65d07e875fd1499adf68dfc5ab1f4c4e7a9280c05a6952b3962",
+      "adaptation": "Keep only the credential data type needed by the original runner; omit legacy provider HTTP service."
+    }
+  ]
+}

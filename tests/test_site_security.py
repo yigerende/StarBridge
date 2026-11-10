@@ -56,8 +56,9 @@ class SiteSecurityTests:
                 self.assertEqual(user.post('/api'+prefix+'/orders',json={'workflow':'subscription'}).status_code,403)
                 self.assertNotEqual(user.post('/api'+prefix+'/orders',json={'workflow':'link'}).json().get('error'),'此功能暂未开放')
             overview=self.ok(user.get('/api/overview'))
-            self.assertEqual(overview['stats'],{});self.assertEqual(overview['recent_orders'],[])
-            self.assertNotIn('balance',overview['user'])
+            self.assertEqual(overview['recent_orders'],[])
+            self.assertFalse(overview['permissions']['orders'])
+            self.assertIsNone(overview['wallet'])
             self.assertIsNone(self.ok(user.get('/api/v1/catalog'))['membership'])
             flags['wallet']=True
             self.ok(self.client.put('/api/admin/settings/features',json=flags))

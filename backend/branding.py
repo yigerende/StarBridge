@@ -56,6 +56,7 @@ def icon_url(site=None):
 
 def public_site():
     site=config('site')
+    site.setdefault('sidebar_default_expanded',False)
     return {**{k:v for k,v in site.items() if k!='icon'},'icon_url':icon_url(site)}
 
 

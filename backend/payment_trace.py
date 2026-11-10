@@ -52,6 +52,7 @@ CODES = {
     'post_payment_wait_completed': '付款后等待结束，即将强制刷新 Session',
     'renewal_state_unknown': '自动续费状态缺失或冲突，未提交取消请求',
     'cancellation_pending': '已请求关闭续费，结果仍待核实',
+    'cancellation_not_ready': '取消接口尚未识别已生效订阅，等待同步后复查',
     'checkpoint_missing': '本单没有可恢复的付款后收尾记录',
     'checkpoint_mismatch': '付款后收尾记录与本单结账记录不一致',
     'payment_evidence_missing': '本单缺少已付款凭据，未执行付款后流程',

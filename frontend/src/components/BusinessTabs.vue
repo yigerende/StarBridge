@@ -1,10 +1,11 @@
 <script setup lang="ts">
-defineProps<{modelValue:'subscription'|'registration'}>()
-const emit=defineEmits<{'update:modelValue':[value:'subscription'|'registration']}>()
+defineProps<{modelValue:'subscription'|'registration'|'refund'}>()
+const emit=defineEmits<{'update:modelValue':[value:'subscription'|'registration'|'refund']}>()
 </script>
 <template><div class="business-tabs" role="tablist" aria-label="服务类型">
- <button role="tab" :aria-selected="modelValue==='subscription'" :class="{active:modelValue==='subscription'}" @click="emit('update:modelValue','subscription')">订阅</button>
  <button role="tab" :aria-selected="modelValue==='registration'" :class="{active:modelValue==='registration'}" @click="emit('update:modelValue','registration')">注册</button>
+ <button role="tab" :aria-selected="modelValue==='subscription'" :class="{active:modelValue==='subscription'}" @click="emit('update:modelValue','subscription')">订阅</button>
+ <button role="tab" :aria-selected="modelValue==='refund'" :class="{active:modelValue==='refund'}" @click="emit('update:modelValue','refund')">代退</button>
 </div></template>
 <style scoped>
 .business-tabs{display:flex;gap:5px;padding:5px;margin:0 0 22px;width:fit-content;background:var(--surface-muted,#eef1ef);border:1px solid var(--line,#dce3de);border-radius:12px}

@@ -174,7 +174,7 @@ class CountryPoolTests:
                 db.execute("UPDATE orders SET status=$2,activation='pending',renewal='pending' WHERE id=$1",order,status)
                 self.assertEqual(self.client.put('/api/admin/proxy-mode',json={'mode':'manual'}).status_code,409)
             db.execute("UPDATE orders SET activation='active',renewal='review' WHERE id=$1",order)
-            for key in (1886011,1886012):
+            for key in (1886011,1886012,1886015):
                 with db.transaction() as lock:
                     lock.execute('SELECT pg_advisory_xact_lock($1,hashtext($2))',key,order)
                     self.assertEqual(self.client.put('/api/admin/proxy-mode',json={'mode':'manual'}).status_code,409)

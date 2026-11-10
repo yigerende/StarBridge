@@ -17,6 +17,8 @@ from .seed import seed
 from .runtime import worker_mode
 from . import login_slider, customer_api, admin_orders, order_updates, invitations, email_auth, features, custom_menus, branding, regions, country_pool, price_reference
 from . import deployment
+from . import subscription_recovery
+from . import refunds
 from .request_origin import configured_origin, origin_allowed
 from .auth_runtime import bounded_call
 from . import registration_gateway
@@ -49,10 +51,10 @@ def maintenance():
 
 def worker_loop(stop):
     executor=ThreadPoolExecutor(max_workers=30,thread_name_prefix='starbridge-worker')
-    sync_jobs=set();price_jobs=set();proxy_jobs=set();renewal_jobs=set();subscription_jobs=set();cslive_go_jobs=set();cslive_full_jobs=set();last_maintenance=0;last_price_tick=0
+    sync_jobs=set();price_jobs=set();proxy_jobs=set();renewal_jobs=set();subscription_jobs=set();cslive_go_jobs=set();cslive_full_jobs=set();recovery_jobs=set();last_maintenance=0;last_price_tick=0
     try:
         while not stop.wait(1):
-            for group in (sync_jobs,price_jobs,proxy_jobs,renewal_jobs,subscription_jobs,cslive_go_jobs,cslive_full_jobs):
+            for group in (sync_jobs,price_jobs,proxy_jobs,renewal_jobs,subscription_jobs,cslive_go_jobs,cslive_full_jobs,recovery_jobs):
                 for future in list(group):
                     if future.done():
                         try:future.result()
@@ -66,6 +68,7 @@ def worker_loop(stop):
                     if not sync_jobs:sync_jobs.add(executor.submit(country_pool.auto_sync))
                 if len(proxy_jobs)<2:proxy_jobs.add(executor.submit(proxies.run_check))
                 if worker_mode()=='all':
+                    if not recovery_jobs:recovery_jobs.add(executor.submit(subscription_recovery.tick))
                     if len(renewal_jobs)<20:
                         job=renewals.claim()
                         if job:renewal_jobs.add(executor.submit(renewals.run_task,job))
@@ -85,6 +88,7 @@ def worker_loop(stop):
 @asynccontextmanager
 async def lifespan(app):
     db.initialize();seed();stop=threading.Event()
+    await refunds.start()
     thread=threading.Thread(target=worker_loop,args=(stop,),daemon=True,name='starbridge-scheduler');thread.start()
     order_updates.updates.start()
     try:
@@ -94,6 +98,7 @@ async def lifespan(app):
         await order_updates.updates.close()
         await asyncio.to_thread(thread.join,115)
         await registration_gateway.close_transport()
+        await refunds.stop()
         db.close()
 
 
@@ -154,6 +159,8 @@ def check_source(request):
 
 for module in (login_slider,auth,email_auth,membership,wallet,admin_accounts,settings,proxies,admin_content,renewals,subscription,subscription_cslive_go,subscription_cslive_full,registration_gateway,deployment):app.include_router(module.router)
 for router in (records.public_router,records.router,records.admin_router,customer_api.router,admin_orders.router,order_updates.router,invitations.router,custom_menus.router,branding.router,regions.router,country_pool.router,price_reference.router,price_reference.admin_router):app.include_router(router)
+app.include_router(refunds.router)
+app.include_router(refunds.admin)
 
 
 @app.get('/health/live')
@@ -163,6 +170,7 @@ def live():return {'ok':True}
 @app.get('/health/ready')
 def ready():
     require(db.scalar('SELECT 1')==1,'数据库暂不可用',503)
+    require(refunds.healthy(),'代退执行模块正在恢复',503)
     return {'ok':True}
 
 

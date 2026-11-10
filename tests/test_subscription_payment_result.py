@@ -79,10 +79,10 @@ class SubscriptionPaymentResultTests:
                     response({'status': 'complete', 'payment_status': 'unpaid'}), response(None), response({'status': 'open'})]
                 module.run_subscription(job)
                 self.assertEqual(stripe.session.get.call_count, 5)
-                self.assertEqual(db.scalar('SELECT status FROM orders WHERE id=$1', job['id']), 'review')
+                self.assertEqual(db.scalar('SELECT status FROM orders WHERE id=$1', job['id']), 'processing')
                 self.assertEqual(db.scalar('SELECT frozen FROM users WHERE id=$1', job['user_id']), job['fee'])
                 self.assertEqual(db.scalar("SELECT count(*) FROM ledger WHERE order_id=$1 AND kind IN ('charge','unfreeze')", job['id']), 0)
-                self.assertEqual(self.payment_api(job)['state'], 'review')
+                self.assertEqual(self.payment_api(job)['state'], 'checking')
                 self.assertEqual(self.payment_api(job)['fee_state'], 'held')
                 module.run_subscription(job)
                 db.execute("UPDATE orders SET status='queued' WHERE id=$1", job['id'])
@@ -105,7 +105,7 @@ class SubscriptionPaymentResultTests:
 
     def test_payment_approval_error_still_checks_result(self):
         for module in FLOWS:
-            for result, status in ((PAID, 'succeeded'), ({'status': 'open'}, 'review')):
+            for result, status in ((PAID, 'succeeded'), ({'status': 'open'}, 'processing')):
                 with self.subTest(flow=module.FLOW, status=status), self.retry_fixture(module) as job, self.retry_network(module) as (_, stripe, followup), patch.object(module, 'payment_session') as session:
                     stripe.confirm.return_value = {'submission_attempt': {'state': 'requires_approval'}}
                     session.return_value.post.return_value = response({'result': 'blocked'})

@@ -1,5 +1,9 @@
 # 付款成功后的 Go 收尾
 
+## 2026-11-10：星桥付款结果与取消续费恢复
+
+新增的原交易核实、持久恢复队列、特定取消404与401刷新修复见 [subscription-recovery.md](subscription-recovery.md)。原提取哈希保留；四个Go文件的本次授权差异另记在 SOURCE.json 的 starbridge_recovery_change 中。下方“没有新增数据库字段”等为此前实现记录，不代表本次变更。
+
 ## 2026-11-04：付款成功后的等待配置
 
 订阅流程配置新增 `payment.post_payment_delay_seconds`，默认 **5秒**，可保存0～300的整数；0表示不等待。已有配置缺少该字段时读取默认5秒，不改写原配置。旧客户端保存时省略此字段会保留已设置的值。
@@ -24,7 +28,7 @@
 
 gener 原有提链、HTTP 付款、套餐长短链、后台账单随机抽取、服务费结算均保留。只有确认付款成功、写入 `paid_at` 后，`backend/subscription.py` 调用 `backend/go_post_payment.py`。
 
-Go 从本地参考 `xupay/internal/cslive` 中提取付款后函数和必要依赖，来源、选择范围及哈希见 `go-post-payment/SOURCE.json`。`finishPayment`、`confirmActivation`、`disableRenewal` 保留参考实现：
+Go 从本地参考 `xupay/internal/cslive` 中提取付款后函数和必要依赖，来源、选择范围及哈希见 `go-post-payment/SOURCE.json`。`finishPayment`、`confirmActivation`、`disableRenewal` 基于参考实现，后续授权差异见本文更新记录与 SOURCE.json：
 
 1. 主动刷新一轮 Session，按后台配置处理重试与间隔；成功并保存后，访问经过本单校验的商户回跳地址。
 2. 查询订阅是否生效，明确返回 401 时刷新 Session 后重查。生效轮询最多 5 轮，轮间 2 秒。

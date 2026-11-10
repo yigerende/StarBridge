@@ -167,6 +167,11 @@ func (t *transport_Transport) Request(method, rawURL string, opts protocol_Reque
 		finished := time.Now()
 		retrying := attempt < attempts && (requestErr != nil || transport_retryHTTPStatus(response.StatusCode))
 		t.observe(method, rawURL, attempt, started, finished, response, requestErr, retrying, opts, sentCookies, timing.fields(finished), network)
+		if requestErr != nil {
+			// Keep the account, cookies and proxy session. Discard broken idle
+			// connections so a safe read does not reuse the timed-out tunnel.
+			t.client.CloseIdleConnections()
+		}
 		if !retrying {
 			if requestErr != nil {
 				return nil, &protocol_ProtocolError{Code: "network_error"}

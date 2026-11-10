@@ -40,7 +40,7 @@ def shared_overview(user, **options):
             _inflight.pop(key, None)
 
 
-def order_source(registration, subscription=True):
+def order_source(registration, subscription=True, refund=True):
     sources = []
     if subscription:
         sources.append("""SELECT o.id,o.user_id,u.email AS owner,'subscription'::text AS business,
@@ -59,9 +59,14 @@ def order_source(registration, subscription=True):
           o.quantity,o.delivered,(o.unit_price*o.quantity*100)::bigint AS fee,o.created_at,o.updated_at,
           o.status='completed' AS completed,o.status='review' AS attention
           FROM platform_orders o JOIN platform_users p ON p.id=o.user_id JOIN users u ON u.id=p.xufu_user_id""")
+    if refund:
+        sources.append("""SELECT r.id,u.id AS user_id,u.email AS owner,'refund'::text AS business,
+          '代退办理'::text AS title,r.email,r.status,'refund'::text AS workflow,''::text AS activation,''::text AS renewal,
+          1 AS quantity,CASE WHEN r.status='succeeded' THEN 1 ELSE 0 END AS delivered,r.fee,r.created_at,r.updated_at,
+          r.status='succeeded' AS completed,r.status='attention' AS attention FROM refunds r JOIN users u ON u.id=r.user_id""")
     # A typed empty relation also covers feature-restricted customer dashboards.
     if not sources:
-        return order_source(False) + ' AND false'
+        return order_source(False,True,False) + ' AND false'
     return ' UNION ALL '.join(sources)
 
 
@@ -95,13 +100,13 @@ def overview(user, *, admin=False, start='', end='', days=7, include_admin=False
         reg = reg or {}
         reg_enabled = lambda key: installed and (user['role']=='admin' or reg.get('features', {}).get(key, True) is not False)
         reg_orders = reg_enabled('orders')
-        source = order_source(installed if admin else reg_orders, admin or flags['orders'])
+        source = order_source(installed if admin else reg_orders, admin or flags['orders'], admin or flags['orders'])
         scope = "(u.role<>'admin' OR $2::bool)" if admin else 'u.id=$1'
         args = (user['id'], include_admin, begin, until)
         cte = 'WITH activity AS (' + source + '), scoped AS (SELECT a.* FROM activity a JOIN users u ON u.id=a.user_id WHERE '+scope+') '
         queue_sql = """SELECT business,count(*) FILTER(WHERE status='queued') AS queued,
-          count(*) FILTER(WHERE status IN ('processing','running')) AS running,
-          count(*) FILTER(WHERE status='review') AS review,
+          count(*) FILTER(WHERE status IN ('processing','running','verifying')) AS running,
+          count(*) FILTER(WHERE status IN ('review','attention')) AS review,
           count(*) FILTER(WHERE status='succeeded' AND workflow='subscription' AND (activation='review' OR renewal='review')) AS followup,
           count(*) FILTER(WHERE status='succeeded' AND workflow='subscription' AND (activation='pending' OR renewal IN ('pending','retrying'))) AS settling
           FROM scoped GROUP BY business"""
@@ -119,7 +124,7 @@ def overview(user, *, admin=False, start='', end='', days=7, include_admin=False
         current, recent = activity['queues'], activity['recent_orders']
         queues = {r['business']: r for r in current}
         empty = dict(queued=0, running=0, review=0, followup=0, settling=0)
-        for name in ('subscription', 'registration'):
+        for name in ('subscription', 'registration', 'refund'):
             queues.setdefault(name, dict(empty, business=name))
         available = dict(available=0, expiring=0, next_order_id=None)
         if not admin and reg_enabled('accounts'):
@@ -150,6 +155,7 @@ def overview(user, *, admin=False, start='', end='', days=7, include_admin=False
              '付款已成功，仅处理订阅生效或续费设置。')
         todo('registration_review','注册状态待核实',registration['review'],destination(order_path,'registration',status='review'),
              '查看恢复进度与异常原因。')
+        todo('refund_review','代退待核实',queues['refund']['review'],destination(order_path,'refund',status='attention'),'请核实服务进度与费用状态。')
         if admin:
             topups = q.scalar("SELECT count(*) FROM topups t JOIN users u ON u.id=t.user_id WHERE t.status='pending' AND "+scope, *args)
             # Security events are global, including anonymous traffic, independent of business/date/account scope.
@@ -163,12 +169,14 @@ def overview(user, *, admin=False, start='', end='', days=7, include_admin=False
             trend_orders = activity['trend_orders']
             trend_fees = q.all("SELECT to_char(l.created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM-DD') AS day,l.business,coalesce(sum(-l.amount),0) AS value"+ledger_where+' GROUP BY 1,2', *args)
             totals['settled'] = sum(row['value'] for row in trend_fees)
-            series = {(first+timedelta(days=i)).isoformat(): dict(day=(first+timedelta(days=i)).isoformat(),subscription=0,registration=0,subscription_fees=0,registration_fees=0) for i in range((last-first).days+1)}
+            series = {(first+timedelta(days=i)).isoformat(): dict(day=(first+timedelta(days=i)).isoformat(),subscription=0,registration=0,subscription_fees=0,registration_fees=0,refund=0,refund_fees=0) for i in range((last-first).days+1)}
             for records, suffix in ((trend_orders,''),(trend_fees,'_fees')):
                 for row in records:
-                    if row['business'] in ('subscription','registration'): series[row['day']][row['business']+suffix] = row['value']
+                    if row['business'] in ('subscription','registration','refund'): series[row['day']][row['business']+suffix] = row['value']
             # A delivered account is counted by its delivery timestamp, not the order creation date.
             delivered = q.scalar("SELECT count(*) FROM platform_accounts a JOIN platform_users p ON p.id=a.user_id JOIN users u ON u.id=p.xufu_user_id WHERE "+scope+' AND a.created_at >= $3 AND a.created_at < $4', *args) if installed else 0
+            refund_settings=q.one('SELECT accepting,enabled FROM refund_settings WHERE id')
+            queues['refund'].update(accepting=refund_settings['accepting'],paused=not refund_settings['enabled'])
             payment, scheduler = config('payment', q), config('scheduler', q)
             sub.update(accepting=payment.get('enabled') is True and payment.get('subscription_flow') in ('gener_direct_pay','cslive_go_direct_pay','cslive_full_go'),paused=scheduler.get('paused',False) or payment.get('enabled') is not True)
             registration.update(accepting=installed and reg.get('orders_open') is True,paused=not reg.get('worker_enabled',False),installed=installed,delivered=delivered)
@@ -176,6 +184,8 @@ def overview(user, *, admin=False, start='', end='', days=7, include_admin=False
         else:
             if flags['orders']:
                 todo('subscription_pending','订阅办理中',sub['queued']+sub['running']+sub['settling'],destination('/orders','subscription',attention='pending'),'排队、执行及付款后的自动核实。','info')
+            if flags['orders']:
+                todo('refund_pending','代退办理中',queues['refund']['queued']+queues['refund']['running'],destination('/orders','refund'),'查看排队与办理进度。','info')
             if reg_orders:
                 # Separate queued/running links keep the selected status actionable.
                 for state, label in (('queued','注册排队中'),('running','注册执行中')):
@@ -191,5 +201,5 @@ def overview(user, *, admin=False, start='', end='', days=7, include_admin=False
             for item in attention:
                 if item['key']!='risks':item['href']+='&include_admin='+str(include_admin).lower()
         result.update(queues=queues,attention=attention,recent_orders=recent,generated_at=q.scalar('SELECT now()'),
-                      active=bool(sub['queued']+sub['running']+sub['settling']+registration['queued']+registration['running']+registration['review']))
+                      active=bool(sub['queued']+sub['running']+sub['settling']+registration['queued']+registration['running']+registration['review']+queues['refund']['queued']+queues['refund']['running']))
         return result

@@ -70,7 +70,7 @@ async def delete_orders(request: Request):
                 skipped += 1
                 continue
             if not all(q.scalar('SELECT pg_try_advisory_xact_lock($1,hashtext($2))',key,row['id'])
-                       for key in (1886011,1886012)):
+                       for key in (1886011,1886012,1886015)):
                 skipped += 1
                 continue
             eligible.append(row)

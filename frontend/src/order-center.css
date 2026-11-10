@@ -1,0 +1,48 @@
+/* One order-center design for the Vue pages and the native registration views. */
+.main.order-center-page :is(.record-panel,.p-record-card){padding:0;overflow:hidden;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:none}
+.main.order-center-page :is(.records-heading,.p-records-heading){padding:24px 24px 18px;display:flex;align-items:center;justify-content:space-between;gap:18px}
+.main.order-center-page :is(.records-heading,.p-records-heading) h2{font-size:17px;margin:0;line-height:1.5;color:var(--ink)}
+.main.order-center-page :is(.records-heading,.p-records-heading) p{font-size:12px;margin:7px 0 0;line-height:1.7;color:var(--muted)}
+.main.order-center-page .order-heading-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.main.order-center-page .p-center-filters{padding:0}
+.main.order-center-page :is(.records-filters,.p-filter-bar){display:flex;align-items:center;flex-wrap:wrap;gap:10px;padding:0 24px 18px;margin:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+.main.order-center-page :is(.records-filters,.p-filter-bar) label{margin:0;min-width:0}
+.main.order-center-page :is(.records-search,.p-search-field){position:relative;display:block;flex:2;min-width:240px;padding:0;border:0;border-radius:0;background:transparent}
+.main.order-center-page :is(.records-search,.p-search-field) svg{position:absolute;left:11px;top:11px;width:16px;height:16px;color:#92a5ac;pointer-events:none}
+.main.order-center-page :is(.records-filters,.p-filter-bar) :is(input:not([type=checkbox]),select){box-sizing:border-box;display:block;width:100%;height:38px;padding:8px 10px;font:inherit;font-size:12px;font-weight:400;line-height:20px;color:var(--ink);border:1px solid var(--line);border-radius:7px;background:#fff;outline-offset:2px}
+.main.order-center-page :is(.records-filters,.p-filter-bar) :is(.records-search,.p-search-field) input{padding-left:35px}
+.main.order-center-page :is(.records-filters,.p-filter-bar) input::placeholder{color:var(--muted);opacity:1}
+.main.order-center-page .p-filter-bar>select{flex:1;min-width:130px;max-width:185px}
+.main.order-center-page :is(.p-button,.records-heading .btn,.records-filters .btn){display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:38px;padding:8px 12px;font:inherit;font-size:12px;line-height:20px;border:1px solid transparent;border-radius:7px;box-shadow:none;white-space:nowrap}
+.main.order-center-page .p-button{background:var(--ink);color:#fff}
+.main.order-center-page :is(.p-button.secondary,.records-heading .btn.secondary,.records-filters .btn.secondary){background:#fff;color:var(--ink);border-color:var(--line)}
+.main.order-center-page .p-link{font:inherit;font-size:12px;color:var(--green);padding:9px}
+.main.order-center-page .p-page-heading{display:flex;justify-content:space-between;align-items:center;gap:20px;margin:0 0 30px}
+.main.order-center-page .p-page-heading h1{font-size:30px;line-height:1.3;margin:10px 0 9px;color:var(--ink);letter-spacing:-.5px}
+.main.order-center-page .p-page-heading p{font-size:13px;line-height:1.8;margin:0;color:var(--muted)}
+.main.order-center-page .p-page-heading .p-eyebrow{font-size:10px;letter-spacing:2px;line-height:1.8;color:var(--muted);font-weight:600}
+.main.order-center-page .p-admin-toolbar[hidden]{display:none}
+.main.order-center-page :is(.p-center-records,.p-table-wrap,.table-scroll){overflow-x:auto}
+.main.order-center-page :is(.p-center-records,.p-table-wrap,.table-scroll) th{background:#f7f9fa;color:var(--muted);font-size:11px;font-weight:500;padding:16px 15px;border-bottom:1px solid var(--line)}
+.main.order-center-page :is(.p-center-records,.p-table-wrap,.table-scroll) td{font-size:12px;line-height:1.6;padding:16px 15px;vertical-align:top;border-bottom:1px solid var(--line)}
+.main.order-center-page :is(.p-center-empty,.records-empty,.table-scroll .empty){display:grid;justify-items:center;gap:10px;padding:45px 20px;margin:0;font-size:12px;color:#8a9fa8;min-height:0}
+.main.order-center-page :is(.p-center-empty,.records-empty,.table-scroll .empty) :is(strong,b){font-size:14px;color:#516e79}
+.main.order-center-page :is(.records-pagination,.p-pagination){display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 24px;margin:0;font-size:11px;color:var(--muted);border-top:1px solid var(--line);background:#fff}
+.main.order-center-page :is(.records-pagination,.p-pagination)>div{display:flex;align-items:center;gap:10px}
+@media(max-width:760px){
+ .main.order-center-page :is(.records-heading,.p-records-heading){padding:20px 16px 16px;align-items:flex-start;flex-wrap:wrap;gap:12px}
+ .main.order-center-page :is(.records-filters,.p-filter-bar){padding:0 16px 15px;gap:9px}
+ .main.order-center-page :is(.records-search,.p-search-field){flex-basis:100%;min-width:0!important}
+ .main.order-center-page .p-filter-bar>select{max-width:none;min-width:0;flex-basis:40%}
+ .main.order-center-page :is(.records-pagination,.p-pagination){padding:16px;flex-wrap:wrap}
+ .main.order-center-page .p-page-heading{align-items:flex-start;flex-direction:column;gap:14px}
+ .main.order-center-page .p-page-heading h1{font-size:26px}
+ .main.order-center-page .p-center-records td{padding:0;border:0}
+}
+
+.main.order-center-page .records-empty[hidden],.main.order-center-page .p-table-wrap>.p-empty{display:none}
+.main.order-center-page :is(.page-heading,.p-page-heading){margin:26px 0 30px}
+.main.order-center-page :is(.page-heading,.p-page-heading) h1{font-size:28px;line-height:1.3;margin:10px 0 9px;letter-spacing:-.5px}
+.main.order-center-page :is(.page-heading,.p-page-heading) p{font-size:13px;line-height:1.8;margin:0;color:var(--muted)}
+.main.order-center-page :is(.page-heading,.p-page-heading) :is(.eyebrow,.p-eyebrow){display:block;font-size:10px;line-height:1.8;letter-spacing:2px;font-weight:600;color:var(--muted);margin:0}
+@media(max-width:760px){.main.order-center-page :is(.page-heading,.p-page-heading){margin:22px 0}.main.order-center-page :is(.page-heading,.p-page-heading) h1{font-size:25px}.main.order-center-page :is(.page-heading,.p-page-heading) p{font-size:11px}}

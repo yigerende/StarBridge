@@ -33,6 +33,19 @@ COPY services/gpt-register/docker/ ./docker/
 COPY services/gpt-register/integration/ ./integration/
 COPY services/gpt-register/gpt-re.config.example.json ./
 
+FROM golang:1.25-bookworm AS refundcore
+WORKDIR /build/refund-core
+COPY services/refund-core/go.mod services/refund-core/go.sum ./
+RUN go mod download
+COPY services/refund-core/internal/ ./internal/
+COPY services/refund-core/cmd/ ./cmd/
+RUN go test ./... && CGO_ENABLED=0 go build -trimpath -o /refund-core ./cmd/bridge
+
+FROM node:22-bookworm-slim AS refunddeps
+WORKDIR /build/runtime/manager_oauth
+COPY services/refund-core/runtime/manager_oauth/package*.json ./
+RUN npm ci --omit=dev --no-audit --no-fund
+
 FROM node:22-bookworm-slim AS engineui
 WORKDIR /build/web
 COPY services/gpt-register/web/package.json services/gpt-register/web/package-lock.json ./
@@ -48,6 +61,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
 WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
+COPY services/refund-core/runtime/requirements.txt /tmp/refund-requirements.txt
+RUN pip install --no-cache-dir -r /tmp/refund-requirements.txt
+COPY --chown=app:app services/refund-core/runtime/ ./services/refund-core/runtime/
+COPY --from=refunddeps --chown=app:app /build/runtime/manager_oauth/node_modules/ ./services/refund-core/runtime/manager_oauth/node_modules/
+COPY --from=refundcore --chown=app:app /refund-core ./bin/refund-core
 COPY --chown=app:app backend/ ./backend/
 COPY --chown=app:app generator.py ./
 COPY --chown=app:app scripts/start_app.py scripts/serve.py scripts/recover_post_payment.py ./scripts/
@@ -61,7 +79,7 @@ RUN mkdir -p /app/registration/.runtime && chown app:app /app/registration/.runt
 ARG VCS_REF=local
 LABEL org.opencontainers.image.source="https://github.com/yigerende/StarBridge" \
       org.opencontainers.image.title="StarBridge" \
-      org.opencontainers.image.description="Subscription and registration workspace" \
+      org.opencontainers.image.description="Subscription, registration and refund workspace" \
       org.opencontainers.image.revision=$VCS_REF
 USER app
 EXPOSE 18970

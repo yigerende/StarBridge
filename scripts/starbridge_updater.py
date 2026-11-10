@@ -141,12 +141,16 @@ class Updater:
 
     def wait_idle(self):
         self.publish('waiting',message='正在等待在途任务结束；业务自动任务需处于暂停状态')
-        query="""SELECT (SELECT count(*) FROM orders WHERE deleted_at IS NULL AND status IN ('queued','processing','review'))+
+        # Review is awaiting a human decision, not an executing payment. Keep its
+        # data and frozen funds intact; the execution locks below cover live work.
+        query="""SELECT (SELECT count(*) FROM orders WHERE deleted_at IS NULL AND status IN ('queued','processing'))+
          (SELECT count(*) FROM renewal_tasks WHERE status IN ('queued','processing','checking'))+
          (SELECT count(*) FROM platform_items WHERE status IN ('queued','running','oauth_pending','review'))+
          (SELECT count(*) FROM proxy_checks WHERE state IN ('queued','running'))+
          (SELECT count(*) FROM proxy_leases WHERE expires_at>now())+
-         (SELECT count(*) FROM pg_locks WHERE locktype='advisory' AND granted AND database=(SELECT oid FROM pg_database WHERE datname=current_database()) AND classid IN (1886011,1886012));"""
+         (SELECT count(*) FROM pg_locks WHERE locktype='advisory' AND granted AND database=(SELECT oid FROM pg_database WHERE datname=current_database()) AND classid IN (1886011,1886012,1886015));"""
+        if self.sql("SELECT to_regclass('refund_execution') IS NOT NULL")=='t':
+            query=query.rstrip(';')+"+(SELECT count(*) FROM refund_execution WHERE NOT released);"
         deadline=time.monotonic()+600
         while time.monotonic()<deadline:
             if self.sql(query)=='0' and self.engine_idle():return

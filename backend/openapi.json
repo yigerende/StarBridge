@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "星桥 API",
-    "version": "1.5.0",
-    "description": "面向星桥用户的服务端接入 API：订阅办理、生成结账链接、关闭自动续费、订单查询、账户与资金管理。\n\n功能权限由后台设置控制。关闭的功能返回 403；关闭开发接入后已有 API 密钥也暂停使用。通过 GET /api/v1/me 的 features 查看当前开放功能。密码通过邮箱重置后，旧 API 密钥将失效，需登录重新生成。"
+    "version": "2.3.0",
+    "description": "使用同一个 API 密钥查询账户、订阅套餐、代退报价和积分钱包，提交申请并跟踪办理结果。当前可用功能见 GET /api/v1/me 的 features；重置登录密码后需重新创建 API 密钥。"
   },
   "servers": [
     {
@@ -99,7 +99,7 @@
             }
           },
           "403": {
-            "description": "无权访问，或后台未开放开发接入/对应功能",
+            "description": "当前账户无权访问此功能",
             "content": {
               "application/json": {
                 "schema": {
@@ -200,7 +200,7 @@
       "get": {
         "operationId": "get_catalog",
         "summary": "查询套餐",
-        "description": "返回已开放套餐、当前账户服务费和支持的订阅地区。后续新增套餐也从 items[].id 获取接口标识，再传给报价和下单的 product_id；Pro 20x 的标识为 pro20x。 Plus 传 plus，Pro 50x（Pro Max）传 promax；实际开放的套餐以 GET /api/v1/catalog 返回为准。 countries 是当前后台启用且可办理的订阅国家列表；禁用或删除的地区不会返回。无需另调国家接口。",
+        "description": "返回当前可办理的订阅套餐、账户服务费和订阅地区。报价和下单使用 items[].id 作为 product_id、countries[].code 作为 country。",
         "security": [
           {
             "BearerKey": []
@@ -227,7 +227,7 @@
                     },
                     "unit": {
                       "type": "string",
-                      "description": "服务费为积分；unit 的兼容标识为 cent_R，数值展示时除以 100。"
+                      "description": "unit 为 cent_R；金额除以 100 后为积分。"
                     },
                     "countries": {
                       "type": "array",
@@ -362,7 +362,7 @@
             }
           },
           "403": {
-            "description": "无权访问，或后台未开放开发接入/对应功能",
+            "description": "当前账户无权访问此功能",
             "content": {
               "application/json": {
                 "schema": {
@@ -463,7 +463,7 @@
       "get": {
         "operationId": "get_quote",
         "summary": "查询服务费报价",
-        "description": "查询当前账户在指定套餐的服务费，不创建订单。优先使用该套餐专属价，其次原账户通用价，否则按当前会员等级计算；实际订单保留下单时的报价快照。",
+        "description": "查询当前账户在指定套餐的服务费，不创建订单。优先使用该套餐专属价，其次账户通用价，否则按当前会员等级计算；实际订单保留下单时的报价快照。",
         "security": [
           {
             "BearerKey": []
@@ -575,7 +575,7 @@
             }
           },
           "403": {
-            "description": "无权访问，或后台未开放开发接入/对应功能",
+            "description": "当前账户无权访问此功能",
             "content": {
               "application/json": {
                 "schema": {
@@ -671,7 +671,7 @@
             "name": "product_id",
             "in": "query",
             "required": true,
-            "description": "套餐接口标识：Pro 5x 传 pro5x，Pro 20x 传 pro20x，Team团队订阅传 team，普通与高级席位在同一订单配置。实际开放及新增套餐以 GET /api/v1/catalog 的 items[].id 为准，按返回值原样传入。 来源：调用 GET /api/v1/catalog，按套餐名称选择一条 items 记录，将它的 id 原样作为 product_id；例如 items 中 Pro 20x 的 id 为 pro20x。 Plus 传 plus，Pro 50x（Pro Max）传 promax；实际开放的套餐以 GET /api/v1/catalog 返回为准。",
+            "description": "所选套餐的 items[].id，来自 GET /api/v1/catalog；例如 pro20x。",
             "schema": {
               "type": "string"
             },
@@ -789,7 +789,7 @@
                     },
                     "unit": {
                       "type": "string",
-                      "description": "服务费为积分；unit 的兼容标识为 cent_R，数值展示时除以 100。"
+                      "description": "unit 为 cent_R；金额除以 100 后为积分。"
                     },
                     "basis": {
                       "type": "string",
@@ -869,7 +869,7 @@
             }
           },
           "403": {
-            "description": "无权访问，或后台未开放开发接入/对应功能",
+            "description": "当前账户无权访问此功能",
             "content": {
               "application/json": {
                 "schema": {
@@ -1022,7 +1022,7 @@
             }
           },
           "403": {
-            "description": "无权访问，或后台未开放开发接入/对应功能",
+            "description": "当前账户无权访问此功能",
             "content": {
               "application/json": {
                 "schema": {
@@ -1223,7 +1223,7 @@
             }
           },
           "403": {
-            "description": "无权访问，或后台未开放开发接入/对应功能",
+            "description": "当前账户无权访问此功能",
             "content": {
               "application/json": {
                 "schema": {
@@ -1348,7 +1348,7 @@
       "get": {
         "operationId": "list_orders",
         "summary": "查询订单列表",
-        "description": "查询本账户订单，支持关键词、状态、业务类型筛选及分页；默认每页 200 条。 管理员删除的订单不再返回；访问该订单详情返回 404，原 Idempotency-Key 仍被保留，再次提交返回 409，避免误重复下单。",
+        "description": "查询本账户订单，支持关键词、状态、业务类型筛选及分页；默认每页 200 条。 已删除的订单不再返回；原请求标识仍不可用于新订单。",
         "security": [
           {
             "BearerKey": []
@@ -1430,7 +1430,7 @@
             }
           },
           "403": {
-            "description": "无权访问，或后台未开放开发接入/对应功能",
+            "description": "当前账户无权访问此功能",
             "content": {
               "application/json": {
                 "schema": {
@@ -1603,7 +1603,7 @@
       "post": {
         "operationId": "create_order",
         "summary": "提交订阅或生成结账链接",
-        "description": "subscription 提交订阅办理并冻结服务费；link 仅生成链接，不自动付款、不收取该笔订阅服务费。返回 id 后使用订单详情查询。请求按站点当前办理方式受理，客户无需指定内部流程。 管理员删除的订单不再返回；访问该订单详情返回 404，原 Idempotency-Key 仍被保留，再次提交返回 409，避免误重复下单。 Plus 传 plus，Pro 50x（Pro Max）传 promax；实际开放的套餐以 GET /api/v1/catalog 返回为准。",
+        "description": "workflow=subscription 提交订阅并冻结服务费；workflow=link 仅生成结账链接，不自动付款，也不收取该笔订阅服务费。保存响应 id 后查询订单详情。响应超时须使用原请求标识和原参数重试。",
         "tags": [
           "订阅与结账链接"
         ],
@@ -1665,7 +1665,7 @@
             }
           },
           "403": {
-            "description": "无权访问，或后台未开放开发接入/对应功能",
+            "description": "当前账户无权访问此功能",
             "content": {
               "application/json": {
                 "schema": {
@@ -2032,7 +2032,7 @@
       "get": {
         "operationId": "get_order",
         "summary": "查询订单详情",
-        "description": "读取订单、进度、结账地址和付款结果。付款成功后须分别检查订阅生效和自动续费状态。 管理员删除的订单不再返回；访问该订单详情返回 404，原 Idempotency-Key 仍被保留，再次提交返回 409，避免误重复下单。",
+        "description": "读取订单、进度、结账地址和付款结果。付款成功后须分别检查订阅生效和自动续费状态。 已删除的订单不再返回；原请求标识仍不可用于新订单。",
         "security": [
           {
             "BearerKey": []
@@ -2112,7 +2112,7 @@
             }
           },
           "403": {
-            "description": "无权访问，或后台未开放开发接入/对应功能",
+            "description": "当前账户无权访问此功能",
             "content": {
               "application/json": {
                 "schema": {
@@ -2298,7 +2298,7 @@
             }
           },
           "403": {
-            "description": "无权访问，或后台未开放开发接入/对应功能",
+            "description": "当前账户无权访问此功能",
             "content": {
               "application/json": {
                 "schema": {
@@ -2528,7 +2528,7 @@
             }
           },
           "403": {
-            "description": "无权访问，或后台未开放开发接入/对应功能",
+            "description": "当前账户无权访问此功能",
             "content": {
               "application/json": {
                 "schema": {
@@ -2701,7 +2701,7 @@
             }
           },
           "403": {
-            "description": "无权访问，或后台未开放开发接入/对应功能",
+            "description": "当前账户无权访问此功能",
             "content": {
               "application/json": {
                 "schema": {
@@ -2864,7 +2864,8 @@
                     "keys": true,
                     "invites": true,
                     "membership": true,
-                    "docs": true
+                    "docs": true,
+                    "refund": true
                   },
                   "navigation": [
                     {
@@ -2911,7 +2912,7 @@
             }
           },
           "403": {
-            "description": "无权访问，或后台未开放开发接入/对应功能",
+            "description": "当前账户无权访问此功能",
             "content": {
               "application/json": {
                 "schema": {
@@ -3008,7 +3009,7 @@
       "get": {
         "operationId": "get_overview",
         "summary": "查询账户概览",
-        "description": "查询订单数量、资金统计、最近 5 笔订单和站点公告。",
+        "description": "查询本账户钱包摘要、注册/订阅/代退的当前办理数量、待办、最近 8 笔订单及公告。具体结果请按 business 查询对应订单详情。",
         "tags": [
           "账户与套餐"
         ],
@@ -3022,26 +3023,47 @@
                   "$ref": "#/components/schemas/Overview"
                 },
                 "example": {
-                  "user": {
-                    "id": "USER_ID",
-                    "email": "user@example.com",
-                    "name": "示例用户",
-                    "role": "member",
-                    "status": "active",
-                    "balance": 10000,
-                    "frozen": 0,
-                    "invite_code": "INVITE_CODE",
-                    "fee_override": null
+                  "wallet": {
+                    "available": 10000,
+                    "frozen": 0
                   },
-                  "stats": {
-                    "orders": 0,
-                    "succeeded": 0,
-                    "pending": 0,
-                    "used": 0,
-                    "credited": 0
+                  "permissions": {
+                    "orders": true,
+                    "register": true,
+                    "registration_orders": true,
+                    "accounts": true
                   },
+                  "queues": {
+                    "registration": {
+                      "business": "registration",
+                      "queued": 0,
+                      "running": 0,
+                      "review": 0,
+                      "followup": 0,
+                      "settling": 0
+                    },
+                    "subscription": {
+                      "business": "subscription",
+                      "queued": 0,
+                      "running": 0,
+                      "review": 0,
+                      "followup": 0,
+                      "settling": 0
+                    },
+                    "refund": {
+                      "business": "refund",
+                      "queued": 0,
+                      "running": 0,
+                      "review": 0,
+                      "followup": 0,
+                      "settling": 0
+                    }
+                  },
+                  "attention": [],
                   "recent_orders": [],
-                  "announcements": []
+                  "announcements": [],
+                  "generated_at": "2026-11-10T00:00:00Z",
+                  "active": false
                 }
               }
             }
@@ -3073,7 +3095,7 @@
             }
           },
           "403": {
-            "description": "无权访问，或后台未开放开发接入/对应功能",
+            "description": "当前账户无权访问此功能",
             "content": {
               "application/json": {
                 "schema": {
@@ -3247,7 +3269,7 @@
             }
           },
           "403": {
-            "description": "无权访问，或后台未开放开发接入/对应功能",
+            "description": "当前账户无权访问此功能",
             "content": {
               "application/json": {
                 "schema": {
@@ -3438,7 +3460,7 @@
             }
           },
           "403": {
-            "description": "无权访问，或后台未开放开发接入/对应功能",
+            "description": "当前账户无权访问此功能",
             "content": {
               "application/json": {
                 "schema": {
@@ -3607,7 +3629,7 @@
             }
           },
           "403": {
-            "description": "无权访问，或后台未开放开发接入/对应功能",
+            "description": "当前账户无权访问此功能",
             "content": {
               "application/json": {
                 "schema": {
@@ -3797,7 +3819,7 @@
             }
           },
           "403": {
-            "description": "无权访问，或后台未开放开发接入/对应功能",
+            "description": "当前账户无权访问此功能",
             "content": {
               "application/json": {
                 "schema": {
@@ -3888,6 +3910,1246 @@
             }
           }
         }
+      }
+    },
+    "/api/v1/refund/quote": {
+      "get": {
+        "operationId": "refund_quote",
+        "summary": "查询代退报价",
+        "description": "查询每个账号的服务费、会员减免和受理状态，不创建订单。批量申请需准备 fee × 账号数量的可用积分。",
+        "tags": [
+          "代退办理"
+        ],
+        "security": [
+          {
+            "BearerKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "fee": {
+                      "type": "integer",
+                      "description": "当前账户实际每账号服务费，100 = 1 积分；受理时按最新报价冻结。"
+                    },
+                    "standard": {
+                      "type": "integer",
+                      "description": "标准每账号服务费，100 = 1 积分。"
+                    },
+                    "saved": {
+                      "type": "integer",
+                      "description": "每账号减免金额，100 = 1 积分；最低为 0。"
+                    },
+                    "accepting": {
+                      "type": "boolean",
+                      "description": "是否接受新申请；false 时新申请不会受理。"
+                    },
+                    "executing": {
+                      "type": "boolean",
+                      "description": "是否正在办理排队申请；false 时已受理订单可能继续排队。"
+                    },
+                    "membership": {
+                      "type": "object",
+                      "description": "当前账户的统一会员信息，current 包含等级名称与 discount（100 为原价，80 为八折）。"
+                    },
+                    "unit": {
+                      "type": "string",
+                      "description": "金额单位固定为 cent_R，100 = 1 积分。"
+                    },
+                    "price_source": {
+                      "type": "string",
+                      "enum": [
+                        "membership",
+                        "account_override",
+                        "product_override"
+                      ],
+                      "description": "计价来源：会员等级、账户通用专属价或代退专属价。专属价优先于会员等级。"
+                    }
+                  }
+                },
+                "example": {
+                  "fee": 3000,
+                  "standard": 5000,
+                  "saved": 2000,
+                  "accepting": true,
+                  "executing": true,
+                  "membership": {
+                    "current": {
+                      "code": "L3",
+                      "name": "进阶会员",
+                      "threshold": 0,
+                      "discount": 60,
+                      "description": ""
+                    },
+                    "automatic": {
+                      "code": "L1",
+                      "name": "会员",
+                      "threshold": 0,
+                      "discount": 100,
+                      "description": ""
+                    },
+                    "next": null,
+                    "spent": 0,
+                    "remaining": 0,
+                    "progress": 100,
+                    "source": "automatic",
+                    "until": null,
+                    "fee_override": null,
+                    "tiers": [
+                      {
+                        "code": "L1",
+                        "name": "会员",
+                        "threshold": 0,
+                        "discount": 100,
+                        "description": ""
+                      }
+                    ],
+                    "product_prices": {}
+                  },
+                  "unit": "cent_R",
+                  "price_source": "membership"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误或可用积分不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "参数错误或可用积分不足"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "登录或密钥无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "登录或密钥无效"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "功能未开放或账户无权访问",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "功能未开放或账户无权访问"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "本账户订单不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "本账户订单不存在"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "请求标识冲突、账号重复或状态不可操作",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "请求标识冲突、账号重复或状态不可操作"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求过于频繁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "请求过于频繁"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂不可用；结果未确认时保持原请求标识重试",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "服务暂不可用；结果未确认时保持原请求标识重试"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务暂时异常；查询可稍后重试，提交须保留原请求标识。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error",
+                  "description": "请求错误。"
+                },
+                "example": {
+                  "error": "服务暂时异常"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/refund/orders": {
+      "post": {
+        "operationId": "refund_create",
+        "summary": "提交代退申请",
+        "description": "提交 1～500 个账号，每个账号一笔订单，总请求不超过 1 MB。任一账号校验失败时整批不受理，也不冻结积分。已存在未结束或成功申请的账号不能重复办理。受理时冻结服务费，服务完成后结算，失败或排队取消后释放；待核实保留冻结。保存响应 ids，逐笔查询详情。超时须按原账号顺序、原参数和原 Idempotency-Key 重试。",
+        "tags": [
+          "代退办理"
+        ],
+        "security": [
+          {
+            "BearerKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ids": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "description": ""
+                      },
+                      "description": "按提交账号顺序返回的订单编号，每个账号一笔订单。"
+                    },
+                    "replayed": {
+                      "type": "boolean",
+                      "description": "是否为相同请求标识的重复请求；true 时返回原订单编号。"
+                    }
+                  }
+                },
+                "example": {
+                  "ids": [
+                    "REFUND_ORDER_ID"
+                  ],
+                  "replayed": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误或可用积分不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "参数错误或可用积分不足"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "登录或密钥无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "登录或密钥无效"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "功能未开放或账户无权访问",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "功能未开放或账户无权访问"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "本账户订单不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "本账户订单不存在"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "请求标识冲突、账号重复或状态不可操作",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "请求标识冲突、账号重复或状态不可操作"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求过于频繁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "请求过于频繁"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂不可用；结果未确认时保持原请求标识重试",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "服务暂不可用；结果未确认时保持原请求标识重试"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "请求体超过 1 MB，请减少本批账号数。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error",
+                  "description": "请求错误。"
+                },
+                "example": {
+                  "error": "请求内容过大"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务暂时异常；查询可稍后重试，提交须保留原请求标识。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error",
+                  "description": "请求错误。"
+                },
+                "example": {
+                  "error": "服务暂时异常"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 128
+            },
+            "example": "YOUR_UNIQUE_REQUEST_ID",
+            "description": "为本批申请生成并保存的唯一标识，8～128 个 ASCII 字符；超时重试使用原值、原账号顺序及原参数。"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "authorized": {
+                    "type": "boolean",
+                    "const": true,
+                    "description": "确认账号持有人授权并理解订阅状态变更及服务完成条件"
+                  },
+                  "accounts": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 500,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "email": {
+                          "type": "string",
+                          "description": "账号邮箱",
+                          "format": "email"
+                        },
+                        "password": {
+                          "type": "string",
+                          "description": "已获授权账号的密码",
+                          "writeOnly": true
+                        },
+                        "totp_secret": {
+                          "type": "string",
+                          "description": "Base32 2FA 密钥或 otpauth 链接，不能使用六位验证码",
+                          "writeOnly": true
+                        }
+                      },
+                      "required": [
+                        "email",
+                        "password",
+                        "totp_secret"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "description": "待办理账号，1～500 个；任一账号不符合条件时整批不受理。"
+                  }
+                },
+                "required": [
+                  "authorized",
+                  "accounts"
+                ],
+                "additionalProperties": false
+              },
+              "examples": {
+                "single": {
+                  "summary": "单个授权账号",
+                  "value": {
+                    "authorized": true,
+                    "accounts": [
+                      {
+                        "email": "authorized@example.com",
+                        "password": "AUTHORIZED_ACCOUNT_PASSWORD",
+                        "totp_secret": "BASE32_TOTP_SECRET"
+                      }
+                    ]
+                  }
+                },
+                "batch": {
+                  "summary": "批量授权账号",
+                  "value": {
+                    "authorized": true,
+                    "accounts": [
+                      {
+                        "email": "authorized@example.com",
+                        "password": "AUTHORIZED_ACCOUNT_PASSWORD",
+                        "totp_secret": "BASE32_TOTP_SECRET"
+                      },
+                      {
+                        "email": "authorized2@example.com",
+                        "password": "AUTHORIZED_ACCOUNT_PASSWORD",
+                        "totp_secret": "BASE32_TOTP_SECRET"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "refund_list",
+        "summary": "查询本人代退订单",
+        "description": "只返回当前账号的订单，按创建时间倒序。账号密码及 2FA 不返回。",
+        "tags": [
+          "代退办理"
+        ],
+        "security": [
+          {
+            "BearerKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RefundOrder"
+                      },
+                      "description": "当前页的代退订单。"
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "符合条件的订单总数。"
+                    },
+                    "page": {
+                      "type": "integer",
+                      "description": "当前页码，从 1 开始。"
+                    },
+                    "page_size": {
+                      "type": "integer",
+                      "description": "每页条数。"
+                    }
+                  }
+                },
+                "example": {
+                  "items": [
+                    {
+                      "id": "REFUND_ORDER_ID",
+                      "email": "authorized@example.com",
+                      "status": "queued",
+                      "fee": 3000,
+                      "fee_status": "frozen",
+                      "message": "申请已受理",
+                      "created_at": "2026-11-10T10:00:00Z",
+                      "updated_at": "2026-11-10T10:00:00Z"
+                    }
+                  ],
+                  "total": 1,
+                  "page": 1,
+                  "page_size": 50
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误或可用积分不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "参数错误或可用积分不足"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "登录或密钥无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "登录或密钥无效"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "功能未开放或账户无权访问",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "功能未开放或账户无权访问"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "本账户订单不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "本账户订单不存在"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "请求标识冲突、账号重复或状态不可操作",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "请求标识冲突、账号重复或状态不可操作"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求过于频繁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "请求过于频繁"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂不可用；结果未确认时保持原请求标识重试",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "服务暂不可用；结果未确认时保持原请求标识重试"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务暂时异常；查询可稍后重试，提交须保留原请求标识。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error",
+                  "description": "请求错误。"
+                },
+                "example": {
+                  "error": "服务暂时异常"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string",
+              "description": "邮箱或订单号搜索"
+            },
+            "description": "邮箱或订单号关键词，忽略大小写；UTF-8 最多 254 字节。"
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "",
+                "active",
+                "queued",
+                "processing",
+                "verifying",
+                "attention",
+                "succeeded",
+                "failed",
+                "banned",
+                "cancelled"
+              ]
+            },
+            "description": "订单状态，省略为全部；active 包含 queued、processing、verifying，attention 需单独查询。"
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100000,
+              "default": 1
+            },
+            "description": "页码，从 1 开始；page × page_size < total 时还有下一页。"
+          },
+          {
+            "in": "query",
+            "name": "page_size",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            },
+            "description": "每页条数，最多 200。"
+          }
+        ]
+      }
+    },
+    "/api/v1/refund/orders/{id}": {
+      "get": {
+        "operationId": "refund_detail",
+        "summary": "查询代退进度与费用",
+        "description": "queued 等待办理；processing 办理中；verifying 核实中；attention 待跟进。仅 succeeded 表示服务完成，fee_status=settled 表示服务费已结算，不表示银行退款到账。failed、banned、cancelled 释放服务费。建议每 10～15 秒查询，终态停止；核实中不得重复提交。",
+        "tags": [
+          "代退办理"
+        ],
+        "security": [
+          {
+            "BearerKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "order": {
+                      "$ref": "#/components/schemas/RefundOrder",
+                      "description": "本笔代退订单。"
+                    },
+                    "events": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RefundEvent"
+                      },
+                      "description": "按时间顺序返回的办理进度。"
+                    }
+                  }
+                },
+                "example": {
+                  "order": {
+                    "id": "REFUND_ORDER_ID",
+                    "email": "authorized@example.com",
+                    "status": "queued",
+                    "fee": 3000,
+                    "fee_status": "frozen",
+                    "message": "申请已受理",
+                    "created_at": "2026-11-10T10:00:00Z",
+                    "updated_at": "2026-11-10T10:00:00Z"
+                  },
+                  "events": [
+                    {
+                      "id": 1,
+                      "message": "申请已受理",
+                      "created_at": "2026-11-10T10:00:00Z"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误或可用积分不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "参数错误或可用积分不足"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "登录或密钥无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "登录或密钥无效"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "功能未开放或账户无权访问",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "功能未开放或账户无权访问"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "本账户订单不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "本账户订单不存在"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "请求标识冲突、账号重复或状态不可操作",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "请求标识冲突、账号重复或状态不可操作"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求过于频繁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "请求过于频繁"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂不可用；结果未确认时保持原请求标识重试",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "服务暂不可用；结果未确认时保持原请求标识重试"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务暂时异常；查询可稍后重试，提交须保留原请求标识。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error",
+                  "description": "请求错误。"
+                },
+                "example": {
+                  "error": "服务暂时异常"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "REFUND_ORDER_ID",
+            "description": "代退订单编号，来自提交响应 ids 中的一项或列表 items[].id。"
+          }
+        ]
+      }
+    },
+    "/api/v1/refund/orders/{id}/cancel": {
+      "post": {
+        "operationId": "refund_cancel",
+        "summary": "取消排队中的代退订单",
+        "description": "取消仍处于 queued 的申请并释放冻结积分。已经开始办理返回 409；重复取消同一已取消申请返回成功。",
+        "tags": [
+          "代退办理"
+        ],
+        "security": [
+          {
+            "BearerKey": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "操作成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "description": "true 表示取消成功或该申请已经取消。"
+                    }
+                  }
+                },
+                "example": {
+                  "ok": true
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误或可用积分不足",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "参数错误或可用积分不足"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "登录或密钥无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "登录或密钥无效"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "功能未开放或账户无权访问",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "功能未开放或账户无权访问"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "本账户订单不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "本账户订单不存在"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "请求标识冲突、账号重复或状态不可操作",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "请求标识冲突、账号重复或状态不可操作"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "请求过于频繁",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "请求过于频繁"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "服务暂不可用；结果未确认时保持原请求标识重试",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string",
+                      "description": "本次请求未完成的原因，用于展示；处理方式以 HTTP 状态为准。"
+                    }
+                  }
+                },
+                "example": {
+                  "error": "服务暂不可用；结果未确认时保持原请求标识重试"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "服务暂时异常；查询可稍后重试，提交须保留原请求标识。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error",
+                  "description": "请求错误。"
+                },
+                "example": {
+                  "error": "服务暂时异常"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "REFUND_ORDER_ID",
+            "description": "代退订单编号，来自提交响应 ids 中的一项或列表 items[].id。"
+          }
+        ]
       }
     }
   },
@@ -4201,9 +5463,10 @@
         "properties": {
           "state": {
             "type": "string",
-            "description": "付款状态；付款成功不代表后续订阅和续费已核实。",
+            "description": "preparing 准备中，checking 正在核实原交易且保留冻结；succeeded 才表示付款成功。review 时联系支持，勿重复付款。付款成功后的订阅和续费结果须另行检查。",
             "enum": [
               "preparing",
+              "checking",
               "succeeded",
               "failed",
               "cancelled",
@@ -4332,13 +5595,14 @@
           },
           "renewal": {
             "type": "string",
-            "description": "disabled 表示已核实关闭；kept 表示按要求保留。",
+            "description": "disabled 表示已确认关闭，kept 表示按要求保留，pending/retrying 表示继续查询原单，review 表示需联系支持。",
             "enum": [
               "not_started",
               "pending",
               "disabled",
               "kept",
-              "review"
+              "review",
+              "retrying"
             ]
           },
           "created_at": {
@@ -4406,7 +5670,7 @@
                 }
               }
             },
-            "description": "按时间顺序返回的业务进度记录；可为空，不包含管理员技术诊断。"
+            "description": "按时间顺序返回的办理进度；尚无记录时为空数组。"
           },
           "checkout": {
             "$ref": "#/components/schemas/Checkout",
@@ -4421,7 +5685,7 @@
             "items": {
               "type": "object"
             },
-            "description": "兼容字段，客户接口固定为空数组；请读取 events 获取进度。"
+            "description": "固定为空数组；办理进度见 events。"
           }
         }
       },
@@ -4447,7 +5711,7 @@
           },
           "unit": {
             "type": "string",
-            "description": "兼容协议标识 cent_R；金额含义为积分最小单位，页面展示时除以 100。",
+            "description": "金额单位 cent_R，100 = 1 积分。",
             "enum": [
               "cent_R"
             ]
@@ -4470,9 +5734,10 @@
         "properties": {
           "state": {
             "type": "string",
-            "description": "付款状态；付款成功不代表后续订阅和续费已核实。",
+            "description": "preparing 准备中，checking 正在核实原交易且保留冻结；succeeded 才表示付款成功。review 时联系支持，勿重复付款。付款成功后的订阅和续费结果须另行检查。",
             "enum": [
               "preparing",
+              "checking",
               "succeeded",
               "failed",
               "cancelled",
@@ -4520,7 +5785,7 @@
           },
           "enabled": {
             "type": "boolean",
-            "description": "兼容字段，固定 false，不用于判断是否允许新建订单；使用套餐或报价的 payment_connected。"
+            "description": "固定为 false；下单前请查看套餐或报价的 payment_connected。"
           }
         }
       },
@@ -4579,7 +5844,7 @@
           },
           "product_id": {
             "type": "string",
-            "description": "套餐接口标识：Pro 5x 传 pro5x，Pro 20x 传 pro20x，Team团队订阅传 team，普通与高级席位在同一订单配置。实际开放及新增套餐以 GET /api/v1/catalog 的 items[].id 为准，按返回值原样传入。 来源：调用 GET /api/v1/catalog，按套餐名称选择一条 items 记录，将它的 id 原样作为 product_id；例如 items 中 Pro 20x 的 id 为 pro20x。 Plus 传 plus，Pro 50x（Pro Max）传 promax；实际开放的套餐以 GET /api/v1/catalog 返回为准。",
+            "description": "所选套餐的 items[].id，来自 GET /api/v1/catalog；例如 pro20x。",
             "minLength": 1,
             "maxLength": 80,
             "pattern": "^[a-z0-9_]+$",
@@ -4619,7 +5884,7 @@
             "type": "string",
             "description": "订阅国家的两位大写代码。先调用 GET /api/v1/catalog，从 countries[].code 选择；对应 countries[].currency 为该地区配置的订阅结算币种。地区开放状态及可用范围可能变化，请在创建订单前读取最新目录。订单受理后保留地区与币种快照。",
             "default": "PH",
-            "x-input-source": "订阅地区代码，调用 GET /api/v1/catalog，从 countries[].code 选择一个当前启用的地区。name 和 currency 仅供展示，不传入这两个字段。省略时使用 PH；如果 PH 已停用，须明确选择列表中的地区。下单后按当时的国家及币种执行，后台后续修改不影响已受理订单。",
+            "x-input-source": "订阅地区代码，调用 GET /api/v1/catalog，从 countries[].code 选择一个当前启用的地区。name 和 currency 仅供展示，不传入这两个字段。省略时使用 PH；如果 PH 已停用，须明确选择列表中的地区。下单后按当时的国家及币种执行，后续地区变化不影响已受理订单。",
             "x-source-operations": [
               {
                 "operationId": "get_catalog",
@@ -4643,15 +5908,6 @@
             "maximum": 100,
             "x-input-source": "Team 高级席位数量，不超过总席位 seats；无需高级席位时填 0，Team 省略此字段默认为 0。",
             "x-source-operations": []
-          },
-          "workspace_name": {
-            "type": "string",
-            "description": "兼容旧客户端保留；当前 Team 流程无需传递，不使用该字段作为团队空间名称。",
-            "minLength": 1,
-            "maxLength": 100,
-            "x-input-source": "当前 Team 流程无需填写或传递此字段；仅为旧客户端兼容保留。",
-            "x-source-operations": [],
-            "deprecated": true
           },
           "keep_renewal": {
             "type": "boolean",
@@ -4684,7 +5940,7 @@
             "type": "string",
             "maxLength": 256,
             "default": "",
-            "description": "可选：用户自己的 Team 优惠码，仅用于当前 Go提链＋HTTP付款流程的 Team。不能包含控制字符，UTF-8 最多256字节；留空不发送。只影响上游结账，星桥服务费不变。无平台优惠码购买或库存功能。"
+            "description": "可选 Team 优惠码，UTF-8 最多 256 字节，不含控制字符；留空表示不使用。仅影响订阅付款金额，服务费不变。当前办理方式不支持时返回 400，请先确认可用性。"
           }
         },
         "required": [
@@ -4955,7 +6211,7 @@
           },
           "features": {
             "type": "object",
-            "description": "后台允许当前账户使用的功能。false 表示功能关闭，对应接口也拒绝访问。",
+            "description": "当前账户可用功能。false 表示该功能不可用。",
             "properties": {
               "home": {
                 "type": "boolean",
@@ -4996,12 +6252,16 @@
               "docs": {
                 "type": "boolean",
                 "description": "API 文档是否开放。"
+              },
+              "refund": {
+                "type": "boolean",
+                "description": "代退办理是否可用。"
               }
             }
           },
           "navigation": {
             "type": "array",
-            "description": "当前账户可见的客户菜单。仅返回已开放功能，不包含管理菜单。",
+            "description": "当前账户可访问的页面入口。",
             "items": {
               "type": "object",
               "properties": {
@@ -5023,7 +6283,7 @@
                     "main",
                     "tools"
                   ],
-                  "description": "导航分组：main 为订阅与资金，tools 为工具与账户。"
+                  "description": "导航分组：main 为业务办理与资金，tools 为工具与账户。"
                 }
               }
             }
@@ -5038,42 +6298,107 @@
       "Overview": {
         "type": "object",
         "properties": {
-          "user": {
-            "$ref": "#/components/schemas/Account",
-            "description": "当前 API 密钥所属的星桥账户。"
+          "wallet": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "available": {
+                "type": "integer",
+                "description": "可用积分，100 = 1 积分。"
+              },
+              "frozen": {
+                "type": "integer",
+                "description": "冻结积分，100 = 1 积分。"
+              }
+            },
+            "description": "钱包摘要；钱包功能不可用时为 null。"
           },
-          "stats": {
+          "permissions": {
             "type": "object",
             "properties": {
               "orders": {
-                "type": "integer",
-                "description": "累计订单数。"
+                "type": "boolean",
+                "description": "是否可查询订阅和代退订单。"
               },
-              "succeeded": {
-                "type": "integer",
-                "description": "付款成功的订单数。"
+              "register": {
+                "type": "boolean",
+                "description": "是否可申请注册。"
               },
-              "pending": {
-                "type": "integer",
-                "description": "未结束订单数，不含等待外部付款的提链订单。"
+              "registration_orders": {
+                "type": "boolean",
+                "description": "是否可查询注册订单。"
               },
-              "used": {
-                "type": "integer",
-                "description": "累计已扣服务费，积分最小单位。"
-              },
-              "credited": {
-                "type": "integer",
-                "description": "充值和兑换入账总额，积分最小单位。"
+              "accounts": {
+                "type": "boolean",
+                "description": "是否可领取注册账号。"
               }
             },
-            "description": "订单和资金汇总；已删除订单不计入订单数量，历史资金流水仍保留。"
+            "description": "当前可访问的办理和查询功能。"
+          },
+          "queues": {
+            "type": "object",
+            "properties": {
+              "registration": {
+                "$ref": "#/components/schemas/OverviewQueue",
+                "description": "本账户注册订单计数。"
+              },
+              "subscription": {
+                "$ref": "#/components/schemas/OverviewQueue",
+                "description": "本账户订阅订单计数。"
+              },
+              "refund": {
+                "$ref": "#/components/schemas/OverviewQueue",
+                "description": "本账户代退订单计数。"
+              }
+            },
+            "description": "各业务当前未完成订单计数。"
+          },
+          "attention": {
+            "type": "array",
+            "description": "待办与账号领取提示；按 count 判断是否需要关注。",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "description": "待办标识。"
+                },
+                "title": {
+                  "type": "string",
+                  "description": "待办标题。"
+                },
+                "count": {
+                  "type": "integer",
+                  "description": "当前数量，可能为 0。"
+                },
+                "href": {
+                  "type": "string",
+                  "description": "网站处理页面相对链接。"
+                },
+                "hint": {
+                  "type": "string",
+                  "description": "进度或处理说明。"
+                },
+                "tone": {
+                  "type": "string",
+                  "description": "展示类别。"
+                },
+                "unit": {
+                  "type": "string",
+                  "description": "数量单位。"
+                }
+              }
+            }
           },
           "recent_orders": {
             "type": "array",
+            "description": "三类业务最近 8 笔订单，按创建时间倒序。",
             "items": {
-              "$ref": "#/components/schemas/Order"
-            },
-            "description": "最近 5 笔未删除订单，按创建时间倒序排列。"
+              "$ref": "#/components/schemas/OverviewOrder",
+              "description": "订单摘要。"
+            }
           },
           "announcements": {
             "type": "array",
@@ -5098,7 +6423,16 @@
                 }
               }
             },
-            "description": "当前发布且处于展示时间内的公告。"
+            "description": "当前可见公告，最多 3 条。"
+          },
+          "generated_at": {
+            "type": "string",
+            "description": "本次结果生成时间。",
+            "format": "date-time"
+          },
+          "active": {
+            "type": "boolean",
+            "description": "是否有排队、办理或自动核实中的任务；需人工跟进的记录另看 attention。"
           }
         }
       },
@@ -5285,21 +6619,30 @@
             "enum": [
               "shared",
               "subscription",
-              "registration"
+              "registration",
+              "refund"
             ],
-            "description": "shared 为共用钱包充值、兑换、运营调整及伙伴奖励；subscription / registration 为对应订单的冻结、结算和退回。共用流水只计一次，不归入订阅或注册。"
+            "description": "shared 为共用钱包充值、兑换、余额调整及伙伴奖励；subscription、registration、refund 分别为订阅、注册、代退订单的冻结、结算和退回。共用流水只计一次。"
           },
           "registration_order_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "注册业务关联的订单编号；共用或订阅流水为空。"
+            "description": "关联注册订单编号；其他业务及共用流水为 null。"
+          },
+          "refund_order_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "代退业务关联的订单编号，其他业务和共用流水为 null。"
           }
         },
         "required": [
           "business",
-          "registration_order_id"
+          "registration_order_id",
+          "refund_order_id"
         ]
       },
       "OrderPage": {
@@ -5413,6 +6756,218 @@
             "description": "是否还有下一页。"
           }
         }
+      },
+      "RefundOrder": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "代退订单编号。"
+          },
+          "email": {
+            "type": "string",
+            "description": "本笔申请的账号邮箱。"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "processing",
+              "verifying",
+              "attention",
+              "succeeded",
+              "failed",
+              "banned",
+              "cancelled"
+            ],
+            "description": "queued 排队、processing 办理、verifying 核实、attention 待跟进；succeeded/failed/banned/cancelled 为结束状态。"
+          },
+          "fee": {
+            "type": "integer",
+            "description": "锁定服务费，百分之一积分"
+          },
+          "fee_status": {
+            "type": "string",
+            "enum": [
+              "frozen",
+              "settled",
+              "released"
+            ],
+            "description": "frozen 服务费冻结，settled 已结算，released 已释放。"
+          },
+          "message": {
+            "type": "string",
+            "description": "通用办理进度"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "申请创建时间。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "申请更新时间。"
+          },
+          "error_code": {
+            "type": "string",
+            "description": "可选业务提示码；login_verification_failed 表示账号登录验证未通过。"
+          },
+          "http_status": {
+            "type": "integer",
+            "description": "可选登录验证结果码；401 表示账号登录验证未通过，与查询请求自身的 HTTP 状态不同。"
+          }
+        }
+      },
+      "RefundEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "进度记录编号。"
+          },
+          "message": {
+            "type": "string",
+            "description": "办理进度说明。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "进度记录时间。"
+          }
+        }
+      },
+      "OverviewQueue": {
+        "type": "object",
+        "properties": {
+          "business": {
+            "type": "string",
+            "description": "业务类型。",
+            "enum": [
+              "registration",
+              "subscription",
+              "refund"
+            ]
+          },
+          "queued": {
+            "type": "integer",
+            "description": "排队中的订单数。",
+            "minimum": 0
+          },
+          "running": {
+            "type": "integer",
+            "description": "正在办理或核实的订单数。",
+            "minimum": 0
+          },
+          "review": {
+            "type": "integer",
+            "description": "待跟进的订单数。",
+            "minimum": 0
+          },
+          "followup": {
+            "type": "integer",
+            "description": "已付款、订阅或续费结果待跟进的订阅订单数。",
+            "minimum": 0
+          },
+          "settling": {
+            "type": "integer",
+            "description": "已付款、仍在核实生效或续费结果的订阅订单数。",
+            "minimum": 0
+          }
+        }
+      },
+      "OverviewOrder": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "订单编号；按 business 调用对应订单详情接口。"
+          },
+          "business": {
+            "type": "string",
+            "description": "业务类型。",
+            "enum": [
+              "registration",
+              "subscription",
+              "refund"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "套餐或服务名称。"
+          },
+          "email": {
+            "type": "string",
+            "description": "目标账号邮箱；注册订单为空字符串。"
+          },
+          "status": {
+            "type": "string",
+            "description": "所属业务的订单状态，见状态说明。"
+          },
+          "workflow": {
+            "type": "string",
+            "description": "办理类型。",
+            "enum": [
+              "registration",
+              "subscription",
+              "link",
+              "refund"
+            ]
+          },
+          "activation": {
+            "type": "string",
+            "description": "订阅生效状态；其他业务为空字符串。"
+          },
+          "renewal": {
+            "type": "string",
+            "description": "订阅自动续费状态；其他业务为空字符串。"
+          },
+          "quantity": {
+            "type": "integer",
+            "description": "申请数量；订阅和代退为 1。"
+          },
+          "delivered": {
+            "type": "integer",
+            "description": "注册已交付数量或代退成功数量；订阅为 0。"
+          },
+          "fee": {
+            "type": "integer",
+            "description": "订单服务费总额，100 = 1 积分；钱包不可用时省略。"
+          },
+          "created_at": {
+            "type": "string",
+            "description": "订单创建时间。",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "description": "订单更新时间。",
+            "format": "date-time"
+          },
+          "completed": {
+            "type": "boolean",
+            "description": "是否满足该业务完成条件；付款和续费的具体结果仍应查询订单详情。"
+          },
+          "attention": {
+            "type": "boolean",
+            "description": "是否有待跟进的结果。"
+          },
+          "available_accounts": {
+            "type": "integer",
+            "description": "该注册订单当前可领取账号数；其他业务为 0。"
+          },
+          "href": {
+            "type": "string",
+            "description": "网站订单页面相对链接。"
+          },
+          "claim_href": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "可领取账号的网页链接；无可领取账号时为 null。"
+          }
+        }
       }
     }
   },
@@ -5431,6 +6986,10 @@
     },
     {
       "name": "账号检查"
+    },
+    {
+      "name": "代退办理",
+      "description": "授权账号代退服务及服务费结算"
     }
   ],
   "x-guides": [
@@ -5472,6 +7031,19 @@
         "保存创建响应根级 id，将它替换进 GET /api/v1/renewals/{id}，每 5 秒查询；不要使用订阅订单编号。",
         "disabled 表示确认关闭；no_subscription 表示没有可关闭的订阅。",
         "review 表示待核实，按 message 联系支持；需要更新 Session 时使用新的请求标识。"
+      ]
+    },
+    {
+      "id": "refund",
+      "title": "代退办理",
+      "create": "refund_create",
+      "detail": "refund_detail",
+      "example": "single",
+      "steps": [
+        "查询 GET /api/v1/refund/quote，确认 accepting=true；可用积分须不少于 fee × 账号数量。",
+        "使用保存好的 Idempotency-Key 提交 accounts 与 authorized=true；保存响应 ids，数组中每项对应一个账号。",
+        "逐个将 ids 中的订单编号填入 GET /api/v1/refund/orders/{id}，每 10～15 秒查询。attention 时联系支持，勿重复提交。",
+        "succeeded 表示代退服务完成，不表示银行退款到账；fee_status=settled 表示服务费已结算。失败或排队取消查看 fee_status=released。"
       ]
     }
   ],
@@ -5588,5 +7160,15 @@
       "value": "同一次操作的重试保持相同标识和内容。",
       "links": []
     }
-  ]
+  ],
+  "x-refund-order-states": {
+    "queued": "排队中，尚未开始时可取消",
+    "processing": "正在办理，继续查询原单",
+    "verifying": "正在核实，继续查询原单，不要重复提交",
+    "attention": "待跟进，联系支持核实原单",
+    "succeeded": "服务已完成并结算，不代表退款已经到账",
+    "failed": "办理失败，冻结服务费已释放",
+    "banned": "账号不可用，冻结服务费已释放",
+    "cancelled": "已取消，冻结服务费已释放"
+  }
 }

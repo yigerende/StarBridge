@@ -4,6 +4,9 @@ from datetime import datetime, timedelta
 import json
 import time
 import unittest
+from unittest.mock import Mock, patch
+import importlib.util
+from pathlib import Path
 
 from test_registration_account import RegistrationAccountTests as Fixture
 from backend import db
@@ -22,6 +25,24 @@ class DashboardTests(unittest.TestCase):
         db.execute("INSERT INTO products(id,name,description,fee) VALUES('plus','Plus','test',500)")
         self.user = {'id':'u','role':'member'}
         self.admin_user = {'id':'admin','role':'admin'}
+
+    def test_update_waits_for_active_execution_but_preserves_inactive_review(self):
+        spec=importlib.util.spec_from_file_location('updater_dashboard_test',Path(__file__).resolve().parents[1]/'scripts/starbridge_updater.py')
+        updater=importlib.util.module_from_spec(spec);spec.loader.exec_module(updater)
+        service=updater.Updater();service.publish=Mock();service.engine_idle=Mock(return_value=True)
+        service.sql=lambda query: 't' if 'to_regclass' in query else str(db.scalar(query))
+        self.sub('review-for-update',status='review')
+        before=db.one("SELECT * FROM orders WHERE id='review-for-update'")
+        service.wait_idle()
+        with db.transaction() as q:
+            q.execute('SELECT pg_advisory_xact_lock(1886015,42)')
+            with patch.object(updater.time,'monotonic',side_effect=[0,0,601]),patch.object(updater.time,'sleep'):
+                with self.assertRaises(updater.UpdateError):service.wait_idle()
+        db.execute("UPDATE orders SET status='processing' WHERE id='review-for-update'")
+        with patch.object(updater.time,'monotonic',side_effect=[0,0,601]),patch.object(updater.time,'sleep'):
+            with self.assertRaises(updater.UpdateError):service.wait_idle()
+        db.execute("UPDATE orders SET status='review' WHERE id='review-for-update'")
+        self.assertEqual(db.one("SELECT * FROM orders WHERE id='review-for-update'"),before)
 
     def sub(self, id, owner='u', status='succeeded', **fields):
         db.execute("INSERT INTO orders(id,user_id,product_id,product_name,email,status,fee,idempotency_key,request_hash,workflow,activation,renewal) VALUES($1,$2,'plus','Plus','subscription@test.example',$3,500,$1,'test','subscription','active','disabled')",id,owner,status)

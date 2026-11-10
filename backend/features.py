@@ -1,16 +1,16 @@
 """Customer capabilities, enforced at the authenticated request boundary."""
 from .common import config, require
 
-FEATURES = ('home', 'subscribe', 'orders', 'wallet', 'links', 'renewal', 'keys', 'invites', 'membership', 'docs')
-NAVIGATION = [('home','工作台'),('subscribe','订阅办理'),('orders','订单中心'),('wallet','资金账户'),
+FEATURES = ('refund', 'home', 'subscribe', 'orders', 'wallet', 'links', 'renewal', 'keys', 'invites', 'membership', 'docs')
+NAVIGATION = [('home','工作台'),('subscribe','订阅办理'),('refund','代退办理'),('orders','订单中心'),('wallet','资金账户'),
               ('links','结账链接'),('renewal','续费管理'),('keys','开发接入'),('invites','伙伴计划'),
               ('membership','会员中心'),('docs','API 文档'),('profile','个人设置')]
 
 
 def navigation(user=None):
     flags=capabilities(user)
-    return [{'id':key,'path':'/'+key,'label':label,'group':'main' if i<4 else 'tools'}
-            for i,(key,label) in enumerate(NAVIGATION) if key=='profile' or flags[key]]
+    return [{'id':key,'path':'/'+key,'label':label,'group':'main' if key in ('home','subscribe','refund','orders','wallet') else 'tools'}
+            for key,label in NAVIGATION if key=='profile' or flags[key]]
 
 
 def capabilities(user=None):
@@ -47,6 +47,7 @@ def enforce(request, user):
                 'renewals': ('renewal',), 'quote': ('subscribe', 'links'),
                 'catalog': ('subscribe', 'links', 'membership')}
     if route in required: require_any(user, *required[route])
+    if route == 'refund': require_any(user, 'orders' if '/orders' in path and not (request.method=='POST' and path.endswith('/orders')) else 'refund')
     if route == 'orders':
         require_any(user, *('subscribe', 'links') if request.method == 'POST' and path == '/api/orders' else ('orders',))
     if route == 'subscriptions': require_any(user, 'orders')
@@ -72,10 +73,11 @@ async def enforce_payload(request, user):
             country=value.get('country') or 'PH'
             if isinstance(country,str):selected(country.strip().upper(),web_order_flows[path])
     if user['role'] == 'admin': return
-    if request.method == 'POST' and (path.endswith('/orders') or path.endswith('/session/inspect')):
+    order_paths = {*web_order_flows, '/api/v1/orders'}
+    if request.method == 'POST' and (path in order_paths or path.endswith('/session/inspect')):
         from .common import body
         value = await body(request)
-        if path.endswith('/orders'):
+        if path in order_paths:
             require_any(user, 'subscribe' if value.get('workflow', 'link') == 'subscription' else 'links')
         elif value.get('workflow') in ('subscription', 'link', 'checkout', 'renewal'):
             require_any(user, {'subscription': 'subscribe', 'link': 'links', 'checkout': 'links', 'renewal': 'renewal'}[value['workflow']])

@@ -9,7 +9,7 @@ import {
   Table,
   useAction,
 } from "./Workspace";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, SearchX } from "lucide-react";
 import { Filters, Pagination, number } from "./Insights";
 import AdminOverview from "./AdminOverview";
 import AdminFinance from "./AdminFinance";
@@ -80,7 +80,7 @@ export default function AdminPlatform({ tab = "overview" }: { tab?: string }) {
   const rows = data?.items || [];
   const tabs: Row = {
     overview: "运营概览",
-    orders: "订单监控",
+    orders: "订单中心",
     finance: "财务报表",
     accounts: "账号交付",
     products: "服务与定价",
@@ -114,7 +114,7 @@ export default function AdminPlatform({ tab = "overview" }: { tab?: string }) {
           </p>
         </div>
       </div>
-      <div className="p-admin-toolbar">
+      <div className="p-admin-toolbar" hidden={tab === "orders"}>
         {tab === "codes" && <button className="p-button secondary" onClick={()=>setCodesUsage(!codesUsage)}>{codesUsage?"返回兑换码":"使用情况"}</button>}
         {tab === "users" && (
           <button className="p-button" onClick={() => setCreateUser(true)}>
@@ -152,7 +152,7 @@ export default function AdminPlatform({ tab = "overview" }: { tab?: string }) {
       {tab === "overview" && data && (
         <AdminOverview data={data} onOrder={setDetail} />
       )}
-      {!usagePage && ["orders", "users", "accounts", "codes", "audit"].includes(
+      {!usagePage && ["users", "accounts", "codes", "audit"].includes(
         tab,
       ) && (
         <Filters
@@ -209,6 +209,9 @@ export default function AdminPlatform({ tab = "overview" }: { tab?: string }) {
       )}
       {tab === "orders" && (
         <section className="p-card p-record-card">
+          <div className="p-records-heading"><div><h2>全部订单</h2><p>注册、授权与交付分别跟进，积分按实际交付结算。</p></div><button className="p-button secondary" disabled={isFetching} onClick={() => refetch()}><RefreshCw size={15}/>刷新</button></div>
+          <div className="p-center-filters"><Filters value={{q:filters.q||"",status:filters.status||"",mode:filters.mode||""}} onChange={value => {setFilters({include_admin:filters.include_admin,...value});setOffset(0)}} mode status={{queued:"排队中",running:"执行中",review:"自动恢复中",completed:"全部完成",partial:"部分交付",failed:"未完成",cancelled:"已取消"}}/></div>
+          <div className="records-count" role="status"><span><b>{data?.total ?? rows.length}</b> 条记录 · 全部注册订单</span>{isFetching && <span>正在刷新…</span>}</div>
           <Table
             rows={rows}
             columns={[
@@ -233,7 +236,7 @@ export default function AdminPlatform({ tab = "overview" }: { tab?: string }) {
               { title: "操作", render: r => <button className="p-button secondary" onClick={() => setDetail(r.id)}>订单详情</button> },
             ]}
           />
-        </section>
+        <div className="records-empty" hidden={rows.length>0}>{!rows.length && <><SearchX size={28}/><b>{isFetching?"正在读取记录…":"暂时没有记录"}</b><p>试试其他关键词，或稍后刷新查看。</p></>}</div><Pagination offset={offset} total={data?.total} count={rows.length} onChange={setOffset}/></section>
       )}
       {tab === "users" && (
         <section className="p-card p-record-card">
@@ -509,7 +512,7 @@ export default function AdminPlatform({ tab = "overview" }: { tab?: string }) {
           />
         </section>
       )}
-      {!usagePage && ["users", "orders", "accounts", "codes", "audit"].includes(
+      {!usagePage && ["users", "accounts", "codes", "audit"].includes(
         tab,
       ) && (
         <Pagination

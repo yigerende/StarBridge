@@ -394,6 +394,8 @@ def _fail_order(order_id: str, user_id: str, fee: int, message: str, code='inter
         if fee > 0:
             trace.record('funds', 'completed', 'release', order_id=order_id, q=q)
         trace.record('complete', 'failed', code, order_id=order_id, q=q)
+        from .subscription_recovery import close
+        close(q, order_id)
 
 
 def _succeed_order(order_id: str, user_id: str, fee: int, last4: str, charged_amount: int, charged_currency: str):
@@ -422,11 +424,22 @@ def _succeed_order(order_id: str, user_id: str, fee: int, last4: str, charged_am
         q.execute("INSERT INTO order_events(order_id,stage,message) VALUES($1,'payment_succeeded','付款成功，等待生效核实。')", order_id)
         trace.record('result', 'completed', 'payment_succeeded', order_id=order_id, q=q)
         trace.record('funds', 'completed', 'charge', order_id=order_id, q=q)
+        from .subscription_recovery import paid
+        paid(q, order_id)
     return True
 
 
 @trace.order_run
 def run_subscription(job: dict):
+    from .subscription_recovery import LOCK
+    # A crashed process releases this lock. Recovery cannot race a live submit.
+    with db.transaction() as guard:
+        if not guard.scalar('SELECT pg_try_advisory_xact_lock($1,hashtext($2))', LOCK, job['id']):
+            return
+        return _run_subscription(job)
+
+
+def _run_subscription(job: dict):
     order_id = job['id']
     if not subscription_retry.can_start(order_id):
         return
@@ -582,9 +595,16 @@ def run_subscription(job: dict):
             runtime=runtime,
         )
         _add_event(order_id, 'confirming', '正在提交付款确认…')
-        subscription_retry.mark_payment_submission(order_id)
         from . import subscription_payment_result as payment_result
+        from . import subscription_recovery as recovery
+        recovery_context = payment_result.verification_context(cs_id, pk, init_resp, tax_resp, currency=currency_from_stripe)
+        recovery_context.update(flow=FLOW, plan=plan_canonical, last4=last4, amount=expected_amount,
+                                currency=currency_from_stripe, request_context=request_context)
+        subscription_retry.mark_payment_submission(order_id, recovery_context)
         confirm_resp = payment_result.confirm_once(stripe, cs_id, confirm_form)
+        if not payment_result.remember(recovery_context, confirm_resp):
+            confirm_resp = {}
+        recovery.save_context(order_id, recovery_context)
 
         paid, decline_code, charged_minor = payment_result.classify(confirm_resp)
 
@@ -626,7 +646,8 @@ def run_subscription(job: dict):
                             approve_sess.close()
 
             _add_event(order_id, 'checking', '正在核实原交易付款结果，请勿重复付款。')
-            paid, decline_code, charged_minor, poll_data = payment_result.poll_result(stripe, cs_id, pk)
+            paid, decline_code, charged_minor, poll_data = payment_result.poll_result(stripe, cs_id, pk,
+                context=recovery_context, save=lambda value: recovery.save_context(order_id, value))
             if decline_code:
                 raise RuntimeError(f'payment_declined:{decline_code}')
 

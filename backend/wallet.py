@@ -7,11 +7,11 @@ from . import customer_contract
 
 router=APIRouter(prefix='/api',dependencies=[Depends(member)])
 LEDGER_QUERY="""WITH history AS (
- SELECT id,kind,amount,balance_after,frozen_after,description,created_at,order_id,reference,business,registration_order_id,available_change,frozen_change,
+ SELECT id,kind,amount,balance_after,frozen_after,description,created_at,order_id,reference,business,registration_order_id,refund_order_id,available_change,frozen_change,
  lag(balance_after) OVER (ORDER BY id) AS previous_balance,lag(frozen_after) OVER (ORDER BY id) AS previous_frozen
  FROM ledger WHERE user_id=$1
 ), recent AS (SELECT * FROM history ORDER BY id DESC LIMIT 300)
- SELECT l.id,l.kind,l.amount,l.balance_after,l.frozen_after,l.description,l.created_at,l.business,l.registration_order_id,
+ SELECT l.id,l.kind,l.amount,l.balance_after,l.frozen_after,l.description,l.created_at,l.business,l.registration_order_id,l.refund_order_id,
  CASE WHEN l.available_change IS NOT NULL THEN l.available_change WHEN l.previous_balance IS NOT NULL THEN (l.balance_after-l.frozen_after)-(l.previous_balance-l.previous_frozen)
  WHEN l.kind='freeze' THEN -o.fee WHEN l.kind='unfreeze' THEN o.fee
  WHEN l.kind='charge' AND l.reference LIKE 'payment:%' THEN 0 ELSE l.amount END AS available_delta,

@@ -20,7 +20,7 @@ const filtered=computed(()=>{
  if(until)until.setDate(until.getDate()+1)
  return props.rows.filter(r=>{
   const when=new Date(r.created_at).getTime(),o=r.related_order
-  return (!q.value||`${r.id} ${r.description} ${r.registration_order_id||''} ${o?.id||''} ${o?.email||''} ${o?.product_name||''}`.toLowerCase().includes(q.value.trim().toLowerCase()))&&(!kind.value||r.kind===kind.value)&&when>=from&&when<(until?.getTime()??Infinity)
+  return (!q.value||`${r.id} ${r.description} ${r.registration_order_id||''} ${r.refund_order_id||''} ${o?.id||''} ${o?.email||''} ${o?.product_name||''}`.toLowerCase().includes(q.value.trim().toLowerCase()))&&(!kind.value||r.kind===kind.value)&&when>=from&&when<(until?.getTime()??Infinity)
  })
 })
 const totals=computed(()=>filtered.value.reduce((s,r)=>{
@@ -36,17 +36,17 @@ const totals=computed(()=>filtered.value.reduce((s,r)=>{
 function ledgerDescription(row:Row){
  const fee=Math.abs(Number(row.frozen_delta||row.amount||0))
  if(row.kind==='freeze')return `${row.related_order?.product_name||(row.business==='registration'?'注册订单':'订单')}冻结 ${cash(fee)} 积分，等待办理结算`
- if(row.kind==='charge')return `${row.business==='registration'?'注册':'订阅'}服务费结算 ${cash(Math.abs(Number(row.amount)))} 积分`
+ if(row.kind==='charge')return `${row.business==='refund'?'代退':row.business==='registration'?'注册':'订阅'}服务费结算 ${cash(Math.abs(Number(row.amount)))} 积分`
  if(row.kind==='unfreeze')return `释放冻结 ${cash(fee)} 积分，已恢复可用余额`
  return String(row.description||'—').replace(/\bR\b/g,'积分')
 }
 function reset(){q.value='';kind.value='';start.value='';end.value=''}
-const source=(r:Row)=>r.registration_order_id?'注册订单':r.related_order?'订阅订单':({invite_reward:'伙伴计划奖励',invite_reversal:'伙伴计划退回',topup:'人工充值',redeem:'兑换码入账',adjustment:'运营调整',refund:'服务退费',charge:'服务结算',freeze:'服务费冻结',unfreeze:'服务费解冻'} as Row)[r.kind]||'账户变动'
+const source=(r:Row)=>r.refund_order_id?'代退订单':r.registration_order_id?'注册订单':r.related_order?'订阅订单':({invite_reward:'伙伴计划奖励',invite_reversal:'伙伴计划退回',topup:'人工充值',redeem:'兑换码入账',adjustment:'运营调整',refund:'服务退费',charge:'服务结算',freeze:'服务费冻结',unfreeze:'服务费解冻'} as Row)[r.kind]||'账户变动'
 const columns=computed(()=>[{key:'kind',label:'流水类型'},{key:'source',label:'业务来源'},...props.business!=='subscription'?[]:[{key:'payment',label:'银行卡费用'}],{key:'available',label:'可用变动'},{key:'frozen',label:'冻结变动'},{key:'balance',label:'变动后余额'},{key:'related',label:registration.value?'注册订单 / 关联记录':'关联记录',wide:true},{key:'description',label:'说明',wide:true},{key:'time',label:'发生时间'}])
 </script>
 <template>
  <section class="panel record-panel ledger-panel">
-  <div class="records-heading"><div><h2>{{shared?'账户收支':registration?'注册资金明细':'订阅资金明细'}}</h2><p>{{shared?'充值、兑换码、运营调整和伙伴奖励计入共用钱包，可用于订阅与注册。':registration?'下单先冻结积分，按成功交付的账号结算；失败部分释放冻结，恢复可用余额。':'冻结转入待结算金额；确认扣费从冻结金额结算，不重复扣减可用余额。'}}</p></div><span class="pill">账户单位 · 积分</span></div>
+  <div class="records-heading"><div><h2>{{shared?'账户收支':business==='refund'?'代退资金明细':registration?'注册资金明细':'订阅资金明细'}}</h2><p>{{shared?'充值、兑换码、运营调整和伙伴奖励计入共用钱包，可用于注册、订阅与代退。':registration?'下单先冻结积分，按成功交付的账号结算；失败部分释放冻结，恢复可用余额。':'冻结转入待结算金额；确认扣费从冻结金额结算，不重复扣减可用余额。'}}</p></div><span class="pill">账户单位 · 积分</span></div>
   <div v-if="shared" class="ledger-totals"><div><span><ArrowDownLeft :size="15"/>充值 / 兑换</span><b>{{cash(totals.credit)}} <em>积分</em></b></div><div><span><ReceiptText :size="15"/>人工调整</span><b>{{signed(totals.adjusted)}} <em>积分</em></b></div><div><span><ArrowUpRight :size="15"/>伙伴奖励净额</span><b>{{signed(totals.reward)}} <em>积分</em></b></div><div><span><Outgoing :size="15"/>收支净额</span><b>{{signed(totals.net)}} <em>积分</em></b></div></div>
   <div v-else class="ledger-totals"><div><span><ArrowDownLeft :size="15"/>服务收支净额</span><b>{{signed(totals.net)}} <em>积分</em></b></div><div><span><Outgoing :size="15"/>服务扣费</span><b>{{cash(totals.spent)}} <em>积分</em></b></div><div><span><LockKeyhole :size="15"/>累计冻结</span><b>{{cash(totals.held)}} <em>积分</em></b></div><div><span><RotateCcw :size="15"/>解冻 / 退费</span><b>{{cash(totals.returned)}} <em>积分</em></b></div></div>
   <div class="records-filters">
@@ -63,7 +63,7 @@ const columns=computed(()=>[{key:'kind',label:'流水类型'},{key:'source',labe
    <template #available="{row}"><b class="record-money" :class="deltaTone(row.available_delta)">{{signed(row.available_delta)}}</b></template>
    <template #frozen="{row}"><b class="record-money" :class="deltaTone(row.frozen_delta)">{{signed(row.frozen_delta)}}</b></template>
    <template #balance="{row}"><b class="record-money">{{cash(Number(row.balance_after)-Number(row.frozen_after))}} 积分</b><small>冻结 {{cash(row.frozen_after)}} 积分</small></template>
-   <template #related="{row}"><template v-if="row.related_order"><button class="text-btn record-order-link mono" @click="$emit('order',row.related_order)">{{row.related_order.id}}<ArrowUpRight :size="13"/></button><small>{{row.related_order.email}}</small></template><a v-else-if="row.registration_order_id" :href="'/?business=registration#/orders'" class="mono">{{row.registration_order_id}}</a><span v-else class="muted">{{source(row)}}</span></template>
+   <template #related="{row}"><a v-if="row.refund_order_id" :href="'#/orders?business=refund&order_id='+row.refund_order_id" class="text-btn">{{row.refund_order_id}}</a><template v-else-if="row.related_order"><button class="text-btn record-order-link mono" @click="$emit('order',row.related_order)">{{row.related_order.id}}<ArrowUpRight :size="13"/></button><small>{{row.related_order.email}}</small></template><a v-else-if="row.registration_order_id" :href="'/?business=registration#/orders'" class="mono">{{row.registration_order_id}}</a><span v-else class="muted">{{source(row)}}</span></template>
    <template #description="{row}"><p class="record-description">{{ledgerDescription(row)}}</p></template>
    <template #time="{row}"><time>{{date(row.created_at)}}</time></template>
   </RecordsTable>

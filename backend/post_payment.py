@@ -126,6 +126,8 @@ def _save(order_id, cp, phase='', warning=''):
             trace.record('complete', 'review', 'review', order_id=order_id, q=q)
         for stage, message in milestones:
             q.execute('INSERT INTO order_events(order_id,stage,message) VALUES($1,$2,$3)', order_id, stage, message)
+        from .subscription_recovery import followup_saved
+        followup_saved(q, order_id, saved['phase'], warning)
     cp.update(phase=saved['phase'], warning_code=warning)
 
 
@@ -204,6 +206,8 @@ def record_unexpected_failure(order_id, exc):
             q.execute("INSERT INTO order_events(order_id,stage,message) VALUES($1,'post_payment_review',"
                       "'付款成功；收尾记录异常，请查看技术日志后核实，不要重复付款。')", order_id)
             trace.record('complete', 'review', trace.error_code(exc), order_id=order_id, q=q)
+            from .subscription_recovery import followup_saved
+            followup_saved(q, order_id, 'review', code)
     except Exception:
         log.warning('Could not save follow-up review marker: order=%s', order_id)
     return {'state': 'review', 'warning_code': code}

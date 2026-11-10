@@ -11,6 +11,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  SearchX,
   ShieldCheck,
   TrendingUp,
 } from "lucide-react";
@@ -55,7 +56,7 @@ function Records({
         </tbody>
       </table>
       {!rows.length && (
-        <div className="p-center-empty">
+        <div className="p-center-empty"><SearchX size={28}/>
           <strong>{loading ? "正在读取记录…" : "暂无符合条件的记录"}</strong>
           <span>
             {loading ? "请稍候" : "你可以更换筛选条件，或稍后刷新查看。"}
@@ -125,7 +126,7 @@ export function OrderRecords({
             onClick={() => refetch()}
           >
             <RefreshCw size={15} />
-            刷新记录
+            刷新
           </button>
         </div>
         {profile && (
@@ -169,6 +170,7 @@ export function OrderRecords({
             {error.message}
           </p>
         )}
+        <div className="records-count" role="status"><span><b>{data?.total ?? rows.length}</b> 条记录 · 全部注册订单</span>{isFetching && <span>正在刷新…</span>}</div>
         <Records
           rows={rows}
           loading={isFetching}

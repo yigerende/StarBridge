@@ -116,12 +116,14 @@ def finance_data(request):
     except ValueError: raise BusinessError('统计日期格式无效')
     require(e>=s and (e-s).days<=3660,'统计日期范围无效')
     period=args.get('period','day');period=period if period in ('day','week','month','year') else 'day';exclude=args.get('include_admin')!='true'
-    where=' WHERE '+TIME+" AND l.business='subscription' AND (NOT $3::bool OR u.role!='admin')"
+    business=args.get('business','subscription');require(business in ('subscription','refund'),'业务类型无效')
+    table='refunds' if business=='refund' else 'orders'
+    where=' WHERE '+TIME+f" AND l.business='{business}' AND (NOT $3::bool OR u.role!='admin')"
     with db.transaction() as q:
         q.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
         totals=q.one('SELECT '+TOTALS+',count(*) AS entries FROM ledger l JOIN users u ON u.id=l.user_id'+where,start,end,exclude)
         trend=q.all("SELECT to_char(date_trunc($4,l.created_at AT TIME ZONE 'Asia/Shanghai'),'YYYY-MM-DD') AS period,"+TOTALS+' FROM ledger l JOIN users u ON u.id=l.user_id'+where+' GROUP BY 1 ORDER BY 1',start,end,exclude,period)
-        users=q.all("SELECT u.id,u.email,u.name,u.role,u.balance,u.frozen,u.fee_override,COALESCE(x.credited,0) AS credited,COALESCE(x.spent,0) AS spent,COALESCE(x.adjusted,0) AS adjusted,(SELECT count(*) FROM orders o WHERE o.user_id=u.id AND o.created_at>=($1::date AT TIME ZONE 'Asia/Shanghai') AND o.created_at<(($2::date+1) AT TIME ZONE 'Asia/Shanghai')) AS orders FROM users u LEFT JOIN (SELECT l.user_id,"+TOTALS+' FROM ledger l WHERE '+TIME+" AND l.business='subscription' GROUP BY l.user_id) x ON x.user_id=u.id WHERE (NOT $3::bool OR u.role!='admin') ORDER BY credited DESC,u.email",start,end,exclude)
+        users=q.all(f"SELECT u.id,u.email,u.name,u.role,u.balance,u.frozen,u.fee_override,COALESCE(x.credited,0) AS credited,COALESCE(x.spent,0) AS spent,COALESCE(x.adjusted,0) AS adjusted,(SELECT count(*) FROM {table} o WHERE o.user_id=u.id AND o.created_at>=($1::date AT TIME ZONE 'Asia/Shanghai') AND o.created_at<(($2::date+1) AT TIME ZONE 'Asia/Shanghai')) AS orders FROM users u LEFT JOIN (SELECT l.user_id,"+TOTALS+' FROM ledger l WHERE '+TIME+f" AND l.business='{business}' GROUP BY l.user_id) x ON x.user_id=u.id WHERE (NOT $3::bool OR u.role!='admin') ORDER BY credited DESC,u.email",start,end,exclude)
         current=q.one("SELECT COALESCE(sum(balance),0) AS balance,COALESCE(sum(frozen),0) AS frozen FROM users WHERE (NOT $1::bool OR role!='admin')",exclude)
     return {'totals':totals,'current':current,'trend':trend,'users':users,'period':period,'start':start,'end':end,'timezone':'Asia/Shanghai'}
 

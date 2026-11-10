@@ -29,5 +29,8 @@ services/gpt-register/node_modules/
 services/gpt-register/web/node_modules/
 services/gpt-register/web/dist/
 services/gpt-register/.env
+!services/refund-core/
+!services/refund-core/**
+services/refund-core/runtime/manager_oauth/node_modules/
 **/__pycache__/
 **/*.pyc

@@ -90,7 +90,8 @@ class AdminOrderPricingTests:
             self.assertEqual(self.ok(self.client.get('/api/admin/orders',params={'q':order}))['total'],0)
             self.assertEqual(self.ok(client.get('/api/v1/orders'))['total'],0)
             overview=self.ok(client.get('/api/v1/overview'))
-            self.assertEqual(overview['stats']['orders'],0)
+            self.assertEqual(overview['recent_orders'],[])
+            self.assertTrue(all(value==0 for key,value in overview['queues']['subscription'].items() if key!='business'))
             self.assertNotIn(order,[r['id'] for r in overview['recent_orders']])
             self.assertEqual(client.post('/api/v1/orders',json=payload,headers=headers).status_code,409)
             self.assertEqual(db.one('SELECT balance,frozen FROM users WHERE id=$1',owner),dict(before,frozen=0))
@@ -107,7 +108,7 @@ class AdminOrderPricingTests:
         with db.transaction() as lock:
             for key in (1886005,1886006,1886008):
                 lock.execute('SELECT pg_advisory_xact_lock($1)',key)
-            for key in (1886011,1886012):
+            for key in (1886011,1886012,1886015):
                 lock.execute('SELECT pg_advisory_xact_lock($1,hashtext($2))',key,order)
             self.assertEqual(self.ok(self.client.post('/api/admin/orders/batch-delete',json=payload)),
                              {'ok':True,'deleted':0,'released':0,'skipped':1})
@@ -217,7 +218,9 @@ class AdminOrderPricingTests:
                     self.assertEqual(stored['price_snapshot']['member_fee'],765)
                     self.assertEqual(self.ok(client.get('/api/v1/orders/'+order))['order']['product_id'],'pro20x')
                     self.assertEqual(self.ok(client.get('/api/v1/orders'))['items'][0]['product_id'],'pro20x')
-                    self.assertEqual(self.ok(client.get('/api/v1/overview'))['recent_orders'][0]['product_id'],'pro20x')
+                    recent=self.ok(client.get('/api/v1/overview'))['recent_orders'][0]
+                    self.assertEqual((recent['id'],recent['business']),(order,'subscription'))
+                    self.assertEqual(recent['title'],db.scalar('SELECT product_name FROM orders WHERE id=$1',order))
                     self.assertEqual(self.ok(client.post('/api/v1/orders',json=dict(payload,product_id='pro'),headers=headers))['id'],order)
                     self.ok(self.close_fixture_order(order))
             finally:db.execute("UPDATE products SET enabled=$1 WHERE id='pro'",enabled)
@@ -244,9 +247,25 @@ class AdminOrderPricingTests:
             self.assertEqual(db.scalar('SELECT fee FROM user_product_prices WHERE user_id=$1 AND product_id=$2',owner,product),432)
 
     def test_customer_documentation_describes_every_property(self):
-        spec=json.loads((Path(__file__).resolve().parents[1]/'backend/openapi.json').read_text(encoding='utf-8'))
+        from backend.registration_docs import document
+        spec=document()
+        operation_ids=[]
+        for path,operations in spec['paths'].items():
+            self.assertTrue(path.startswith(('/api/v1/','/registration/open/v1/')),path)
+            for operation in operations.values():
+                operation_ids.append(operation['operationId'])
+                for parameter in operation.get('parameters',[]):
+                    self.assertTrue(parameter.get('description','').strip(),(path,parameter['name']))
+        self.assertEqual(len(operation_ids),len(set(operation_ids)))
+        self.assertEqual(len(operation_ids),32)
         def visit(value):
             if isinstance(value,dict):
+                if '$ref' in value:
+                    target=spec
+                    for key in value['$ref'].removeprefix('#/').split('/'):target=target[key]
+                for key in ('description','summary'):
+                    for wording in ('管理员','运营后台','内部流程','兼容旧','Go提链'):
+                        self.assertNotIn(wording,value.get(key,''))
                 for name,field in value.get('properties',{}).items():
                     self.assertIsInstance(field,dict,name)
                     self.assertTrue(field.get('description','').strip(),name)
@@ -254,6 +273,8 @@ class AdminOrderPricingTests:
             elif isinstance(value,list):
                 for child in value:visit(child)
         visit(spec)
+        for name in ('Payment','PaymentSummary'):
+            self.assertIn('checking',spec['components']['schemas'][name]['properties']['state']['enum'])
         self.assertNotIn('enum',spec['components']['schemas']['CreateOrder']['properties']['product_id'])
         example=spec['paths']['/api/v1/orders']['post']['requestBody']['content']['application/json']['examples']['subscription']['value']
         self.assertEqual(example['product_id'],'pro20x')

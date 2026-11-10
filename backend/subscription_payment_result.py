@@ -1,5 +1,6 @@
 """Read the original transaction after submission; never replay a charge here."""
 import logging
+import re
 import time
 
 from . import payment_trace as trace
@@ -45,24 +46,111 @@ def confirm_once(stripe, checkout_id, form):
     except Exception as exc:
         log.warning('Payment confirmation response unavailable: %s', trace.error_code(exc))
         trace.record('checking', 'running', 'payment_verifying')
-        return {}
+        return _object(getattr(exc, 'payment_response', None))
 
 
-def poll_result(stripe, checkout_id, public_key):
+def remember(context, data):
+    """Keep only original-transaction references, never card data or raw bodies."""
+    data = _object(data)
+    identity = data.get('id')
+    if isinstance(identity, str) and identity.startswith('cs_') and identity != context['checkout_id']:
+        return False
+    updated = dict(context)
+    if data.get('currency') and context.get('currency') and str(data['currency']).upper() != context['currency']:
+        return False
+    eid = data.get('eid')
+    if isinstance(eid, str) and 0 < len(eid) <= 256:
+        updated['eid'] = eid
+    for node in (data, _object(data.get('submission_attempt')), _object(data.get('error'))):
+        intent = _object(node.get('payment_intent'))
+        identity = intent.get('id')
+        if identity:
+            if not isinstance(identity, str) or not re.fullmatch(r'pi_[A-Za-z0-9]+', identity):
+                return False
+            if updated.get('intent_id') and updated['intent_id'] != identity:
+                return False
+            updated['intent_id'] = identity
+        if intent.get('currency') and context.get('currency') and str(intent['currency']).upper() != context['currency']:
+            return False
+        secret = intent.get('client_secret')
+        if not isinstance(secret, str) or not re.fullmatch(r'pi_[A-Za-z0-9]+_secret_[A-Za-z0-9]+', secret):
+            continue
+        if identity != secret.split('_secret_')[0]:
+            return False
+        updated['client_secret'] = secret
+    context.update(updated)
+    return True
+
+
+def verification_context(checkout_id, public_key, *responses, currency=''):
+    context = {'checkout_id': checkout_id, 'public_key': public_key, 'eid': 'NA', 'currency': currency}
+    for data in responses:
+        if not remember(context, data):
+            raise ValueError('checkout_checkpoint_mismatch')
+    return context
+
+
+def _read(session, method, url, context, **kwargs):
+    # Record the provider's bounded/redacted business error, not only HTTP 400.
+    with trace.request('payment_read') as observation:
+        response = getattr(session, method)(url, timeout=30, **kwargs)
+        observation.response(response.status_code, response.headers, response.text,
+                             failure_details=True, secrets=tuple(context.values()))
+        try:
+            data = _object(response.json())
+        except (ValueError, TypeError):
+            data = {}
+        return response.status_code, data
+
+
+def _original_result(stripe, checkout_id, public_key, context):
+    status, data = _read(stripe.session, 'get',
+        f'https://api.stripe.com/v1/payment_pages/{checkout_id}', context,
+        params={'key': public_key, 'eid': context.get('eid', 'NA')})
+    if not remember(context, data):
+        return None
+    if status == 200 and any(classify(data)[:2]):
+        return data
+    # The hosted page can close after payment. Query the original intent when
+    # its client secret was captured before/during submission.
+    if context.get('intent_id') and context.get('client_secret'):
+        code, intent = _read(stripe.session, 'get',
+            'https://api.stripe.com/v1/payment_intents/' + context['intent_id'], context,
+            params={'key': public_key, 'client_secret': context['client_secret']})
+        if code == 200 and intent.get('id') == context['intent_id']:
+            result = {'payment_intent': intent}
+            if remember(context, result) and any(classify(result)[:2]):
+                return result
+    if _object(data.get('error')).get('code') == 'checkout_not_active_session':
+        # Initialization reads the SAME checkout's display/state. It carries no
+        # card/payment method and cannot confirm a charge or create a checkout.
+        code, initialized = _read(stripe.session, 'post',
+            f'https://api.stripe.com/v1/payment_pages/{checkout_id}/init', context,
+            data={'key': public_key, 'eid': context.get('eid', 'NA'),
+                  'browser_locale': 'en-US', 'browser_timezone': 'UTC', 'redirect_type': 'url'})
+        if code == 200 and remember(context, initialized):
+            return initialized
+    return data if status == 200 else None
+
+
+def poll_result(stripe, checkout_id, public_key, *, context=None, attempts=5, save=None):
     """Bounded reads on the same checkout, HTTP session and order proxy."""
     latest = None
-    for attempt in range(5):
+    for attempt in range(attempts):
         if attempt:
             time.sleep(1.5)
         try:
-            response = trace.http_call(
-                'payment_read', stripe.session.get,
-                f'https://api.stripe.com/v1/payment_pages/{checkout_id}',
-                params={'key': public_key, 'eid': 'NA'}, timeout=30,
-            )
-            if response.status_code != 200:
-                continue
-            latest = response.json()
+            if context is None:
+                response = trace.http_call('payment_read', stripe.session.get,
+                    f'https://api.stripe.com/v1/payment_pages/{checkout_id}',
+                    params={'key': public_key, 'eid': 'NA'}, timeout=30)
+                if response.status_code != 200:
+                    continue
+                latest = response.json()
+            else:
+                latest = _original_result(stripe, checkout_id, public_key, context)
+                if save:
+                    save(context)
         except Exception as exc:
             # Even a runtime/JSON/network error on a read must not skip later reads.
             log.warning('Payment result read unavailable: %s', trace.error_code(exc))

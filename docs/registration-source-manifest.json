@@ -506,7 +506,7 @@
     },
     {
       "path": "web/src/portal/AdminPlatform.tsx",
-      "sha256": "be383ed5d2ce1187578f2b37acab8cb821ba558342aab2d362c3226981e7578c",
+      "sha256": "cf6ffbe4c27119370802e21607a2b74c587ccc67013ab38935590d0c13c54f7f",
       "reason": "Unified dashboard deep links and administrator scope; registration engine unchanged"
     },
     {
@@ -572,7 +572,7 @@
     },
     {
       "path": "web/src/portal/CustomerCenter.tsx",
-      "sha256": "91e9f5d73ca6cbd1f2168ade32f02d49e9357fdf7f36b90af5b411a3eb04de8c",
+      "sha256": "b5b45fc8fa914220dc202fe0451b576f8012adb59d4cdd49b0c4b0c1a4de21e3",
       "reason": "Unified dashboard deep links and administrator scope; registration engine unchanged"
     }
   ],

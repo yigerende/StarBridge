@@ -311,3 +311,18 @@ CREATE TABLE IF NOT EXISTS renewal_proxy_sessions (
  expires_at timestamptz NOT NULL, session_ref text NOT NULL, country text NOT NULL,
  created_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- Only new submissions enroll. Existing/manual-review orders are never replayed.
+CREATE TABLE IF NOT EXISTS subscription_recoveries (
+ order_id text PRIMARY KEY REFERENCES orders(id),
+ context_enc text NOT NULL,
+ stage text NOT NULL CHECK(stage IN ('payment','followup')),
+ state text NOT NULL CHECK(state IN ('armed','queued','running','completed','review')),
+ attempts int NOT NULL DEFAULT 0,
+ next_at timestamptz NOT NULL DEFAULT now()+interval '5 seconds',
+ deadline timestamptz NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS subscription_recoveries_due ON subscription_recoveries(next_at)
+ WHERE state IN ('armed','queued','running');

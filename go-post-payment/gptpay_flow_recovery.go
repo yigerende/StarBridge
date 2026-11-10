@@ -73,11 +73,11 @@ func (t *gptpay_transaction) confirmActivation() error {
 	return nil
 }
 
-// When proactive renewal refresh is disabled, recover expired credentials only
-// after a definitive 401. Keep the latest checkpoint and original retry policy.
+// A token can expire after proactive refresh too. Recover once on a definitive
+// 401 using the saved session, then read state before any cancellation retry.
 func (t *gptpay_transaction) renewalSubscriptions() (protocol_Map, error) {
 	data, e := t.platform.Subscriptions(true)
-	if t.skipRenewalRefresh && protocol_FlowErrorCode(e) == "http_401" {
+	if protocol_FlowErrorCode(e) == "http_401" {
 		if e = t.platform.Refresh(); e != nil {
 			return nil, e
 		}
@@ -120,7 +120,7 @@ func (t *gptpay_transaction) disableRenewal() error {
 			break
 		}
 		original := e
-		unauthorized := t.skipRenewalRefresh && protocol_FlowErrorCode(original) == "http_401"
+		unauthorized := protocol_FlowErrorCode(original) == "http_401"
 		if unauthorized {
 			if e = t.platform.Refresh(); e != nil {
 				return e

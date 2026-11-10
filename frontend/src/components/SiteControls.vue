@@ -8,6 +8,7 @@ watch(()=>props.value,value=>{form.value=JSON.parse(JSON.stringify(value));domai
 const sections=[
  {id:'home',title:'工作台',description:'客户首页、业务概览与快捷入口'},
  {id:'subscribe',title:'订阅办理',description:'创建站内付款订阅订单'},
+ {id:'refund',title:'代退办理',description:'授权账号的代退服务申请'},
  {id:'orders',title:'订单中心',description:'查询订单列表、详情及办理进度'},
  {id:'wallet',title:'资金账户',description:'余额、资金流水、充值和兑换'},
  {id:'links',title:'结账链接',description:'提交并生成结账链接'},

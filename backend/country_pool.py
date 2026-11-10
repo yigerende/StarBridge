@@ -281,7 +281,7 @@ def blockers(q):
                     AND (f.warning_code<>'' OR f.phase='completed')))))
         OR EXISTS(SELECT 1 FROM pg_locks l WHERE l.locktype='advisory' AND l.granted
             AND l.database=(SELECT oid FROM pg_database WHERE datname=current_database())
-            AND l.classid IN (1886011,1886012) AND l.objsubid=2
+            AND l.classid IN (1886011,1886012,1886015) AND l.objsubid=2
             AND l.objid::bigint=(hashtext(o.id)::bigint & 4294967295))
         ORDER BY o.updated_at DESC LIMIT 20""")
     renewal_rows=q.all("SELECT id FROM renewal_tasks WHERE lease_until>now() OR status IN ('processing','checking') OR (status='queued' AND EXISTS(SELECT 1 FROM renewal_proxy_sessions s WHERE s.task_id=renewal_tasks.id)) LIMIT 20")

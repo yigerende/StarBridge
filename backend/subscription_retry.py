@@ -39,7 +39,7 @@ def save_checkout(order_id, flow, result, context=None):
                encrypt(json.dumps(checkpoint)))
 
 
-def mark_payment_submission(order_id):
+def mark_payment_submission(order_id, recovery_context=None):
     """Persist the fence before the first potentially chargeable request."""
     with db.transaction() as q:
         order = q.one('SELECT status,deleted_at FROM orders WHERE id=$1 FOR UPDATE', order_id)
@@ -49,6 +49,9 @@ def mark_payment_submission(order_id):
                             'WHERE order_id=$1 AND payment_submit_started_at IS NULL AND paid_at IS NULL', order_id)
         if not changed:
             raise RuntimeError('payment_result_unconfirmed')
+        if recovery_context is not None:
+            from . import subscription_recovery
+            subscription_recovery.arm(q, order_id, recovery_context)
 
 
 def handle_failure(order_id, exc):
@@ -65,6 +68,9 @@ def handle_failure(order_id, exc):
         if row['deleted_at'] is not None or row['paid_at'] or row['status'] != 'processing':
             return True
         if row['payment_submit_started_at'] and code != 'payment_declined':
+            from . import subscription_recovery
+            if subscription_recovery.queue_payment(q, order_id):
+                return True
             q.execute("UPDATE orders SET status='review',updated_at=now() WHERE id=$1", order_id)
             q.execute("INSERT INTO order_events(order_id,stage,message) VALUES($1,'payment_review',"
                       "'付款请求已提交，结果尚未确认；已保留原交易，请勿再次付款。')", order_id)

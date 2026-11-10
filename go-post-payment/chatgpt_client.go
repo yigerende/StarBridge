@@ -138,6 +138,9 @@ func (p *chatgpt_Platform) Call(method, path string, options ...chatgpt_Platform
 	if chatgpt_isSubscriptionNotFound(method, route.EscapedPath(), response) {
 		return nil, protocol_NewError("subscription_not_found")
 	}
+	if chatgpt_isCancellationNotReady(method, route.EscapedPath(), response) {
+		return nil, protocol_NewError("cancellation_not_ready")
+	}
 	return protocol_JSONResponse(response, false)
 }
 

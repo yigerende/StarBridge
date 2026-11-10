@@ -39,6 +39,7 @@ from backend import renewals,proxies
 from backend.seed import DEFAULTS
 from test_customer_api import CustomerApiTests
 from test_subscription_payment_result import SubscriptionPaymentResultTests
+from test_subscription_recovery import SubscriptionRecoveryTests
 from test_admin_order_pricing import AdminOrderPricingTests
 from test_payment_delay_settings import PaymentDelaySettingsTests
 from test_experience import ExperienceTests
@@ -59,7 +60,7 @@ from test_country_pool import CountryPoolTests
 from test_region_prices import RegionalPriceTests
 
 
-class BackendTests(SubscriptionPaymentResultTests,RegionalPriceTests,CountryPoolTests,TeamSubscriptionTests,RegionTests,ProxyEditingTests,ProductPlanTests,RedeemUsageTests,AuthSecurityTests,RedeemCodeTests,CheckoutDiagnosticTests,BrandingTests,CustomMenuTests,AccountDeletionTests,SiteSecurityTests,InvitationTests,ExperienceTests,PaymentDelaySettingsTests,AdminOrderPricingTests,CustomerApiTests,unittest.TestCase):
+class BackendTests(SubscriptionRecoveryTests,SubscriptionPaymentResultTests,RegionalPriceTests,CountryPoolTests,TeamSubscriptionTests,RegionTests,ProxyEditingTests,ProductPlanTests,RedeemUsageTests,AuthSecurityTests,RedeemCodeTests,CheckoutDiagnosticTests,BrandingTests,CustomMenuTests,AccountDeletionTests,SiteSecurityTests,InvitationTests,ExperienceTests,PaymentDelaySettingsTests,AdminOrderPricingTests,CustomerApiTests,unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         with patch('backend.main.worker_loop'):
@@ -655,7 +656,7 @@ class BackendTests(SubscriptionPaymentResultTests,RegionalPriceTests,CountryPool
                 stripe.confirm.side_effect=requests.exceptions.ReadTimeout('fixture lost confirmation response')
                 module.run_subscription(job)
                 order_id=job['id']
-                self.assertEqual(db.scalar('SELECT status FROM orders WHERE id=$1',order_id),'review')
+                self.assertEqual(db.scalar('SELECT status FROM orders WHERE id=$1',order_id),'processing')
                 self.assertIsNotNone(db.scalar('SELECT payment_submit_started_at FROM subscription_runs WHERE order_id=$1',order_id))
                 self.assertEqual(db.scalar('SELECT network_retry_count FROM subscription_runs WHERE order_id=$1',order_id),0)
                 self.assertEqual(db.scalar('SELECT frozen FROM users WHERE id=$1',job['user_id']),job['fee'])
@@ -712,7 +713,8 @@ class BackendTests(SubscriptionPaymentResultTests,RegionalPriceTests,CountryPool
                 self.assertEqual(len(price_calls),1)
                 self.assertIs(price_calls[0].args[1],stop)
                 other_calls=[c for c in calls if c.args[0] is not main.price_reference.refresh_tick]
-                self.assertEqual(len(other_calls),6)
+                self.assertEqual(len(other_calls),7)
+                self.assertEqual(sum(c.args[0] is main.subscription_recovery.tick for c in calls),1)
                 self.assertEqual(other_calls[0].args[0],main.country_pool.auto_sync)
                 self.assertEqual(other_calls[1].args[0],main.proxies.run_check)
                 pool.return_value.shutdown.assert_called_once_with(wait=True,cancel_futures=True)
@@ -1188,7 +1190,7 @@ class BackendTests(SubscriptionPaymentResultTests,RegionalPriceTests,CountryPool
         actual={(path,method) for path,operations in app.openapi()['paths'].items() if path.startswith('/api/v1/') for method in operations}
         documented={(path,method) for path,operations in spec['paths'].items() for method in operations}
         self.assertEqual(documented,actual)
-        self.assertEqual(len(documented),18)
+        self.assertEqual(len(documented),23)
         user_id,_,user=self.new_user()
         try:
             key=self.ok(user.post('/api/keys',json={'name':'contract test'}))['key']

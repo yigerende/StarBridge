@@ -161,7 +161,11 @@ class StripeHostedClient:
             )
             diagnostic.response(resp.status_code, resp.headers, resp.text)
             if resp.status_code != 200:
-                raise RuntimeError(f"{tag} 失败 [{resp.status_code}]")
+                error = RuntimeError(f"{tag} 失败 [{resp.status_code}]")
+                if tag == 'confirm':
+                    try: error.payment_response = resp.json()
+                    except ValueError: pass
+                raise error
             try:
                 return resp.json()
             except Exception as exc:  # noqa: BLE001

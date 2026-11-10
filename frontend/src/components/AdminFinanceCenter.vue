@@ -9,25 +9,25 @@ const props=defineProps<{user:Row;pub:Row}>()
 const emit=defineEmits<{refresh:[];expired:[];navigate:[path:string]}>()
 const today=new Date(Date.now()+8*3600000).toISOString().slice(0,10)
 const initial={start:new Date(Date.parse(today)-29*86400000).toISOString().slice(0,10),end:today,period:'day',include_admin:'false'}
-const draft=ref({...initial}),filter=ref({...initial}),overview=ref<Row>(),subscription=ref<Row>()
-const business=ref<'subscription'|'registration'>('subscription'),registrationOpened=ref(false),loading=ref(false),error=ref('')
+const draft=ref({...initial}),filter=ref({...initial}),overview=ref<Row>(),subscription=ref<Row>(),refund=ref<Row>()
+const business=ref<'subscription'|'registration'|'refund'>('registration'),registrationOpened=ref(true),loading=ref(false),error=ref('')
 let controller:AbortController|undefined
 const query=computed(()=>'?'+new URLSearchParams(filter.value))
 const chartMax=computed(()=>Math.max(1,...(overview.value?.trend||[]).flatMap((t:Row)=>[Number(t.credited),Number(t.spent)])))
 const metrics=computed(()=>[
  {label:'充值入账',value:overview.value?.totals.credited,note:'所选期间 · 共用钱包'},
- {label:'服务消费',value:overview.value?.totals.spent,note:'所选期间 · 订阅与注册合计'},
+ {label:'服务消费',value:overview.value?.totals.spent,note:'所选期间 · 所有业务合计'},
  {label:'可用余额',value:overview.value?.current.available,note:'当前所选账户可用积分'},
  {label:'冻结积分',value:overview.value?.current.frozen,note:'待结算订单预留，不计入消费'},
 ])
 async function load(){
  controller?.abort();const current=new AbortController();controller=current;loading.value=true;error.value=''
- try{const [all,sub]=await Promise.all([api('/admin/finance/overview'+query.value,'GET',undefined,{},current.signal),api('/admin/finance'+query.value,'GET',undefined,{},current.signal)]);if(controller===current){overview.value=all;subscription.value=sub}}
+ try{const [all,sub,ret]=await Promise.all([api('/admin/finance/overview'+query.value,'GET',undefined,{},current.signal),api('/admin/finance'+query.value,'GET',undefined,{},current.signal),api('/admin/finance'+query.value+'&business=refund','GET',undefined,{},current.signal)]);if(controller===current){overview.value=all;subscription.value=sub;refund.value=ret}}
  catch(e){if(controller===current&&(e as Error).name!=='AbortError')error.value=(e as Error).message}
  finally{if(controller===current)loading.value=false}
 }
 function apply(){filter.value={...draft.value};void load()}
-function select(value:'subscription'|'registration'){business.value=value;if(value==='registration')registrationOpened.value=true}
+function select(value:'subscription'|'registration'|'refund'){business.value=value;if(value==='registration')registrationOpened.value=true}
 onMounted(load);onUnmounted(()=>controller?.abort())
 </script>
 <template>
@@ -44,12 +44,13 @@ onMounted(load);onUnmounted(()=>controller?.abort())
   <div v-else class="empty compact-empty"><Activity :size="28"/><p>{{loading&&!overview?'正在读取资金记录…':'所选期间暂无资金流水'}}</p></div>
   <p class="muted small">{{overview?.start||filter.start}} 至 {{overview?.end||filter.end}} · 北京时间 · 人工调整 {{cash(overview?.totals.adjusted)}} 积分。充值与冻结不作为服务收入。</p>
  </section>
- <section class="finance-business"><div class="section-heading"><div><h2>业务明细</h2><p class="muted small">订阅与注册分别核算；上方钱包总览共用。</p></div></div><BusinessTabs :model-value="business" @update:model-value="select"/>
+ <section class="finance-business"><div class="section-heading"><div><h2>业务明细</h2><p class="muted small">注册、订阅与代退分别核算；上方钱包总览共用。</p></div></div><BusinessTabs :model-value="business" @update:model-value="select"/>
   <div v-show="business==='subscription'" class="finance-subscription">
    <div class="finance-detail-heading"><div><h3>订阅服务消费</h3><p class="muted small">所选期间已结算服务费 <b>{{cash(subscription?.totals.spent)}} 积分</b>；银行卡上游扣款另行结算。</p></div><a class="btn secondary" :href="'/api/admin/finance/export'+query"><Download :size="16"/>导出订阅报表</a></div>
    <div class="panel"><DataTable :rows="subscription?.users||[]" :columns="[{key:'email',label:'账户'},{key:'name',label:'称呼'},{key:'spent',label:'订阅消费（积分）'},{key:'orders',label:'订阅订单'},{key:'balance',label:'共用可用余额'},{key:'frozen',label:'共用冻结积分'},{key:'fee_override',label:'专属服务单价'}]"><template #spent="{row}">{{cash(row.spent)}}</template><template #balance="{row}">{{cash(Number(row.balance)-Number(row.frozen))}}</template><template #frozen="{row}">{{cash(row.frozen)}}</template><template #fee_override="{row}">{{row.fee_override==null?'按会员等级':cash(row.fee_override)+' 积分'}}</template></DataTable></div>
    <p class="muted small finance-note">账户充值与人工调整见统一钱包总览，完整账户明细保留在导出报表中。</p>
   </div>
+  <div v-if="business==='refund'"><div class="finance-detail-heading"><div><h3>代退服务消费</h3><p class="muted small">所选期间已结算服务费 {{cash(refund?.totals.spent)}} 积分，仅计算完成服务的收费。</p></div><a class="btn secondary" :href="'/api/admin/finance/export'+query+'&business=refund'">导出代退报表</a></div><div class="panel"><DataTable :rows="refund?.users||[]" :columns="[{key:'email',label:'账户'},{key:'name',label:'称呼'},{key:'spent',label:'代退消费（积分）'},{key:'orders',label:'代退订单'}]"><template #spent="{row}">{{cash(row.spent)}}</template></DataTable></div></div>
   <RegistrationPanel v-if="registrationOpened" v-show="business==='registration'" route="/admin/finance" :enabled="pub.registration_enabled===true" :user="props.user" :pub="props.pub" :finance-filter="filter" @refresh="emit('refresh')" @expired="emit('expired')" @navigate="emit('navigate',$event)"/>
  </section>
 </template>

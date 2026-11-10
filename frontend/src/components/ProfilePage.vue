@@ -11,7 +11,7 @@ const emit=defineEmits<{refresh:[];logout:[];order:[Row]}>()
 const membership=computed(()=>enabled('membership')?props.user.membership:null)
 const modal=ref(''),busy=ref(false),formError=ref(''),name=ref(''),oldPassword=ref(''),newPassword=ref(''),confirmPassword=ref('')
 const facts=computed(()=>[
- {name:'账户状态',value:props.user.status==='disabled'?'已停用':'正常',icon:ShieldCheck,note:'订阅与注册共用此账户'},
+ {name:'账户状态',value:props.user.status==='disabled'?'已停用':'正常',icon:ShieldCheck,note:'注册、订阅与代退共用此账户'},
  {name:'账户类型',value:props.user.role==='admin'?'管理员':'客户',icon:UserRound,note:'操作权限以账户角色为准'},
  {name:'加入时间',value:props.user.created_at?new Date(props.user.created_at).toLocaleDateString('zh-CN'):'—',icon:CalendarDays,note:'账户创建日期'},
  {name:'登录方式',value:'邮箱与密码',icon:Mail,note:'使用上方账户邮箱登录'},
@@ -52,7 +52,7 @@ async function save(){
    <a class="profile-member-link" href="#/membership">查看权益<ArrowRight :size="16"/></a>
   </section>
   <section class="panel profile-security">
-   <div class="profile-security-heading"><span class="eyebrow">ACCOUNT & SECURITY</span><h2>账户与安全</h2><p>订阅和注册使用同一套登录信息，修改后统一生效。</p></div>
+   <div class="profile-security-heading"><span class="eyebrow">ACCOUNT & SECURITY</span><h2>账户与安全</h2><p>注册、订阅与代退使用同一套登录信息，修改后统一生效。</p></div>
    <div class="profile-security-row"><span class="icon-tile"><KeyRound :size="20"/></span><div><h3>登录密码</h3><p>修改密码后，所有已登录设备都需要重新登录。</p></div><button class="btn secondary" @click="open('password')">修改密码<ArrowRight :size="15"/></button></div>
    <div v-if="enabled('keys')" class="profile-security-row"><span class="icon-tile"><ShieldCheck :size="20"/></span><div><h3>API 访问密钥</h3><p>查看和撤销密钥，管理你自己的服务端接入。</p></div><a class="btn secondary" href="#/keys">管理密钥<ArrowUpRight :size="15"/></a></div>
    <div class="profile-security-row"><span class="icon-tile"><LogOut :size="20"/></span><div><h3>退出当前登录</h3><p>在共享设备上使用后，及时退出以保护账户资料。</p></div><button class="text-btn danger-text" @click="emit('logout')">退出登录<LogOut :size="15"/></button></div>

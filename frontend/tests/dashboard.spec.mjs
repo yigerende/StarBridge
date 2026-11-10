@@ -8,7 +8,7 @@ test('unified dashboards: useful states, deep links, cached navigation, date sco
  const browser=await chromium.launch({headless:true,channel:process.env.PLAYWRIGHT_BROWSER_CHANNEL||'chrome'})
  const context=await browser.newContext({viewport:{width:1440,height:1080}}),base='http://127.0.0.1:18970'
  const stamp=new Date().toISOString(),errors=[],requests=[],durations=[]
- const queues={subscription:{queued:3,running:2,review:1,followup:1,settling:1,accepting:true,paused:false},registration:{queued:2,running:1,review:0,followup:0,settling:0,accepting:true,paused:true,delivered:32}}
+ const queues={refund:{queued:0,running:0,review:0,followup:0,settling:0,accepting:false,paused:true},subscription:{queued:3,running:2,review:1,followup:1,settling:1,accepting:true,paused:false},registration:{queued:2,running:1,review:0,followup:0,settling:0,accepting:true,paused:true,delivered:32}}
  const recent=[{id:'delivery-one',business:'registration',title:'注册账号 · 含 OAuth',email:'',owner:'customer@example.test',status:'running',quantity:30,delivered:12,created_at:stamp,href:'#/orders?business=registration&order_id=delivery-one',claim_href:'#/accounts?business=registration&order_id=delivery-one'},
  {id:'subscription-paid',business:'subscription',title:'Plus 月度订阅',owner:'customer@example.test',email:'test@example.test',workflow:'subscription',status:'succeeded',activation:'review',renewal:'disabled',attention:true,created_at:stamp,href:'#/orders?business=subscription&order_id=subscription-paid'},
  {id:'subscription-review',business:'subscription',title:'Team 订阅',owner:'customer@example.test',email:'test2@example.test',workflow:'subscription',status:'review',attention:true,created_at:stamp,href:'#/orders?business=subscription&order_id=subscription-review'}]

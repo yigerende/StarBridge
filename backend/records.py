@@ -143,7 +143,10 @@ def order_detail(id:str,request:Request):
 def _payment_state(row):
     s=row['status']
     if s=='succeeded' and row.get('activation') in ('active','review','pending'):return 'succeeded'
-    if s=='processing':return 'preparing'
+    if s=='processing':
+        if db.scalar("SELECT 1 FROM subscription_recoveries WHERE order_id=$1 AND stage='payment' AND state IN ('armed','queued','running')",row['id']):
+            return 'checking'
+        return 'preparing'
     if s=='failed':return 'failed'
     if s=='cancelled':return 'cancelled'
     if s=='review':return 'review'
@@ -154,7 +157,9 @@ def _payment_state(row):
 def _payment_message(row):
     s=row['status']
     if s=='succeeded':return '付款成功，服务费已结算。'
-    if s=='processing':return '正在办理中，请稍候。'
+    if s=='processing':
+        if _payment_state(row)=='checking':return '正在持续核实原交易，尚未确认付款结果；请勿重复付款。'
+        return '正在办理中，请稍候。'
     if s=='failed':return '办理未完成，服务费已解冻。'
     if s=='cancelled':return '订单已关闭，冻结服务费已释放。'
     if s=='queued':return '已排队，等待处理。'

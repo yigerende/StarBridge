@@ -28,7 +28,15 @@ func (p *chatgpt_Platform) Subscriptions(renewal bool) (protocol_Map, error) {
 // 该响应仅说明订阅查询尚无结果，不代表扣款失败，也不授权再次付款。
 // 精确限制请求、状态和业务正文，避免把路由错误或通用404解释为尚未到账。
 func chatgpt_isSubscriptionNotFound(method, path string, response *protocol_HTTPResponse) bool {
-	if method != http.MethodGet || path != chatgpt_subscriptionsPath || response == nil || response.StatusCode != http.StatusNotFound || len(response.Content) > chatgpt_subscriptionErrorBodyLimit {
+	return method == http.MethodGet && path == chatgpt_subscriptionsPath && chatgpt_hasSubscriptionDetail(response, chatgpt_subscriptionNotFoundDetail)
+}
+
+func chatgpt_isCancellationNotReady(method, path string, response *protocol_HTTPResponse) bool {
+	return method == http.MethodPost && path == chatgpt_subscriptionsPath+"/cancel" && chatgpt_hasSubscriptionDetail(response, "no active subscription found for account")
+}
+
+func chatgpt_hasSubscriptionDetail(response *protocol_HTTPResponse, expected string) bool {
+	if response == nil || response.StatusCode != http.StatusNotFound || len(response.Content) > chatgpt_subscriptionErrorBodyLimit {
 		return false
 	}
 	if contentType := response.Headers.Get("Content-Type"); contentType != "" {
@@ -63,5 +71,5 @@ func chatgpt_isSubscriptionNotFound(method, path string, response *protocol_HTTP
 	if err != nil || end != json.Delim('}') || decoder.Decode(new(any)) != io.EOF {
 		return false
 	}
-	return detail == chatgpt_subscriptionNotFoundDetail
+	return detail == expected
 }

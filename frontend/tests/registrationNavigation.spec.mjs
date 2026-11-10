@@ -25,7 +25,7 @@ test('claim links keep the account page and order filter through navigation', as
   const menu=await page.locator('.customer-nav-group>.customer-nav-row').allTextContents()
   assert.ok(menu.findIndex(x=>x.includes('注册办理'))<menu.findIndex(x=>x.includes('订阅办理')))
   assert.equal(menu.findIndex(x=>x.includes('代退办理')),menu.findIndex(x=>x.includes('订阅办理'))+1)
-  assert.equal(await page.getByRole('button',{name:'代退办理',exact:true}).isDisabled(),true)
+  assert.equal(await page.getByRole('link',{name:'代退办理',exact:true}).getAttribute('href'),'#/refund')
   const href=await claim.getAttribute('href')
   assert.equal(href,'/?business=registration#/accounts?order_id=fixture-one')
   await claim.click()
