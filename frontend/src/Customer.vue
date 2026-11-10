@@ -33,6 +33,7 @@ const subscriptionRegions=computed<Row[]>(()=>props.pub.countries||[])
 watch(subscriptionRegions,rows=>{if(!rows.some(r=>r.code===country.value)){country.value=rows.find(r=>r.code===props.pub.default_country)?.code||rows[0]?.code||'';accepted.value=false}},{immediate:true})
 const subscriptionCurrency=computed(()=>subscriptionRegions.value.find(r=>r.code===country.value)?.currency||'USD')
 const fullSubscription=computed(()=>props.route==='/subscribe')
+const serviceConnected=computed(()=>fullSubscription.value?props.pub.payment_connected===true:props.pub.checkout_connected===true)
 const cardReady=computed(()=>!!parsedCard.value.card)
 function clearCard(){cardLine.value='';cardTouched.value=false}
 onUnmounted(clearCard)
@@ -89,7 +90,7 @@ async function submit(fn:()=>Promise<void>){if(busy.value)return;busy.value=true
 async function showOrder(r:Row){await action(async()=>{detail.value=await api('/orders/'+r.id);modal.value='order'})}
 async function cancelOrder(id:string){await submit(async()=>{await api('/orders/'+id+'/cancel','POST',{});notify('申请已结束；已复制的链接不会因此在上游失效');modal.value='';await load()})}
 async function createDraft(prepare=false){
- now.value=Date.now();if(!canSave.value)return
+ now.value=Date.now();if(!canSave.value||(prepare&&!serviceConnected.value))return
  const full=prepare&&fullSubscription.value
  if(full&&!cardReady.value)return
  await submit(async()=>{
@@ -123,7 +124,8 @@ onMounted(async()=>{await load();const id=routeParams.get('order_id');if(props.r
       <p id="renewal-explanation">{{renew?'到期后将按上游规则自动续费。':'付款后关闭自动续费，已购买的有效期不变。'}}</p>
     </section>
     <label class="confirmation-consent" :class="{accepted}"><input type="checkbox" v-model="accepted" required/><span>{{fullSubscription?'我授权按实时含税金额付款，并同意上述续费设置及':'我已阅读并同意'}}<a href="https://openai.com/zh-Hans-CN/policies/terms-of-use/" target="_blank" rel="noopener noreferrer" @click.stop>《服务约定》</a>。</span></label>
-    <button class="btn primary full" :disabled="!canSave||!pub.checkout_connected||(fullSubscription&&(!pub.payment_connected||!cardReady))">{{busy?'提交中…':fullSubscription?'开始订阅办理':'生成结账链接'}}<ArrowRight :size="17"/></button><button type="button" class="btn secondary full" :disabled="!canSave" @click="createDraft(false)">保存订阅方案</button></aside>
+    <p v-if="!serviceConnected" class="muted small" role="status">{{fullSubscription?'订阅办理暂未开放。':'结账链接暂未开放。'}}</p>
+    <button type="submit" class="btn primary full" :disabled="!canSave||!serviceConnected||(fullSubscription&&!cardReady)">{{busy?'提交中…':fullSubscription?'开始订阅办理':'生成结账链接'}}<ArrowRight :size="17"/></button><button type="button" class="btn secondary full" :disabled="!canSave" @click="createDraft(false)">保存订阅方案</button></aside>
 </form></template>
 <OrderCenter :can-subscribe="enabled('subscribe')" :initial-filter="orderFilter" @clear-filter="orderFilter={q:'',status:'',attention:''};load()" v-else-if="route==='/orders'" :rows="items" :loading="loading" @order="showOrder" @refresh="load"/>
 <template v-else-if="route==='/wallet'"><div class="page-heading"><div><span class="eyebrow">YOUR MONEY, MADE CLEAR</span><h1>资金中心</h1><p>所有业务共用余额，按业务查看每笔变动。</p></div><button class="btn secondary" @click="load">刷新账本</button></div><div class="wallet-layout"><section class="balance-card"><span>账户可用金额</span><h2>{{cash(Number(data.balance||0)-Number(data.frozen||0))}}<small>积分</small></h2><div class="balance-bottom"><div><small>已冻结</small><b>{{cash(data.frozen)}} 积分</b></div><ShieldCheck :size="34"/></div></section><section class="panel redeem-panel"><div><span class="icon-tile"><Gift :size="21"/></span><h2>兑换码充值</h2><p>输入兑换码充值到统一余额，注册、订阅和代退均可使用。</p></div><form @submit.prevent="submit(async()=>{const r=await api('/wallet/redeem','POST',{code:redeem});notify('已入账 '+cash(r.amount)+' 积分');redeem='';await load();emit('refresh')})"><input v-model="redeem" required placeholder="请输入兑换码" aria-label="兑换码"/><button class="btn primary" :disabled="busy">兑换<ArrowRight :size="16"/></button></form></section><section class="panel topup-panel"><span class="eyebrow">ADD FUNDS</span><h2>充值申请</h2><p>人工核实到账后入账。<br/>请先联系运营确认充值方式。</p><button class="btn secondary" @click="modal='topup'">提交申请<Plus :size="16"/></button></section></div><div class="section-heading"><div class="tabs"><button :class="{active:tab==='ledger'}" @click="tab='ledger'">资金流水</button><button :class="{active:tab==='topups'}" @click="tab='topups'">充值记录</button></div><span class="muted small">金额单位：积分</span></div><template v-if="tab==='ledger'"><LedgerTable business="shared" :rows="(data.ledger||[]).filter((row:Row)=>row.business==='shared')" :loading="loading" @order="showOrder"/><div class="section-heading wallet-business-heading"><div><h2>业务流水</h2><p class="muted small">按订单所属业务查看冻结、结算和退款。</p></div></div><BusinessTabs :model-value="business==='subscription'?'subscription':business==='refund'?'refund':'registration'" @update:model-value="emit('business',$event)"/><LedgerTable :key="business" :business="business||'registration'" :rows="(data.ledger||[]).filter((row:Row)=>row.business===(business||'registration'))" :loading="loading" @order="showOrder"/></template><RechargeTable v-else :rows="data.recharges||[]" :loading="loading" :busy="busy" @cancel="id=>submit(async()=>{await api('/topups/'+id+'/cancel','POST',{});await load();notify('已撤回')})"/></template>
