@@ -13,7 +13,7 @@ const data=ref<Row>({items:[],blocks:[],summary:{},categories:[]})
 const q=ref(''),severity=ref(''),category=ref(''),state=ref('pending'),start=ref(''),end=ref(''),page=ref(1),size=ref(25)
 const panel=ref('events'),loading=ref(false),busy=ref(false),error=ref(''),actionError=ref(''),detail=ref<Row|null>(null),confirmation=ref<Row|null>(null),blockForm=ref<Row|null>(null),blockSearch=ref('')
 const applied=ref<Row>({all_time:String(allTime.value),state:'pending'})
-const names:Row={login_failed:'登录校验失败',login_rate:'登录限流',permission_denied:'权限拦截',rate_limit:'请求限流',order_rate:'下单限流',redeem_rate:'兑换限流'}
+const names:Row={access:'访问异常',login:'登录安全',limit:'频率限制',application:'订单异常',finance:'积分安全',admin:'管理操作',login_failed:'登录校验失败',login_rate:'登录限流',permission_denied:'权限拦截',rate_limit:'请求限流',order_rate:'下单限流',redeem_rate:'兑换限流'}
 const levels:Row={high:'高风险',medium:'需关注',low:'一般'}
 const pages=computed(()=>Math.max(1,Math.ceil((data.value.total||0)/size.value)))
 const blocks=computed(()=>data.value.blocks.filter((b:Row)=>[b.ip,b.reason].some(v=>String(v).toLowerCase().includes(blockSearch.value.trim().toLowerCase()))))
