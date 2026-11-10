@@ -27,8 +27,9 @@ test('post-payment exit comparisons and renewal queries are shown in the correct
 
 test('every saved flow has consistent summary and payment labels, including direct HTTP',()=>{
  for(const [flow,combination,payment] of [
-  ['legacy','旧提链 → 旧浏览器付款','旧浏览器'],
-  ['legacy_protocol','旧提链 → 旧协议付款','旧 HTTP 协议'],
+  ['gener_direct_pay','gener 提链 → HTTP 直连付款 → Go 付款后续','HTTP 直连付款'],
+  ['cslive_go_direct_pay','cs-live Go 提链 → HTTP 直连付款 → Go 付款后续','HTTP 直连付款'],
+  ['cslive_full_go','完整 cs-live Go（提链+付款+续费一体）','cs-live Go 一体付款'],
  ]){
   const data=base();data.order.subscription_flow=flow
   const j=buildPaymentJourney(data)

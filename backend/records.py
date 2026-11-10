@@ -80,16 +80,8 @@ def public():
 
 @router.get('/overview')
 def overview(request:Request):
-    from .registration_account import summary
-    user=current(request)
-    stats=db.one("SELECT count(*) AS orders,count(*) FILTER(WHERE status='succeeded') AS succeeded,count(*) FILTER(WHERE status IN ('draft','queued','processing','awaiting_payment') AND NOT(workflow='link' AND status='awaiting_payment')) AS pending FROM orders WHERE user_id=$1 AND deleted_at IS NULL",user['id'])
-    stats.update(db.one("SELECT COALESCE(sum(-amount) FILTER(WHERE kind='charge'),0) AS used,COALESCE(sum(amount) FILTER(WHERE kind IN ('topup','redeem')),0) AS credited FROM ledger WHERE user_id=$1",user['id']))
-    flags=capabilities(user)
-    if not flags['orders']:
-        for key in ('orders','succeeded','pending'): stats.pop(key,None)
-    if not flags['wallet']:
-        for key in ('used','credited'): stats.pop(key,None)
-    return {'user':project_user(user),'stats':stats,'registration':summary(user['id']) if flags['orders'] else None,'recent_orders':db.all('SELECT '+ORDER_FIELDS+' FROM orders o WHERE user_id=$1 AND o.deleted_at IS NULL ORDER BY created_at DESC LIMIT 5',user['id']) if flags['orders'] else [],'announcements':db.all(ANN+' ORDER BY sort,created_at DESC')}
+    from .dashboard import shared_overview as dashboard
+    return dashboard(current(request))
 
 
 @router.get('/announcements')
@@ -97,12 +89,22 @@ def announcements():
     return {'items':db.all(ANN.replace('id,title,body,tone','id,title,body,tone,starts_at,ends_at,created_at')+' ORDER BY sort,created_at DESC')}
 
 
+def _attention_where(attention):
+    if attention=='followup':
+        return " AND o.status='succeeded' AND o.workflow='subscription' AND (o.activation='review' OR o.renewal='review')"
+    if attention=='pending':
+        return " AND (o.status IN ('queued','processing') OR o.status='succeeded' AND o.workflow='subscription' AND (o.activation='pending' OR o.renewal IN ('pending','retrying')))"
+    return ''
+
+
 @router.get('/orders')
 @router.get('/v1/orders')
-def orders(request:Request,q:str='',status:str='',workflow:str='',page:int=Query(1,ge=1,le=100000),page_size:int=Query(200,ge=1,le=200)):
+def orders(request:Request,q:str='',status:str='',workflow:str='',attention:str='',page:int=Query(1,ge=1,le=100000),page_size:int=Query(200,ge=1,le=200)):
     require(status in ('','draft','queued','processing','awaiting_payment','succeeded','failed','cancelled','review'),'订单状态无效')
     require(workflow in ('','link','subscription') and len(q)<=200,'订单筛选参数无效')
     where=" FROM orders o WHERE user_id=$1 AND o.deleted_at IS NULL AND ($2='' OR email ILIKE '%'||$2||'%' OR id ILIKE '%'||$2||'%') AND ($3='' OR status=$3) AND ($4='' OR workflow=$4)"
+    require(attention in ('','pending','followup'),'订单筛选无效')
+    where+=_attention_where(attention)
     args=(current(request)['id'],q,status,workflow)
     rows=db.all('SELECT '+ORDER_FIELDS+where+' ORDER BY created_at DESC,id DESC LIMIT $5 OFFSET $6',*args,page_size,(page-1)*page_size)
     for r in rows:
@@ -184,19 +186,18 @@ def catalog(request:Request):
 
 
 @admin_router.get('/overview')
-def admin_overview():
-    from .registration_account import summary
-    stats=db.one("SELECT (SELECT count(*) FROM users WHERE role='member' AND deleted_at IS NULL) AS customers,(SELECT COALESCE(sum(balance),0) FROM users WHERE role='member') AS balance,(SELECT COALESCE(sum(frozen),0) FROM users WHERE role='member') AS frozen,(SELECT count(*) FROM orders WHERE deleted_at IS NULL) AS orders,(SELECT count(*) FROM topups WHERE status='pending') AS pending_topups,(SELECT count(*) FROM risk_events WHERE NOT resolved) AS risks,(SELECT count(*) FROM resources WHERE enabled) AS resources,(SELECT count(*) FROM orders WHERE deleted_at IS NULL AND status IN ('queued','processing','awaiting_payment') AND NOT(workflow='link' AND status='awaiting_payment')) AS active_orders")
-    scheduler=dict(config('scheduler'),worker_mode=worker_mode())
-    scheduler['paused']=scheduler['paused'] or worker_mode()=='off'
-    cfg=config('payment')
-    return {'stats':stats,'registration':summary(),'orders':db.all('SELECT '+ORDER_FIELDS+',o.user_id,o.note,u.email AS owner FROM orders o JOIN users u ON u.id=o.user_id WHERE o.deleted_at IS NULL ORDER BY o.created_at DESC LIMIT 8'),'risks':db.all('SELECT * FROM risk_events ORDER BY id DESC LIMIT 5'),'scheduler':scheduler,'payment_connected':cfg.get('enabled') is True and cfg.get('subscription_flow') in ('gener_direct_pay','cslive_go_direct_pay','cslive_full_go')}
+def admin_overview(request:Request, start:str='', end:str='', days:int=7, include_admin:bool=False, focus:str='all'):
+    from .dashboard import shared_overview as dashboard
+    return dashboard(current(request),admin=True,start=start,end=end,days=days,include_admin=include_admin,focus=focus)
 
 
 @admin_router.get('/orders')
-def admin_orders(q:str='',status:str='',page:int=Query(1,ge=1,le=100000),page_size:int=Query(50,ge=1,le=500)):
+def admin_orders(q:str='',status:str='',attention:str='',include_admin:bool=True,page:int=Query(1,ge=1,le=100000),page_size:int=Query(50,ge=1,le=500)):
     require(len(q)<=200 and status in ('','draft','queued','processing','awaiting_payment','succeeded','failed','cancelled','review'),'订单筛选参数无效')
     where=" FROM orders o JOIN users u ON u.id=o.user_id WHERE o.deleted_at IS NULL AND ($1='' OR o.email ILIKE '%'||$1||'%' OR o.id ILIKE '%'||$1||'%' OR u.email ILIKE '%'||$1||'%' OR u.name ILIKE '%'||$1||'%' OR o.product_name ILIKE '%'||$1||'%') AND ($2='' OR o.status=$2)"
+    require(attention in ('','pending','followup'),'订单筛选无效')
+    where+=_attention_where(attention)
+    if not include_admin:where+=" AND u.role<>'admin'"
     rows=db.all('SELECT '+ORDER_FIELDS+',o.user_id,o.note,u.email AS owner'+where+' ORDER BY o.created_at DESC,o.id DESC LIMIT $3 OFFSET $4',q,status,page_size,(page-1)*page_size)
     for r in rows:
         r['payment']=_order_list_payment(r)

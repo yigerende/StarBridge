@@ -4,8 +4,8 @@ import {Search,RefreshCw,Plus,Copy,ArrowUpRight,CreditCard} from 'lucide-vue-nex
 import {cash,date,action,copy,orderLabel,orderTone,regionLabel,type Row} from '../lib'
 import {feeStates,paymentStates,renewalStates,paymentState,renewalState,upstreamAmount,discountText} from '../record-format'
 import RecordsTable from './RecordsTable.vue'
-const props=defineProps<{rows:Row[];loading:boolean}>()
-defineEmits<{order:[row:Row];refresh:[]}>()
+const props=defineProps<{rows:Row[];loading:boolean;initialFilter?:Row}>()
+defineEmits<{order:[row:Row];refresh:[];'clear-filter':[]}>()
 const q=ref(''),payment=ref(''),renewal=ref(''),product=ref(''),status=ref('')
 const products=computed(()=>[...new Set(props.rows.map(r=>r.product_name))])
 const filtered=computed(()=>props.rows.filter(r=>{
@@ -20,7 +20,7 @@ const columns=[{key:'order',label:'订单 / 订阅账号',wide:true},{key:'produ
 </script>
 <template>
  <div class="page-heading"><div><span class="eyebrow">EVERY ORDER, IN ONE PLACE</span><h1>订单中心</h1><p>查订单、核付款、看续费，每一笔都有据可循。</p></div><a href="#/subscribe" class="btn primary"><Plus :size="17"/>办理订阅</a></div>
- <section class="panel record-panel">
+ <p v-if="initialFilter&&(initialFilter.q||initialFilter.status||initialFilter.attention)" class="callout">已按工作台待办筛选订单{{initialFilter.q?' · '+initialFilter.q:''}}。<button class="text-btn" @click="$emit('clear-filter')">查看全部订单</button></p><section class="panel record-panel">
   <div class="records-heading"><div><h2>全部订单</h2><p>付款、生效与续费分别记录，查看详情可跟进完整进度。</p></div><button class="btn secondary" :disabled="loading" @click="$emit('refresh')"><RefreshCw :size="15" :class="{'records-spin':loading}"/>刷新</button></div>
   <div class="records-filters">
    <label class="records-search"><span class="sr-only">订单号或订阅邮箱</span><Search :size="16"/><input v-model="q" type="search" placeholder="搜索订单号 / 订阅邮箱"/></label>

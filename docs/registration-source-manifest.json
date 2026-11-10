@@ -461,7 +461,8 @@
     },
     {
       "path": "src/platform/reports.js",
-      "sha256": "9cedb5295620cbbb3da67031a8f9a220d24dd9bd4ec2e0d51afa14527e3e4b6a"
+      "sha256": "0af5ed3783a304b62dd93019b809fc894a5eca626d2b71288be07f49a3b1ebad",
+      "reason": "Unified dashboard deep links and administrator scope; registration engine unchanged"
     },
     {
       "path": "src/platform/risk-config.js",
@@ -505,8 +506,8 @@
     },
     {
       "path": "web/src/portal/AdminPlatform.tsx",
-      "sha256": "c1578d15845e789b78523a4ea979a2b6f593428bc39ce13ecc7c2276c6dbcb7d",
-      "reason": "Pass native route search parameters and correct unified link hrefs; registration engine core unchanged"
+      "sha256": "be383ed5d2ce1187578f2b37acab8cb821ba558342aab2d362c3226981e7578c",
+      "reason": "Unified dashboard deep links and administrator scope; registration engine unchanged"
     },
     {
       "path": "web/src/portal/AdminSiteControls.tsx",
@@ -568,6 +569,11 @@
       "path": "web/src/portal/CustomerAccounts.tsx",
       "sha256": "9b0c35988e3454375586d7cf8ca19af3d99a71b37249e0f31fcdddf63f6b03c4",
       "reason": "Pass native route search parameters and correct unified link hrefs; registration engine core unchanged"
+    },
+    {
+      "path": "web/src/portal/CustomerCenter.tsx",
+      "sha256": "91e9f5d73ca6cbd1f2168ade32f02d49e9357fdf7f36b90af5b411a3eb04de8c",
+      "reason": "Unified dashboard deep links and administrator scope; registration engine unchanged"
     }
   ],
   "hashing": "sha256; text normalized to LF, binary exact"

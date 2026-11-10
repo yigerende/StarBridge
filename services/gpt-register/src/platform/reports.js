@@ -39,7 +39,8 @@ async function listOrders(db, owner, query) {
       option(query.mode, ["standard", "oauth"]),
     ];
   const where =
-    "FROM platform_orders o JOIN registration_members u ON u.id=o.user_id WHERE ($1::text IS NULL OR o.user_id=$1) AND (o.id ILIKE $2 OR u.email ILIKE $2) AND ($3='' OR o.status=$3) AND ($4='' OR o.need_oauth=($4='oauth'))";
+    "FROM platform_orders o JOIN registration_members u ON u.id=o.user_id WHERE ($1::text IS NULL OR o.user_id=$1) AND (o.id ILIKE $2 OR u.email ILIKE $2) AND ($3='' OR o.status=$3) AND ($4='' OR o.need_oauth=($4='oauth'))" +
+    (!owner && query.include_admin === "false" ? " AND u.role<>'admin'" : "");
   const [rows, count] = await Promise.all([
     db.query(
       `SELECT o.*,u.email ${where} ORDER BY o.created_at DESC,o.id DESC LIMIT $5 OFFSET $6`,

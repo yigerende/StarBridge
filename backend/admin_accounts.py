@@ -176,8 +176,9 @@ async def set_membership(id: str,request: Request):
 
 
 @router.get('/topups')
-def topups():
-    return {'items':db.all("SELECT t.*,u.email FROM topups t JOIN users u ON u.id=t.user_id ORDER BY (t.status='pending') DESC,t.created_at DESC LIMIT 500")}
+def topups(status:str='',include_admin:bool=True):
+    require(status in ('','pending','approved','rejected','cancelled'),'充值状态无效')
+    return {'items':db.all("SELECT t.*,u.email FROM topups t JOIN users u ON u.id=t.user_id WHERE ($1='' OR t.status=$1) AND ($2::bool OR u.role<>'admin') ORDER BY (t.status='pending') DESC,t.created_at DESC LIMIT 500",status,include_admin)}
 
 
 @router.post('/topups/{id}/review')

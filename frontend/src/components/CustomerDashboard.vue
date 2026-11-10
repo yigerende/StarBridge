@@ -1,0 +1,23 @@
+<script setup lang="ts">
+import {computed,ref} from 'vue'
+import {ArrowRight,ArrowUpRight,KeyRound,Sparkles,Wallet,ShieldCheck,Bell,BookOpen,RefreshCw,CheckCircle2} from 'lucide-vue-next'
+import {cash,date,type Row} from '../lib'
+import {featureAllowed} from '../featureAccess'
+import {useDashboard} from '../dashboard'
+import DashboardOrders from './DashboardOrders.vue'
+import './dashboard.css'
+const props=defineProps<{user:Row;pub:Row}>()
+const {data,loading,error,refresh}=useDashboard(props.user.id,ref('/overview'))
+const enabled=(key:string)=>featureAllowed(props.user.features||props.pub.features,key)
+const todos=computed(()=>(data.value?.attention||[]).filter((r:Row)=>r.count>0))
+const wallet=computed(()=>data.value?.wallet||{available:Number(props.user.balance||0)-Number(props.user.frozen||0),frozen:props.user.frozen})
+</script>
+<template><div class="dashboard customer-dashboard">
+ <header class="dash-heading"><div><h1>你好，{{user.name}}<span>今天想办理什么？</span></h1><p>办理服务、领取账号，进度都在这里。</p></div><button class="btn secondary" :disabled="loading" @click="refresh" aria-label="刷新工作台"><RefreshCw :size="15" :class="{spinning:loading}"/>刷新</button></header>
+ <div v-if="error" class="alert danger" role="alert">{{data?'刷新失败，当前显示上次数据。':''}}{{error}}<button @click="refresh">重试</button></div>
+ <section class="dash-account"><div v-if="enabled('wallet')" class="dash-account-money"><span><Wallet :size="17"/>可用积分</span><strong>{{cash(wallet.available)}}<small>积分</small></strong><p>冻结中 <b>{{cash(wallet.frozen)}}</b><span>成功交付才结算</span></p></div><div class="dash-account-member"><ShieldCheck :size="22"/><div><b>{{enabled('membership')&&user.membership?user.membership.current.name:'我的账户'}}</b><p v-if="enabled('membership')&&user.membership">服务费等级减免 {{100-user.membership.current.discount}}%<small>订阅与注册均享权益，实际价格以办理页报价为准</small></p><p v-else>订阅与注册共用账户和积分钱包</p></div></div><a v-if="enabled('wallet')" href="#/wallet" class="btn secondary">充值 / 兑换码<ArrowUpRight :size="15"/></a></section>
+ <section class="dash-services" aria-label="开始办理"><a v-if="pub.registration_enabled&&data?.permissions.register!==false" href="#/register" class="dash-service register"><span class="dash-service-icon"><KeyRound :size="26"/></span><div><h2>注册办理</h2><p>选择账号类型与数量，按实际交付结算。</p><span>开始注册<ArrowRight :size="16"/></span></div><span class="dash-service-mark" aria-hidden="true">01</span></a><a v-if="enabled('subscribe')" href="#/subscribe" class="dash-service subscribe"><span class="dash-service-icon"><Sparkles :size="26"/></span><div><h2>订阅办理</h2><p>提交订阅方案，跟进付款、生效与续费。</p><span>开始订阅<ArrowRight :size="16"/></span></div><span class="dash-service-mark" aria-hidden="true">02</span></a></section>
+ <div v-if="!data&&!error" class="dash-skeleton" aria-label="正在加载工作台" :aria-busy="loading"><i/><i/><i/></div>
+ <template v-if="data"><section class="dash-section"><div class="dash-section-heading"><h2>现在需要关注<span v-if="todos.length" class="dash-count">{{todos.length}}</span></h2><small>更新于 {{date(data.generated_at)}}</small></div><div v-if="todos.length" class="dash-todos"><a v-for="item in todos" :key="item.key" :href="item.href" class="dash-todo" :class="item.tone"><div><b>{{item.title}}</b><p>{{item.hint}}</p></div><strong>{{item.count}}<small>{{item.unit}}</small></strong><ArrowUpRight :size="16"/></a></div><div v-else class="dash-calm"><CheckCircle2 :size="20"/><span>当前没有待处理事项，可以开始新的办理。</span></div></section>
+ <div class="dash-customer-columns"><section v-if="enabled('orders')||data.permissions.registration_orders" class="panel dash-section"><div class="dash-section-heading"><h2>最近办理</h2><span class="dash-caption">订阅与注册 · 最近 8 笔</span></div><DashboardOrders :rows="data.recent_orders"/></section><aside class="dash-sidebar"><section class="panel dash-section"><div class="dash-section-heading"><h2><Bell :size="17"/>最新公告</h2></div><div v-if="!data.announcements.length" class="dash-note">暂无新公告，服务消息会在这里展示。</div><article v-for="item in data.announcements" :key="item.id" class="dash-announcement"><b>{{item.title}}</b><p>{{item.body}}</p></article></section><section class="panel dash-section dash-help"><h2><BookOpen :size="17"/>常用帮助</h2><a v-if="data.permissions.accounts" href="#/accounts">查看我的账号<ArrowUpRight :size="14"/></a><a v-if="enabled('docs')" href="/docs" target="_blank" rel="noopener noreferrer">接口文档<ArrowUpRight :size="14"/></a><a v-if="pub.site.support_url" :href="pub.site.support_url" target="_blank" rel="noopener noreferrer">联系支持<ArrowUpRight :size="14"/></a><p>付款结果待核实时，请先核实原订单，避免重复付款。</p></section></aside></div></template>
+</div></template>

@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   TrendingUp,
 } from "lucide-react";
-import { Link } from "../router";
+import { Link, useRouter } from "../router";
 import { call, copy, date, orderPending, type Row } from "./client";
 import { Feedback, Modal, OrderDetail, Status, useAction } from "./Workspace";
 import { Filters, Pagination, ledgerNames, number } from "./Insights";
@@ -83,9 +83,11 @@ export function OrderRecords({
   pub: Row;
   user: Row;
 }) {
-  const [filters, setFilters] = useState<Row>({});
+  const { search } = useRouter();
+  const params = new URLSearchParams(search);
+  const [filters, setFilters] = useState<Row>(()=>({status:params.get("status")||"",q:params.get("order_id")||""}));
   const [offset, setOffset] = useState(0),
-    [detail, setDetail] = useState("");
+    [detail, setDetail] = useState(params.get("order_id")||"");
   const a = useAction(),
     q = useQueryClient();
   const { data, error, isFetching, refetch } = useQuery({
