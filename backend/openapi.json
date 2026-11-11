@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "星桥 API",
-    "version": "2.6.1",
+    "version": "2.6.2",
     "description": "使用同一个 API 密钥查询账户、订阅套餐、代退报价和积分钱包，提交申请并跟踪办理结果。当前可用功能见 GET /api/v1/me 的 features；重置登录密码后需重新创建 API 密钥。 请求按来源 IP 限流，同一出口的账号和密钥共用请求额度；注册、订阅和代退共用下单限额。429 按 Retry-After 等待，重试仍使用原幂等键。"
   },
   "servers": [

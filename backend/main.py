@@ -21,7 +21,7 @@ from . import subscription_recovery
 from . import refunds, support, activity
 from .request_origin import configured_origin, origin_allowed
 from .auth_runtime import bounded_call
-from . import registration_gateway
+from . import registration_gateway, registration_sessions
 from starlette.concurrency import run_in_threadpool
 
 PUBLIC_ORIGIN = configured_origin(os.getenv('PUBLIC_ORIGIN', ''))
@@ -93,10 +93,12 @@ async def lifespan(app):
     await refunds.start()
     thread=threading.Thread(target=worker_loop,args=(stop,),daemon=True,name='starbridge-scheduler');thread.start()
     order_updates.updates.start()
+    session_task=registration_sessions.start()
     try:
         yield
     finally:
         stop.set()
+        await registration_sessions.stop(session_task)
         await order_updates.updates.close()
         await asyncio.to_thread(thread.join,115)
         await registration_gateway.close_transport()

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Session fixture</title></head>
+<body><div id="root" class="portal registration-native"></div><script type="module">
+import React from 'react'
+import {createRoot} from 'react-dom/client'
+import {QueryClient,QueryClientProvider} from '@tanstack/react-query'
+import {NativeRouter} from '../../../services/gpt-register/web/src/router.tsx'
+import CustomerAccounts from '../../../services/gpt-register/web/src/portal/CustomerAccounts.tsx'
+import AdminAccounts from '../../../services/gpt-register/web/src/portal/AdminAccounts.tsx'
+import '../../../services/gpt-register/web/src/portal/portal.css'
+import '../../../services/gpt-register/web/src/portal/workspace.css'
+import '../../../services/gpt-register/web/src/portal/center.css'
+import '../../src/registration/native.css'
+const now=new Date().toISOString(),expires=new Date(Date.now()+7200000).toISOString()
+const account={id:'account-one',order_id:'order-one',email:'account@example.test',need_oauth:false,created_at:now,download_expires_at:expires}
+const group={...account,id:'order-one',owner_email:'owner@example.test',available_count:1,last_delivered_at:now}
+const session={user:{id:'synthetic',email:account.email},expires:'2099-01-01T00:00:00.000Z',accessToken:'SYNTHETIC_'+ 'x'.repeat(12000),extra:{preserve:true}}
+window.fixtureSession=session
+window.fetch=async(input,init={})=>{
+ const path=String(input),body=init.body?JSON.parse(init.body):{}
+ let value
+ if(path.endsWith('/credentials'))value={...account,asset_id:'asset-one',password:'synthetic-password',totp_secret:'JBSWY3DPEHPK3PXP',totp_code:'123456',access_token:'WEB_AT',session,session_status:new URL(location.href).searchParams.get('status')||'ready',delivery:{...account,owner_email:'owner@example.test'}}
+ else if(path.endsWith('/export'))value={filename:'starbridge-email-session.txt',content:account.email+'----'+JSON.stringify(session)+'\n'}
+ else value={items:path.includes('account-orders')?[group]:[account],total:1,accounts_total:1,server_time:now,limit:50,offset:0}
+ if(value.session_status&&value.session_status!=='ready')value.session=null
+ return new Response(JSON.stringify(value),{status:200,headers:{'content-type':'application/json'}})
+}
+const admin=new URL(location.href).searchParams.has('admin')
+const query=new QueryClient({defaultOptions:{queries:{retry:false}}})
+createRoot(document.getElementById('root')).render(React.createElement(QueryClientProvider,{client:query},
+ React.createElement(NativeRouter,{path:admin?'/admin/accounts':'/accounts',navigate:()=>{}},
+ React.createElement(admin?AdminAccounts:CustomerAccounts,admin?{rows:[group],onOrder:()=>{}}:{userId:'fixture-user'}))))
+</script><style>body{margin:0;padding:24px;background:#f6f8fb;font-family:system-ui,sans-serif}#root{max-width:1200px;margin:auto}@media(max-width:600px){body{padding:10px}}</style></body></html>

@@ -1,5 +1,7 @@
 """Same-origin transport for the independent registration application."""
 import os
+import json
+import re
 from urllib.parse import unquote, urlsplit
 
 import httpx
@@ -9,6 +11,8 @@ from starlette.requests import ClientDisconnect
 
 from .common import BusinessError, ip, require, authenticate
 from starlette.concurrency import run_in_threadpool
+from . import registration_sessions
+from .common import response
 
 router = APIRouter()
 _client = None
@@ -85,14 +89,52 @@ async def registration(request: Request, path: str):
                     'x-registration-source-ip': ip(request)})
     client = transport()
     try:
+        body = await request.body()
+        account_path = re.fullmatch(r'api/(?:user|admin)/v1/accounts/(?:[^/]+/credentials|export)|open/v1/accounts/(?:[^/]+/credentials|export)', unquote(path))
+        session_view = bool(account_path and request.method == 'GET' and path.endswith('/credentials'))
+        session_download = False
+        json_download = False
+        if account_path and request.method == 'POST' and path.endswith('/export'):
+            try:
+                payload = json.loads(body)
+            except (ValueError, UnicodeError):
+                payload = None
+            if isinstance(payload, dict):
+                format_name = payload.get('format', 'json' if '/admin/' in path else 'txt')
+                session_download = format_name == 'email_session'
+                json_download = format_name == 'json'
+                if session_download:
+                    # The original handler still validates ownership, scopes, expiry,
+                    # selected IDs, feature switches and audit before any Session read.
+                    body = json.dumps({**payload, 'format': 'json'}).encode()
         upstream = await client.send(client.build_request(request.method, target, headers=headers,
-                                                          content=await request.body()), stream=True)
+                                                          content=body), stream=True)
     except ClientDisconnect:
         return Response(status_code=499)
     except httpx.HTTPError:
         raise BusinessError('注册服务暂不可用，请稍后重试；订阅服务可正常使用', 503) from None
     except BaseException:
         raise
+    if upstream.status_code == 200 and (session_view or session_download or json_download):
+        try:
+            raw = bytearray()
+            async for part in upstream.aiter_bytes():
+                raw.extend(part)
+                require(len(raw) <= 64 * 1024 * 1024, '导出内容过大，请减少本次选择的账号数量', 413)
+            result = json.loads(raw)
+            values = [result] if session_view else json.loads(result['content'])
+            values = await run_in_threadpool(registration_sessions.attach_sessions, values)
+            if session_view:
+                result = values[0]
+            elif session_download:
+                result = registration_sessions.session_export(values)
+            else:
+                result['content'] = json.dumps(values, ensure_ascii=False, indent=2)
+            outgoing_response = response(result)
+            outgoing_response.headers['Cache-Control'] = 'no-store'
+            return outgoing_response
+        finally:
+            await upstream.aclose()
     outgoing = {k: v for k, v in upstream.headers.items() if k.lower() in RESPONSE_HEADERS}
     location = upstream.headers.get('location')
     if location:

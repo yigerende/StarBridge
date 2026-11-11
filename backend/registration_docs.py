@@ -2,6 +2,46 @@ import json
 from pathlib import Path
 
 
+def session_contract(registration):
+    sample={'user':{'id':'EXAMPLE_USER_ID','email':'demo.account@gmail.com'},
+            'expires':'2026-12-11T00:00:00.000Z','accessToken':'EXAMPLE_WEB_ACCESS_TOKEN'}
+    fields=registration['components']['schemas']['StoredCredentials']['properties']
+    fields.pop('session_token',None)
+    fields.update({
+        'session':{'type':['object','null'],'additionalProperties':True,
+                   'description':'完整网页登录 Session JSON，保留返回的全部字段。尚未获取时为 null；查看不会刷新。',
+                   'properties':{'user':{'type':'object','additionalProperties':True},
+                                 'expires':{'type':'string','format':'date-time'},'accessToken':{'type':'string'}}},
+        'session_status':{'type':'string','enum':['pending','ready','failed','unavailable'],
+                          'description':'pending：正在获取，可稍后查询；ready：已保存；failed：获取失败；unavailable：尚未保存。'},
+        'session_fetched_at':{'type':['string','null'],'format':'date-time','description':'完整 Session 保存时间；尚未保存时为 null。'},
+    })
+    def examples(value):
+        if isinstance(value,list):
+            return [examples(v) for v in value]
+        if isinstance(value,dict):
+            result={key:examples(item) for key,item in value.items() if key!='session_token'}
+            if 'session_token' in value:
+                result.update(session=sample,session_status='ready',session_fetched_at='2026-11-11T00:00:00.000Z')
+            return result
+        if isinstance(value,str) and value.lstrip().startswith(('[','{')):
+            try:
+                return json.dumps(examples(json.loads(value)),ensure_ascii=False,indent=2)
+            except ValueError:
+                pass
+        return value
+    for path in ('/open/v1/accounts/{id}/credentials','/open/v1/accounts/export'):
+        registration['paths'][path]=examples(registration['paths'][path])
+    export=registration['paths']['/open/v1/accounts/export']['post']
+    export['description']='提交 1～1000 个交付账号 ID。不存在、无权访问或领取期已过时整批返回 404。txt/csv 为邮箱、密码、2FA；json 包含完整账号凭据；email_at 为邮箱与网页登录 AT；email_session 为邮箱与完整 Session JSON，每行“邮箱----单行JSON”。任一账号尚未保存所选凭据时整批返回 409，请稍后重试。cpa/sub 仅支持含 OAuth 的账号；cpa 多账号返回 ZIP。响应为 JSON，按 filename 保存 content；encoding=base64 时先解码。'
+    request=export['requestBody']['content']['application/json']
+    request['schema']['properties']['format']['description']='txt：邮箱-密码-2FA；csv：三列基础凭据；json：完整账号凭据；email_at：邮箱+网页登录 AT；email_session：邮箱+完整 Session JSON；cpa：CPA；sub：sub2api。'
+    request['examples']['email_session']['summary']='邮箱+Session，每行包含完整 JSON'
+    export['responses']['200']['content']['application/json']['examples']['email_session']['value']={
+        'filename':'starbridge-email-session.txt',
+        'content':'demo.account@gmail.com----'+json.dumps(sample,ensure_ascii=False,separators=(',',':'))+'\n'}
+
+
 def document():
     directory=Path(__file__).resolve().parent
     result=json.loads((directory/'openapi.json').read_text(encoding='utf-8'))
@@ -12,7 +52,6 @@ def document():
     registration['paths']['/open/v1/products']['get']['responses']['200']['content']['application/json']['example']['membership']={'current': {'code': 'L1', 'name': '会员', 'threshold': 0, 'discount': 100, 'description': ''}, 'source': 'automatic', 'until': None}
     registration['paths']['/open/v1/registration-regions']['get']['description']='查询可选地区代码和名称。下单传返回的 code；省略或传 random 表示随机地区。已受理订单保留下单时的选择。'
     registration['paths']['/open/v1/registration-orders']['post']['requestBody']['content']['application/json']['schema']['properties']['registration_region']['description']='可选注册地区；传地区查询返回的 code，例如 JP。省略或 random 表示随机。相同请求标识重试须保留原参数。'
-    registration['paths']['/open/v1/accounts/{id}/credentials']['get']['description']='交付后 72 小时内读取密码、2FA、当前验证码和网页登录凭据；到期返回 404。access_token/session_token 未保存时为空或省略。含 OAuth 服务另返回 oauth；其 access_token 与顶层网页登录凭据用途不同。读取不会刷新凭据。'
     registration['paths']['/open/v1/accounts/export']['post']['description']='提交 1～1000 个交付账号 ID。不存在、无权访问或领取期已过时整批返回 404。txt/csv 为邮箱、密码、2FA 三列；json 包含账号凭据；email_at/email_session 为邮箱与对应网页登录凭据的 TXT，任一账号缺少凭据时整批返回 409。cpa/sub 仅支持含 OAuth 的账号；cpa 多账号返回 ZIP。响应为 JSON，按 filename 保存 content；encoding=base64 时先解码。重复 ID 会去重，输出顺序可能与请求不同。'
     registration['x-order-states']['review']='结果核实中，请继续查询原订单，不重复提交。'
     registration['x-errors']=[{'status': 400, 'message': '参数格式或业务条件不正确', 'action': '核对类型、数量上限、筛选值和必填参数，修正后提交。'}, {'status': 401, 'message': 'API Key 无效或账户不可用', 'action': '检查 Bearer 密钥、撤销状态及账户是否停用。网页登录会话不能代替 API Key。'}, {'status': 402, 'message': '可用积分不足', 'action': '查询账户 points 并充值；points 已是可用余额，不要再减 frozen。'}, {'status': 403, 'message': '权限不足或功能未开放', 'action': '检查当前账户可用功能，仍无法调用时联系服务支持。'}, {'status': 404, 'message': '记录不存在、不属于当前账户或账号资料已到期', 'action': '核对订单或账号 ID；账号交付满 72 小时后不可再读取或导出，请提前保存。'}, {'status': 409, 'message': '幂等键与请求内容冲突', 'action': '相同操作重试须复用相同键和内容；确认要创建新订单时使用新键。'}, {'status': 413, 'message': '请求体过大', 'action': '总请求体不能超过 1 MiB；账号导出每次最多 1000 个 ID。'}, {'status': 429, 'message': '请求过频或未完成订单达到上限', 'action': '有 Retry-After 时按该秒数等待；否则至少等待 60 秒。订单上限需等待已有订单结算，review 继续查询原订单，系统自动恢复或退款。'}, {'status': 500, 'message': '服务暂时不可用', 'action': '查询可退避重试；创建订单需复用原幂等键和原内容，避免重复预留积分。'}, {'status': 503, 'message': '服务或新订单暂停受理', 'action': '稍后重试；创建订单保留原幂等键。以响应说明判断暂停范围。'}]
@@ -26,18 +65,17 @@ def document():
     registration['components']['schemas']['Account']['properties']['created_at']['description']='交付账号记录创建时间；未知时为 null。'
     registration['components']['schemas']['Account']['properties']['download_expires_at']['description']='领取截止时间；到期后账号不再出现在列表中，凭据及导出不可用。'
     registration['components']['schemas']['DeviceFingerprint']['properties']['registeredAt']['description']='账号注册时间，ISO 8601；未知时为空。'
-    registration['components']['schemas']['StoredCredentials']['properties']['session_token']['description']='完整网页登录 Session Token，即登录 Cookie 值，不是 Session JSON；未保存时为空或省略。'
     registration['components']['schemas']['StoredCredentials']['properties']['oauth']['description']='含 OAuth 服务交付的授权资料；与网页登录凭据分开使用。'
     paths=registration['paths']
     paths['/open/v1/me']['get'].update(summary='查询注册接口账户视图',description='同一星桥账户在注册接口中的积分视图。points 已扣除冻结部分，可直接用于下单；frozen 为冻结积分。统一账户资料也可使用 GET /api/v1/me 查询，两者的金额单位不同，详见鉴权与数据约定。')
     paths['/open/v1/products']['get']['description']='查询标准注册与注册加 OAuth 的实际单价、标准价、会员减免和每单数量上限。下单通过 need_oauth 选择服务，不需要 product_id。价格示例仅供说明，请以实时查询结果为准。'
     paths['/open/v1/registration-regions']['get']['description']='返回当前可选的注册国家代码和名称。下单可传返回的 code，省略或传 random 表示随机选择。地区列表可能更新，请在创建新订单前查询；已受理订单保留下单时的地区设置。'
     paths['/open/v1/registration-orders']['post']['requestBody']['content']['application/json']['schema']['properties']['registration_region']['description']='省略或传 random 表示随机选择；指定地区时传地区查询接口返回的 code，例如 JP。同一订单重试须保持原参数。'
-    paths['/open/v1/accounts/{id}/credentials']['get']['description']='交付成功后 72 小时内读取邮箱、密码、2FA、当前验证码和已保存的网页登录凭据；到期返回 404。读取不会刷新登录凭据。可选 access_token / session_token 缺失时为空或省略。含 OAuth 服务另返回 oauth，其 access_token 与顶层网页登录 access_token 用途不同。'
+    paths['/open/v1/accounts/{id}/credentials']['get']['description']='交付成功后 72 小时内读取邮箱、密码、2FA、当前验证码和已保存的网页登录凭据；到期返回 404。session 为完整 Session JSON，尚在获取时为 null 且 session_status=pending，请稍后查询原账号。查看不会刷新凭据。含 OAuth 服务另返回 oauth，其 access_token 与网页登录 AT 用途不同。'
     registration['x-order-states']['review']='正在恢复或核实，继续查询原单；最终以交付和结算结果为准'
     registration['components']['schemas']['RegistrationRegion']['properties']['code']['description']='注册地区代码；将地区查询返回的 code 原样传入。random 表示随机选择。'
     registration['components']['schemas']['Order']['properties']['registration_region']['description']='下单选择的注册地区；random 表示随机，未指定记录可能为 null。'
-    registration['components']['schemas']['StoredCredentials']['properties']['session_token']['description']='完整网页登录 Session Token（Cookie 值），不是 Session JSON。未保存时为空或省略，读取不触发刷新。'
+    session_contract(registration)
     def adapt(value):
         if isinstance(value,list):return [adapt(item) for item in value]
         if isinstance(value,dict):
