@@ -18,6 +18,7 @@ test('account prices, custom tiers, timing, overview and disabled future menu',a
  context.setDefaultTimeout(12000)
  const root=path.resolve('../webui'),output=path.resolve('../.local/order-pricing-ui');mkdirSync(output,{recursive:true})
  const errors=[],requests=[],writes=[];let exclusive=true,eligible=false
+ let allowMembership,markMembershipRequested;const membershipLoaded=new Promise(resolve=>allowMembership=resolve),membershipRequested=new Promise(resolve=>markMembershipRequested=resolve)
  const tier={code:'L9',name:'合作会员',threshold:0,discount:20,description:'测试会员'},membership={current:tier,automatic:tier,tiers:[tier],source:'manual',product_prices:{plus:0},service_prices:{registration_standard:0,refund:0},fee_override:null}
  const products=[{id:'plus',name:'Plus',description:'月度订阅',fee:1000,tag:'PLUS',features:[],enabled:true}]
  const nav=[['home','工作台','main'],['register','注册办理','main'],['accounts','我的账号','registration'],['subscribe','订阅办理','main'],['links','结账链接','subscription'],['renewal','续费管理','subscription'],['refund','代退办理','main'],['orders','订单中心','main'],['wallet','资金中心','main'],['activity','办理总览','main'],['membership','会员中心','tools']].map(([id,label,group])=>({id,path:'/'+id,label,group}))
@@ -49,6 +50,7 @@ test('account prices, custom tiers, timing, overview and disabled future menu',a
   if(p==='/registration/api/user/v1/me')json={...user,unified_account:true,points:2000}
   if(p==='/registration/api/user/v1/products')json={membership,products:[false,true].map(oauth=>({need_oauth:oauth,membership_eligible:eligible,standard_price:oauth?8:5,unit_price:exclusive?0:1,saved:exclusive?5:4,price_source:exclusive?'account_override':'membership'}))}
   if(p.endsWith('/registration-regions'))json={regions:[]}
+  if(p==='/api/admin/membership'){markMembershipRequested();await membershipLoaded}
   return route.fulfill({json})
  })
  try{
@@ -61,7 +63,9 @@ test('account prices, custom tiers, timing, overview and disabled future menu',a
   await dialog.getByRole('button',{name:'确认保存',exact:true}).click();await dialog.waitFor({state:'hidden'})
   const saved=writes.find(r=>r.path==='/api/admin/users/member').body
   assert.equal(saved.service_prices.registration_standard,0);assert.equal(saved.service_prices.refund,123);assert.equal(saved.product_prices.plus,200)
-  await page.evaluate(()=>location.hash='/admin/membership');await page.getByRole('button',{name:'等级规则',exact:true}).click()
+  await page.evaluate(()=>location.hash='/admin/membership');await membershipRequested
+  assert.equal(await page.getByRole('button',{name:'减免范围',exact:true}).isDisabled(),true);assert.equal(await page.locator('.membership-benefits').count(),0)
+  allowMembership();await page.getByRole('button',{name:'减免范围',exact:true}).waitFor();await page.locator('.membership-distribution button').first().waitFor();await page.getByRole('button',{name:'等级规则',exact:true}).click()
   await page.getByLabel(/^等级标识/).fill('LMax');assert.equal(await page.getByLabel(/^等级标识/).evaluate(e=>e.checkValidity()),true)
   await page.getByRole('button',{name:'保存等级规则'}).click();await page.waitForFunction(()=>document.querySelector('.toast')?.textContent.includes('会员等级规则已保存'))
   assert.equal(writes.find(r=>r.path==='/api/admin/settings/tiers').body.items[0].code,'LMax')
