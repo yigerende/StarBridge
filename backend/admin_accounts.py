@@ -45,19 +45,99 @@ def delete_user(id:str,request:Request):
 
 
 @router.get('/users')
-def users(q: str=''):
-    rows=db.all("SELECT u.id,u.email,u.name,u.role,u.status,u.balance,u.frozen,u.fee_override,u.membership_code,u.membership_until,u.invite_code,u.created_at,(SELECT count(*) FROM orders o WHERE o.user_id=u.id AND o.deleted_at IS NULL) AS orders,COALESCE(s.spent,0)::bigint AS spent FROM users u LEFT JOIN (SELECT user_id,sum(spent) AS spent FROM ("+SPEND+") s GROUP BY user_id) s ON s.user_id=u.id WHERE u.deleted_at IS NULL AND ($1='' OR u.email ILIKE '%'||$1||'%' OR u.name ILIKE '%'||$1||'%') ORDER BY u.created_at DESC LIMIT 500",q)
-    prices={}
-    for row in db.all('SELECT user_id,product_id,fee FROM user_product_prices'):
-        prices.setdefault(row['user_id'],{})[row['product_id']]=row['fee']
-    services={}
-    for row in db.all('SELECT user_id,service,fee FROM user_service_prices'):
-        services.setdefault(row['user_id'],{})[row['service']]=row['fee']
-    for row in rows:
-        row['membership']=membership_from(row,row['spent']);row['product_prices']=prices.get(row['id'],{})
-        row['service_prices']=services.get(row['id'],{})
-    products=visible_products(db.all('SELECT id,name,fee FROM products WHERE enabled ORDER BY sort,id'),config('payment').get('subscription_flow'))
-    return {'items':rows,'tiers':config('tiers')['items'],'products':products}
+def users(q: str='', role: str='', status: str='', tier: str='', page: int=1, page_size: int=10):
+    q=q.strip()
+    require(len(q)<=200,'搜索内容不能超过 200 个字符')
+    require(role in ('','member','admin') and status in ('','active','disabled'),'账户筛选条件无效')
+    require(1<=page<=1000000 and 1<=page_size<=500,'分页参数无效')
+    with db.transaction() as tx:
+        # Counts, page rows and effective membership share one read-only snapshot.
+        tx.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        tiers=membership_from({},0,tx)['tiers']
+        require(tier=='' or any(t['code']==tier for t in tiers),'会员等级不存在')
+        tier_rows={'items':[dict(code=t['code'],threshold=t['threshold'],position=i) for i,t in enumerate(tiers)]}
+        query="""WITH tiers AS (
+            SELECT * FROM jsonb_to_recordset($5::jsonb->'items') AS t(code text,threshold bigint,position int)
+        ), accounts AS (
+            SELECT u.id,u.email,u.name,u.role,u.status,u.balance,u.frozen,u.fee_override,
+                   u.membership_code,u.membership_until,u.invite_code,u.created_at,
+                   COALESCE(s.spent,0)::bigint AS spent
+            FROM users u LEFT JOIN (SELECT user_id,sum(spent) AS spent FROM ("""+SPEND+""") s GROUP BY user_id) s ON s.user_id=u.id
+            WHERE u.deleted_at IS NULL
+              AND ($1='' OR strpos(lower(u.email),lower($1))>0 OR strpos(lower(u.name),lower($1))>0 OR strpos(lower(u.id),lower($1))>0)
+              AND ($2='' OR u.role=$2) AND ($3='' OR u.status=$3)
+        ), filtered AS (
+            SELECT a.* FROM accounts a
+            LEFT JOIN tiers manual ON manual.code=a.membership_code AND (a.membership_until IS NULL OR a.membership_until>$6)
+            LEFT JOIN LATERAL (SELECT code FROM tiers WHERE threshold<=a.spent OR position=0 ORDER BY threshold DESC,position DESC LIMIT 1) automatic ON true
+            WHERE $4='' OR COALESCE(manual.code,automatic.code)=$4
+        ) """
+        args=(q,role,status,tier,tier_rows,now())
+        total=tx.scalar(query+'SELECT count(*) FROM filtered',*args)
+        page=min(page,max(1,(total+page_size-1)//page_size))
+        rows=tx.all(query+"SELECT f.*,(SELECT count(*) FROM orders o WHERE o.user_id=f.id AND o.deleted_at IS NULL) AS orders FROM filtered f ORDER BY created_at DESC,id DESC LIMIT $7 OFFSET $8",*args,page_size,(page-1)*page_size)
+        ids=[row['id'] for row in rows]
+        prices={};services={}
+        for row in tx.all('SELECT user_id,product_id,fee FROM user_product_prices WHERE user_id=ANY($1)',ids):
+            prices.setdefault(row['user_id'],{})[row['product_id']]=row['fee']
+        for row in tx.all('SELECT user_id,service,fee FROM user_service_prices WHERE user_id=ANY($1)',ids):
+            services.setdefault(row['user_id'],{})[row['service']]=row['fee']
+        for row in rows:
+            row['membership']=membership_from(row,row['spent'],tiers=tiers,at=args[-1])
+            row['product_prices']=prices.get(row['id'],{})
+            row['service_prices']=services.get(row['id'],{})
+        products=visible_products(tx.all('SELECT id,name,fee FROM products WHERE enabled ORDER BY sort,id'),config('payment',tx).get('subscription_flow'))
+    return {'items':rows,'tiers':tiers,'products':products,'total':total,'page':page,'page_size':page_size,'has_more':page*page_size<total}
+
+
+@router.post('/users/batch-settings')
+async def batch_settings(request:Request):
+    return await run_in_threadpool(batch_settings_value,await body(request),request)
+
+
+def batch_settings_value(value,request):
+    ids=value.get('ids');changes=value.get('changes')
+    require(isinstance(ids,list) and 1<=len(ids)<=500 and all(isinstance(i,str) and 1<=len(i)<=80 for i in ids),'请选择 1～500 个账户')
+    require(isinstance(changes,dict) and changes and set(changes)<={'fee_override','service_prices','product_prices','membership'},'请选择要调整的价格或会员')
+    ids=sorted(set(ids))
+    def price(fee):return None if fee is None else integer(fee,0,100000000,'专属价格须为有效的非负整数金额')
+    with db.transaction() as q:
+        q.execute('SELECT pg_advisory_xact_lock(782518860)')
+        found=q.all('SELECT id FROM users WHERE id=ANY($1) AND deleted_at IS NULL ORDER BY id FOR UPDATE',ids)
+        require(len(found)==len(ids),'部分账户已删除，请刷新列表后重新选择',409)
+        if 'fee_override' in changes:
+            q.execute('UPDATE users SET fee_override=$2 WHERE id=ANY($1)',ids,price(changes['fee_override']))
+        count=int('fee_override' in changes)
+        for field,table,key,allowed in (
+            ('service_prices','user_service_prices','service',{'registration_standard','registration_oauth','refund'}),
+            ('product_prices','user_product_prices','product_id',{p['id'] for p in visible_products(q.all('SELECT id FROM products WHERE enabled'),config('payment',q).get('subscription_flow'))})
+        ):
+            if field not in changes:continue
+            values=changes[field]
+            require(isinstance(values,dict) and len(values)<=200,'专属价格格式无效')
+            normalized={}
+            for code,fee in values.items():
+                require(isinstance(code,str),'服务名称无效')
+                code=internal_id(code) if field=='product_prices' else code
+                require(code in allowed and code not in normalized,'请选择已开放的服务或套餐')
+                normalized[code]=price(fee)
+            count+=len(normalized)
+            for code,fee in normalized.items():
+                if fee is None:q.execute(f'DELETE FROM {table} WHERE user_id=ANY($1) AND {key}=$2',ids,code)
+                else:q.execute(f'INSERT INTO {table}(user_id,{key},fee) SELECT id,$2,$3 FROM users WHERE id=ANY($1) ON CONFLICT(user_id,{key}) DO UPDATE SET fee=excluded.fee',ids,code,fee)
+        if 'membership' in changes:
+            membership=changes['membership']
+            require(isinstance(membership,dict) and set(membership)=={'code','until'},'会员设置格式无效')
+            code=membership['code'];until=parsedate(membership['until'])
+            require(isinstance(code,str) and (code=='' or any(t['code']==code for t in config('tiers',q)['items'])),'会员等级不存在')
+            if not code:until=None
+            require(until is None or until>now(),'会员到期时间必须晚于现在')
+            q.execute('UPDATE users SET membership_code=$2,membership_until=$3 WHERE id=ANY($1)',ids,code,until)
+            count+=1
+        require(count>0,'请选择至少一项要调整的设置')
+        q.execute('UPDATE users SET updated_at=now() WHERE id=ANY($1)',ids)
+        for id in ids:audit(q,request,'user.batch_settings',id,'批量调整账户：'+','.join(changes))
+    return {'ok':True,'updated':len(ids)}
 
 
 def account_options(q,request,id,value):

@@ -43,7 +43,8 @@ class ManualProxyFailoverTests(unittest.TestCase):
             resource=next(r for r in proxies.resources()['items'] if r['id']==id)
             self.assertEqual((resource['vendor'],resource['failover_priority']),(vendor,2))
             url,lifetime=subscription._proxy_url_with_session(db.one('SELECT * FROM resources WHERE id=$1',id),'PH')
-            self.assertEqual(url,value['endpoint'])
+            self.assertIn('-region-PH-',url)
+            self.assertEqual(lifetime,resource['session_minutes']*60)
         for priority in (-1,101,True):
             with self.assertRaises(BusinessError):proxies.save_resource_value(dict(value,failover_priority=priority),self.request)
 

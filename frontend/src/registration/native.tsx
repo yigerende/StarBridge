@@ -5,7 +5,7 @@ import { NativeRouter } from '../../../services/gpt-register/web/src/router'
 import { call, type Row } from '../../../services/gpt-register/web/src/portal/client'
 import { unifiedRoute } from '../../../services/gpt-register/web/src/integration'
 import { splitRoute } from '../registrationNavigation'
-import Workspace from '../../../services/gpt-register/web/src/portal/Workspace'
+import Workspace, {OrderDetail} from '../../../services/gpt-register/web/src/portal/Workspace'
 import '../../../services/gpt-register/web/src/portal/portal.css'
 import '../../../services/gpt-register/web/src/portal/workspace.css'
 import '../../../services/gpt-register/web/src/portal/center.css'
@@ -18,7 +18,7 @@ const Orders=lazy(()=>import('../../../services/gpt-register/web/src/portal/Cust
 const Admin=lazy(()=>import('../../../services/gpt-register/web/src/portal/AdminPlatform'))
 const Suppliers=lazy(()=>import('../../../services/gpt-register/web/src/portal/AdminSuppliers'))
 const Finance=lazy(()=>import('../../../services/gpt-register/web/src/portal/AdminFinance'))
-type Props={route:string;search?:string;user:Row;pub:Row;financeFilter?:Row;navigate:(path:string)=>void;expired:()=>void}
+type Props={route:string;search?:string;user:Row;pub:Row;financeFilter?:Row;detailId?:string;close?:()=>void;navigate:(path:string)=>void;expired:()=>void}
 const cache=new QueryClient({defaultOptions:{queries:{staleTime:30000,retry:false,refetchOnWindowFocus:false}}})
 let owner=''
 export function clearRegistrationCache(){owner='';cache.clear()}
@@ -42,7 +42,7 @@ function Page(props:Props){
  if(feature&&props.user.features?.[feature]===false)return <div className="p-card"><h2>此功能暂未开放</h2></div>
  return <NativeRouter path={path} search={props.search} hrefFor={nativeHref} navigate={to=>{if(to.startsWith('/admin/engine'))location.assign('/registration'+to);else props.navigate(unifiedTarget(to))}}>
   <Suspense key={path+(props.search||'')} fallback={<div className="p-loading" role="status">正在加载…</div>}>
-   {path==='/register'?<Workspace page="register" user={user} pub={pub.data}/>:
+   {props.detailId&&path.startsWith('/admin/')?<OrderDetail id={props.detailId} admin onClose={()=>props.close?.()}/>:path==='/register'?<Workspace page="register" user={user} pub={pub.data}/>:
     path==='/accounts'?<Accounts userId={user.id}/>:
     path==='/orders'?<Orders user={user} pub={pub.data}/>:
     path==='/admin/suppliers'?<Suppliers/>:

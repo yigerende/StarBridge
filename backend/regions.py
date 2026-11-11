@@ -82,7 +82,7 @@ def listing():
     from .national_proxies import countries
     national_codes=countries()
     manual_codes={r['country'] for r in db.all('SELECT DISTINCT country FROM resources WHERE enabled')}
-    manual_template=db.scalar("SELECT EXISTS(SELECT 1 FROM resources WHERE enabled AND vendor='iproyal' AND ip_mode='dynamic')")
+    manual_template=db.scalar("SELECT EXISTS(SELECT 1 FROM resources WHERE enabled AND ip_mode='dynamic')")
     flow=config('payment').get('subscription_flow')
     rows=[]
     for row in items():

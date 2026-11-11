@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,onMounted,onUnmounted,ref} from 'vue'
+import {computed,defineAsyncComponent,onMounted,onUnmounted,ref} from 'vue'
 import {Activity,ArrowUpRight,CheckCheck,ChevronLeft,ChevronRight,Clock3,Filter,RefreshCw,Search,TriangleAlert} from 'lucide-vue-next'
 import {api,cash,date,orderLabel,orderTone,type Row} from '../lib'
 import {rangePresets,presetRange} from '../lib/report-period'
@@ -7,7 +7,10 @@ import DataTable from './DataTable.vue'
 import Modal from './Modal.vue'
 import SubscriptionRenewal from './SubscriptionRenewal.vue'
 import OrderDuration from './OrderDuration.vue'
-const props=defineProps<{admin?:boolean}>()
+const AdminActivityRecord=defineAsyncComponent(()=>import('./AdminActivityRecord.vue'))
+const props=defineProps<{admin?:boolean;user?:Row;pub?:Row}>()
+const record=ref<Row|null>(null)
+function openRecord(row:Row){if(props.admin)record.value=row;else detail.value=row}
 const data=ref<Row>({items:[],summary:{},businesses:[],total:0,show_fees:false}),loading=ref(false),error=ref(''),detail=ref<Row|null>(null)
 const period=ref('all')
 function selectPeriod(id:string){period.value=id;if(id!=='custom'){const range=presetRange(id);start.value=range.start;end.value=range.end;apply()}}
@@ -62,10 +65,11 @@ onUnmounted(()=>{controller?.abort();clearInterval(timer)})
     <template #fees="{row}"><b>{{cash(row.settled)}} <small>已结算</small></b><span v-if="row.frozen>0">{{cash(row.frozen)}} 冻结中</span><small v-else>{{['link','renewal'].includes(row.workflow)?'不收服务费':`报价 ${cash(row.fee)} 积分`}}</small></template>
     <template #time="{row}"><span>{{date(row.created_at)}}</span><small>更新 {{date(row.updated_at)}}</small></template>
     <template #duration="{row}"><OrderDuration :order="row"/></template>
-    <template #action="{row}"><button class="text-btn" @click="detail=row">查看</button></template>
+    <template #action="{row}"><button class="text-btn" @click="openRecord(row)">查看</button></template>
    </DataTable>
    <div class="pagination"><label>每页 <select v-model.number="size" aria-label="每页条数" @change="page=1;load()"><option v-for="n in [10,25,50,100]" :key="n" :value="n">{{n}} 条</option></select></label><div><button class="icon-btn" aria-label="上一页" :disabled="loading||page<=1" @click="page--;load()"><ChevronLeft :size="16"/></button><span>{{page}} / {{pages}}</span><button class="icon-btn" aria-label="下一页" :disabled="loading||!data.has_more" @click="page++;load()"><ChevronRight :size="16"/></button></div></div>
   </section>
+  <AdminActivityRecord v-if="admin&&record&&user?.role==='admin'" :record="record" :user="user" :pub="pub||{}" @close="record=null" @refresh="load(true)"/>
   <Modal v-if="detail" title="办理记录" @close="detail=null"><div class="activity-detail-heading"><h3>{{detail.title}}</h3><span class="badge" :class="tone(detail)">{{status(detail)}}</span></div><SubscriptionRenewal :order="detail"/><dl class="activity-detail"><dt>订单号</dt><dd class="mono">{{detail.id}}</dd><template v-if="admin"><dt>客户</dt><dd>{{detail.owner}}</dd></template><dt>办理账号</dt><dd>{{detail.email||`${detail.quantity} 个注册账号`}}</dd><template v-if="detail.business==='registration'"><dt>交付进度</dt><dd>{{detail.delivered}} / {{detail.quantity}}</dd></template><template v-if="data.show_fees"><dt>已结算</dt><dd>{{cash(detail.settled)}} 积分</dd><dt>冻结中</dt><dd>{{cash(detail.frozen)}} 积分</dd></template><dt>总耗时</dt><dd><OrderDuration :order="detail"/></dd><dt>提交时间</dt><dd>{{date(detail.created_at)}}</dd><dt>最近更新</dt><dd>{{date(detail.updated_at)}}</dd></dl><a v-if="detail.href" :href="detail.href" class="btn primary full">查看完整记录<ArrowUpRight :size="16"/></a></Modal>
  </section>
 </template>

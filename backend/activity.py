@@ -11,6 +11,13 @@ router=APIRouter(prefix='/api',dependencies=[Depends(member)])
 admin_router=APIRouter(prefix='/api/admin',dependencies=[Depends(administrator)])
 
 
+@admin_router.get('/renewals/{id}')
+def renewal_record(id:str):
+    row=db.one('SELECT t.id,t.email,t.status,t.message,t.created_at,t.updated_at,u.email AS owner FROM renewal_tasks t JOIN users u ON u.id=t.user_id WHERE t.id=$1',id)
+    require(row,'记录不存在',404)
+    return {'task':row,'events':db.all('SELECT status,message,created_at FROM renewal_events WHERE task_id=$1 ORDER BY id',id)}
+
+
 def listing(user,admin=False,search='',business='',state='',start='',end='',page=1,page_size=25,include_admin=True):
     require(len(search)<=200 and business in ('','registration','subscription','refund'),'筛选条件无效')
     require(state in ('','active','completed','partial','attention','failed','cancelled'),'状态筛选无效')

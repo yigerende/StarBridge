@@ -8,14 +8,14 @@ router=APIRouter(prefix='/api',dependencies=[Depends(member)])
 SPEND="""SELECT l.user_id,l.order_id,GREATEST(0,-sum(l.amount))::bigint AS spent FROM ledger l JOIN orders o ON o.id=l.order_id AND o.user_id=l.user_id WHERE o.status='succeeded' AND ((l.kind='charge' AND l.amount<0) OR (l.kind='refund' AND l.amount>0)) GROUP BY l.user_id,l.order_id"""
 
 
-def membership_from(user,spent,q=None):
-    tiers=sorted(config('tiers',q)['items'],key=lambda x:x['threshold'])
+def membership_from(user,spent,q=None,*,tiers=None,at=None):
+    tiers=sorted(config('tiers',q)['items'] if tiers is None else tiers,key=lambda x:x['threshold'])
     tiers=[dict(t,code=t.get('code') or f'L{i+1}') for i,t in enumerate(tiers)]
     automatic=tiers[0]
     for t in tiers:
         if spent>=t['threshold']: automatic=t
     selected=automatic; source='automatic'; until=None
-    if user.get('membership_code') and (not user.get('membership_until') or user['membership_until']>now()):
+    if user.get('membership_code') and (not user.get('membership_until') or user['membership_until']>(at or now())):
         selected=next((t for t in tiers if t['code']==user['membership_code']),automatic)
         if selected['code']==user['membership_code']:
             source='manual';until=user.get('membership_until')

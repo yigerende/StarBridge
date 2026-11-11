@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import logging
-from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 from fastapi import APIRouter, Depends, Request
 from .customer_contract import order_hash
@@ -17,6 +16,7 @@ from . import db, payment_trace as trace
 from . import cslive_full_checkout
 from . import subscription_retry
 from .common import *
+from .manual_proxy_sessions import endpoint_for_order as _proxy_url_with_session
 from .membership import fee_for, membership_for
 from .runtime import order_workflows, queue_message
 from .renewals import ProviderError, inspect as inspect_session, credentials as extract_credentials
@@ -40,51 +40,6 @@ def _resolve_checkout_type(cfg: dict, product_id: str) -> str:
     return default if default in ('hosted', 'oaics') else 'hosted'
 
 
-def _proxy_url_with_session(resource: dict, country: str) -> tuple[str, int]:
-    import re as _re
-    endpoint = decrypt(resource['endpoint_enc'])
-    vendor = resource.get('vendor', '')
-    mode = resource.get('ip_mode', 'dynamic')
-    if mode != 'dynamic':
-        return endpoint, 3600
-    p = urlsplit(endpoint)
-    username = unquote(p.username or '')
-    password = unquote(p.password or '')
-    if vendor == 'cliproxy':
-        username = _re.sub(r'(?i)-sid-[^-]*', '', username)
-        username = _re.sub(r'(?i)-t-[^-]*', '', username)
-        if '-region-' not in username.lower():
-            username += '-region-' + country.upper()
-        username += '-sid-' + uid()[:16] + '-t-15'
-        netloc = f'{quote(username, safe="")}:{quote(password, safe="")}@{p.hostname}:{p.port}'
-        return urlunsplit((p.scheme, netloc, '', '', '')), 15 * 60
-    if vendor == 'iproyal' or (p.hostname or '').lower() == 'geo.iproyal.com':
-        password = _re.sub(r'(?i)_country-[^_]*', '', password)
-        password += '_country-' + country.lower()
-        token = '_session-' + uid()[:16]
-        password = _re.sub(r'(?i)_session-[^_]*', token, password) if _re.search(r'(?i)_session-', password) else password + token
-        m = _re.search(r'(?i)_lifetime-([^_]+)', password)
-        lifetime_sec = 3600
-        if m:
-            try:
-                val = m.group(1).lower()
-                if val.endswith('h'):
-                    lifetime_sec = int(float(val[:-1]) * 3600)
-                elif val.endswith('m'):
-                    lifetime_sec = int(float(val[:-1]) * 60)
-                elif val.endswith('s'):
-                    lifetime_sec = int(float(val[:-1]))
-                if lifetime_sec < 60:
-                    raise ValueError('too short')
-            except Exception:
-                lifetime_sec = 3600
-        else:
-            password += '_lifetime-1h'
-        if lifetime_sec > 86400:
-            lifetime_sec = 86400
-        netloc = f'{quote(username, safe="")}:{quote(password, safe="")}@{p.hostname}:{p.port}'
-        return urlunsplit((p.scheme, netloc, '', '', '')), lifetime_sec
-    return endpoint, 3600
 
 
 @trace.phase('proxy')

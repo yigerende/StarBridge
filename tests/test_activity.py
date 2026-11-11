@@ -77,6 +77,22 @@ class ActivityTests(unittest.TestCase):
         self.assertTrue(renewal['href'].startswith('#/renewal'))
         self.assertEqual(listing(self.admin_user,admin=True)['summary']['customers'],2)
 
+    def test_admin_renewal_record_permissions_and_safe_fields(self):
+        for key,value in DEFAULTS.items():db.execute('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT DO NOTHING',key,value)
+        for owner in ('u','admin'):db.execute("INSERT INTO sessions(hash,user_id,expires_at) VALUES($1,$2,now()+interval '1 hour')",digest('record-'+owner),owner)
+        db.execute("INSERT INTO renewal_tasks(id,user_id,email,account_hash,credentials_enc,credentials_expires_at,status,message) VALUES('record','u','renew@test.example','private-hash','private-credentials',now()+interval '1 hour','disabled','已关闭自动续费')")
+        db.execute("INSERT INTO renewal_events(task_id,status,message) VALUES('record','disabled','关闭结果已核实')")
+        endpoint='/api/admin/renewals/record'
+        self.assertEqual(TestClient(app).get(endpoint).status_code,401)
+        self.assertEqual(TestClient(app,cookies={'xupay_session':'record-u'}).get(endpoint).status_code,403)
+        admin=TestClient(app,cookies={'xupay_session':'record-admin'})
+        response=admin.get(endpoint);self.assertEqual(response.status_code,200)
+        result=response.json()
+        self.assertEqual(set(result['task']),{'id','email','status','message','created_at','updated_at','owner'})
+        self.assertEqual(result['events'][0]['message'],'关闭结果已核实')
+        self.assertNotIn('private-',response.text)
+        self.assertEqual(admin.get('/api/admin/renewals/missing').status_code,404)
+
     def test_large_history_concurrent_pages_and_snapshot_totals(self):
         db.execute("""INSERT INTO orders(id,user_id,product_id,product_name,email,status,fee,idempotency_key,request_hash,workflow,activation,renewal)
           SELECT 'load-'||n,CASE WHEN n%2=0 THEN 'u' ELSE 'v' END,'plus','Plus','load@test.example','succeeded',500,'load-'||n,'test','subscription','active','disabled' FROM generate_series(1,3000) n""")

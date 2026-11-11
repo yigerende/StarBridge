@@ -300,7 +300,7 @@ def change_mode(q,target):
         require(supports(config('national_pool',q).get('renewal_country','PH'),q),'默认续费国家不可用')
         if 'GLOBAL' in supported:supported|={r['country'] for r in queued}
     else:
-        dynamic=q.scalar("SELECT EXISTS(SELECT 1 FROM resources WHERE enabled AND vendor='iproyal' AND ip_mode='dynamic')")
+        dynamic=q.scalar("SELECT EXISTS(SELECT 1 FROM resources WHERE enabled AND ip_mode='dynamic')")
         supported={r['country'] for r in queued} if dynamic else {r['country'] for r in q.all('SELECT DISTINCT country FROM resources WHERE enabled')}
     require(all(r['country'] in supported for r in queued),'目标模式不支持部分排队订单的国家',409)
 

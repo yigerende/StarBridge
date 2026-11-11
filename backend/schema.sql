@@ -85,6 +85,7 @@ ALTER TABLE resources ADD COLUMN IF NOT EXISTS probe_owner text NOT NULL DEFAULT
 ALTER TABLE resources ADD COLUMN IF NOT EXISTS probe_until timestamptz;
 
 ALTER TABLE resources ADD COLUMN IF NOT EXISTS ip_mode text NOT NULL DEFAULT 'dynamic' CHECK (ip_mode IN ('dynamic','static'));
+ALTER TABLE resources ADD COLUMN IF NOT EXISTS session_minutes integer CHECK (session_minutes BETWEEN 1 AND 10080);
 
 CREATE TABLE IF NOT EXISTS risk_events (id bigserial PRIMARY KEY,user_id text REFERENCES users(id),category text NOT NULL,severity text NOT NULL,ip text NOT NULL,detail text NOT NULL,resolved boolean NOT NULL DEFAULT false,created_at timestamptz DEFAULT now());
 

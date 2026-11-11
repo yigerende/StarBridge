@@ -31,7 +31,7 @@ def select(q, country, owner, seconds, excluded=()):
     cfg = config('proxy', q)
     rows = q.all("SELECT r.*, (SELECT count(*) FROM proxy_leases l WHERE l.resource_id=r.id AND l.expires_at>now()) AS in_use "
                  "FROM resources r WHERE r.enabled AND r.kind='proxy' "
-                 "AND (r.country=$1 OR (r.vendor='iproyal' AND r.ip_mode='dynamic')) "
+                 "AND (r.country=$1 OR r.ip_mode='dynamic') "
                  "AND (r.cooldown_until IS NULL OR r.cooldown_until<=now()) "
                  "AND (r.proxy_failures=0 OR r.probe_until IS NULL OR r.probe_until<=now()) "
                  "ORDER BY r.failover_priority,(r.id=$2) DESC,(r.last_status='failed'),random()*r.weight DESC",
@@ -58,10 +58,15 @@ def select(q, country, owner, seconds, excluded=()):
 def acquire_order(q, order_id, country, seconds, build_endpoint):
     excluded = q.scalar('SELECT manual_proxy_failures FROM subscription_runs WHERE order_id=$1', order_id) or []
     row, lease = select(q, country, order_id, seconds, excluded)
-    endpoint, lifetime = build_endpoint(row, country)
-    q.execute("INSERT INTO order_proxy_sessions(order_id,resource_id,endpoint_enc,expires_at,proxy_lease_id,resource_revision,health_generation) "
-              "VALUES($1,$2,$3,now()+$4*interval '1 second',$5,$6,$7)",
-              order_id, row['id'], encrypt(endpoint), lifetime, lease, row['proxy_revision'], row['health_generation'])
+    from .manual_proxy_sessions import session_reference
+    for _ in range(10):
+        endpoint, lifetime = build_endpoint(row, country)
+        reference=session_reference(row,endpoint)
+        if not reference or not q.scalar("SELECT EXISTS(SELECT 1 FROM order_proxy_sessions WHERE source_mode='manual' AND session_ref=$1 AND expires_at>now())",reference):break
+    else:raise PoolError('pool_capacity')
+    q.execute("INSERT INTO order_proxy_sessions(order_id,resource_id,endpoint_enc,expires_at,proxy_lease_id,resource_revision,health_generation,session_ref) "
+              "VALUES($1,$2,$3,now()+$4*interval '1 second',$5,$6,$7,$8)",
+              order_id, row['id'], encrypt(endpoint), lifetime, lease, row['proxy_revision'], row['health_generation'],reference)
     return endpoint
 
 
