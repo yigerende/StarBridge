@@ -3,7 +3,7 @@ import {cash,type Row} from './lib'
 
 export const feeStates:Row={held:'服务费已冻结',charged:'服务费已结算',released:'服务费已解冻'}
 export const paymentStates:Row={not_started:'尚未付款',preparing:'付款准备中',quoted:'金额已核实',submitting:'正在付款',checking:'核实付款中',action_required:'需要额外验证',review:'付款待核实',succeeded:'付款成功',failed:'付款未完成',cancelled:'付款准备已结束',link:'仅提取链接'}
-export const renewalStates:Row={not_started:'尚未开始',pending:'待处理',kept:'已选择保留',disabled:'已关闭自动续费',review:'取消续费待处理',retrying:'正在重新处理',not_applicable:'不涉及续费'}
+export const renewalStates:Row={not_started:'尚未开始',pending:'待处理',kept:'已选择保留',disabled:'已关闭自动续费',review:'待确认',retrying:'正在重新处理',not_applicable:'不涉及续费'}
 export const paymentState=(r:Row)=>r.workflow==='link'?'link':r.payment?.state||'not_started'
 export const renewalState=(r:Row)=>r.workflow==='subscription'?r.renewal||'not_started':'not_applicable'
 export const signed=(v:unknown)=>v==null?'未记录':`${Number(v)>0?'+':Number(v)<0?'−':''}${cash(Math.abs(Number(v)))}`

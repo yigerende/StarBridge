@@ -15,13 +15,13 @@ const stageLabels:Record<string,string>={completed:'已完成',running:'进行�
  <div class="journey-heading"><div><span class="eyebrow">ORDER RESULT</span><h3>{{journey.result}}</h3></div><span class="journey-duration">全程耗时 · {{journey.total}}</span></div>
  <dl class="journey-summary"><div v-for="item in journey.summary" :key="item.label"><dt>{{item.label}}</dt><dd>{{item.value}}</dd></div></dl>
  <p v-if="order.queue_message" class="journey-attention"><AlertTriangle :size="16"/>{{order.queue_message}}</p>
- <p v-if="journey.attention" class="journey-attention"><AlertTriangle :size="16"/>需要处理：{{journey.attention}}。具体原因与建议见下方展开内容。</p>
+ <p v-if="journey.renewalNotice" class="journey-attention"><Clock3 :size="16"/>{{journey.renewalNotice}}</p><p v-else-if="journey.attention" class="journey-attention"><AlertTriangle :size="16"/>需要处理：{{journey.attention}}。具体原因与建议见下方展开内容。</p>
  <div class="journey-section-heading"><h4>办理阶段</h4><span>同一阶段合并展示 · {{journey.rounds?journey.rounds+' 轮执行':'轮次未记录'}}</span></div>
  <ol class="journey-stages">
   <li v-for="stage in journey.stages" :key="stage.id" :data-stage="stage.id" :class="stage.state">
    <span class="journey-icon"><CheckCircle2 v-if="stage.state==='completed'" :size="18"/><AlertTriangle v-else-if="['failed','review'].includes(stage.state)" :size="18"/><LoaderCircle class="spinning" v-else-if="stage.state==='running'" :size="18"/><Minus v-else-if="stage.state==='skipped'" :size="18"/><Clock3 v-else :size="18"/></span>
    <details class="journey-stage" :open="['failed','review'].includes(stage.state)">
-    <summary><span class="journey-stage-title"><span class="stage-name"><b>{{stage.title}}</b><time v-if="stage.endedAt" :datetime="stage.endedAt">结束 · {{date(stage.endedAt)}}</time><small v-else-if="!['running','waiting'].includes(stage.state)&&stage.events.length" class="muted">结束时间未记录</small></span><span class="journey-stage-result">{{stage.result}}</span></span><span class="journey-stage-meta"><span class="journey-state">{{stageLabels[stage.state]}}</span><small v-if="stage.duration!=='未记录'">{{stage.duration}}</small><ChevronRight class="journey-chevron" :size="16"/></span></summary>
+    <summary><span class="journey-stage-title"><span class="stage-name"><b>{{stage.title}}</b><time v-if="stage.endedAt" :datetime="stage.endedAt">结束 · {{date(stage.endedAt)}}</time><small v-else-if="!['running','waiting'].includes(stage.state)&&stage.events.length" class="muted">结束时间未记录</small></span><span class="journey-stage-result">{{stage.result}}</span></span><span class="journey-stage-meta"><span class="journey-state">{{stage.id==='renewal'&&journey.renewalNotice?'待确认':stageLabels[stage.state]}}</span><small v-if="stage.duration!=='未记录'">{{stage.duration}}</small><ChevronRight class="journey-chevron" :size="16"/></span></summary>
     <div class="journey-stage-body"><dl><div v-for="fact in stage.facts" :key="fact.label"><dt>{{fact.label}}</dt><dd>{{fact.value}}</dd></div></dl><p v-if="stage.next" class="journey-next">{{stage.next}}</p><p v-if="!stage.events.length" class="journey-note">此阶段没有保留独立过程日志；结果以订单已保存的业务状态为准。</p></div>
    </details>
   </li>

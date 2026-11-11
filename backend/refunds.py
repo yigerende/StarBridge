@@ -8,7 +8,7 @@ import secrets
 import sys
 import httpx
 from fastapi import APIRouter, Depends, Query, Request
-from . import db, membership
+from . import db, membership, order_timing
 from .common import administrator, audit, body, current, member, require, integer
 
 router=APIRouter(prefix='/api',dependencies=[Depends(member)])
@@ -98,7 +98,7 @@ def pricing(user):
     m=membership.membership_for(user['id'])
     fee=membership.fee_for(m,cfg['service_fee'],'refund')
     return {'standard':cfg['service_fee'],'fee':fee,'saved':max(0,cfg['service_fee']-fee),
-            'membership':m,'price_source':membership.fee_source(m,'refund'),'accepting':cfg['accepting'],'executing':cfg['enabled'],'unit':'cent_R'}
+            'membership':m,'price_source':membership.fee_source(m,'refund'),'membership_eligible':membership.membership_eligible(m,'refund'),'accepting':cfg['accepting'],'executing':cfg['enabled'],'unit':'cent_R'}
 
 @router.get('/refund/quote')
 @router.get('/v1/refund/quote')
@@ -126,7 +126,9 @@ async def create(request:Request):
 @router.get('/v1/refund/orders')
 async def listing(request:Request,q:str='',status:str='',page:int=Query(1,ge=1,le=100000),page_size:int=Query(50,ge=1,le=200)):
     require(status in ('','active','queued','processing','verifying','attention','succeeded','failed','banned','cancelled'),'状态无效')
-    return await call('list',current(request)['id'],query=q,status=status,page=page,size=page_size)
+    result=await call('list',current(request)['id'],query=q,status=status,page=page,size=page_size)
+    await asyncio.to_thread(order_timing.refunds,result['items'])
+    return result
 
 @router.get('/refund/orders/{id}')
 @router.get('/v1/refund/orders/{id}')
@@ -164,8 +166,10 @@ async def save_pricing(request:Request):
 
 @admin.get('/orders')
 async def monitor(request:Request,q:str='',status:str='',fee_status:str='',focus:str='',sort:str='priority',start:str='',end:str='',page:int=Query(1,ge=1,le=100000),page_size:int=Query(50,ge=1,le=200)):
-    return await call('monitor',current(request)['id'],query=q,status=status,page=page,size=page_size,
+    result=await call('monitor',current(request)['id'],query=q,status=status,page=page,size=page_size,
                       fee_status=fee_status,focus=focus,sort=sort,start=start,end=end)
+    await asyncio.to_thread(order_timing.refunds,result['items'])
+    return result
 
 @admin.get('/orders/{id}/timeline')
 async def timeline(id:str,request:Request):return await call('timeline',current(request)['id'],id=id)

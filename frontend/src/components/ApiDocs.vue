@@ -53,7 +53,7 @@ onMounted(async()=>{try{spec.value=await api('/openapi.json');await nextTick();i
     <section id="auth" class="panel docs-section">
       <h2>鉴权与数据约定</h2><p>请求按来源 IP 限流，同一出口下的账号和密钥共用额度；注册、订阅和代退共用请求及下单限额。收到 429 时按 Retry-After 等待，重试下单须保留原请求标识。</p><p>请求携带 <code>Authorization: Bearer YOUR_API_KEY</code>。密钥只能操作所属星桥账户的数据；目标订阅账号由请求中的 Session 指定。可在开发接入中复制有效密钥、修改用途名称；撤销后立即失效。</p>
       <div class="docs-table"><table><thead><tr><th>接口范围</th><th>金额单位</th><th>可用余额</th></tr></thead><tbody><tr><td><code>/api/v1/</code></td><td>积分最小单位，100 = 1 积分</td><td><code>(balance − frozen) / 100</code> 积分</td></tr><tr><td><code>/registration/open/v1/</code></td><td>积分，最多两位小数</td><td><code>points</code> 已是可用积分，不再减 frozen</td></tr></tbody></table></div><p>两类接口共用同一账户和钱包。下单前核对金额单位，不要重复换算。</p>
-      <p>套餐以 <code>GET /api/v1/catalog</code> 返回的 <code>items[].id</code> 为准，作为报价和下单的 <code>product_id</code>。Pro 20x 使用 <code>pro20x</code>；后续开放的新套餐同样传对应标识。</p><p>订阅与代退优先使用该服务专属价，其次账户通用价，否则使用会员折扣；注册费用以注册服务报价为准。<code>price_source</code> 说明本次计价来源。专属价为 0 也有效。</p><p>使用 HTTPS 从服务端调用；密钥、Session、银行卡及兑换码不要放入 URL、前端代码或日志。接口不开放跨域浏览器调用。</p>
+      <p>套餐以 <code>GET /api/v1/catalog</code> 返回的 <code>items[].id</code> 为准，作为报价和下单的 <code>product_id</code>。Pro 20x 使用 <code>pro20x</code>；后续开放的新套餐同样传对应标识。</p><p>注册、订阅、代退分别计价。对应服务的专属价格优先，未设置时使用会员折扣；订阅先取套餐专属价，再取订阅默认专属价。专属价格不再叠加会员折扣。不参与会员减免的服务返回 <code>membership_eligible: false</code>；未设置专属价格时按标准价收费，<code>price_source</code> 为 <code>standard</code>。<code>price_source</code> 说明本次计价来源。专属价为 0 也有效。</p><p>使用 HTTPS 从服务端调用；密钥、Session、银行卡及兑换码不要放入 URL、前端代码或日志。接口不开放跨域浏览器调用。</p>
       <p>Session 检查仅核对格式、账号与有效期，不验证上游登录和订阅状态。办理时请提供最新完整 Session，并保留其中的 sessionToken 或会话 Cookie，以便需要时刷新登录态。</p>
     </section>
     <section id="availability" class="panel docs-section">

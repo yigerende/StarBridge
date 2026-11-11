@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import OrderDuration from './OrderDuration.vue'
 import {computed,ref} from 'vue'
 import {Search,RefreshCw,Plus,Copy,ArrowUpRight,CreditCard} from 'lucide-vue-next'
 import {cash,date,action,copy,orderLabel,orderTone,regionLabel,type Row} from '../lib'
 import {feeStates,paymentStates,renewalStates,paymentState,renewalState,upstreamAmount,discountText} from '../record-format'
 import RecordsTable from './RecordsTable.vue'
+import {renewalNeedsConfirmation,renewalConfirmationNotice} from '../subscriptionStatus'
 const props=defineProps<{rows:Row[];loading:boolean;initialFilter?:Row;canSubscribe?:boolean}>()
 defineEmits<{order:[row:Row];refresh:[];'clear-filter':[]}>()
 const q=ref(''),payment=ref(''),renewal=ref(''),product=ref(''),status=ref('')
@@ -16,7 +18,7 @@ const filtered=computed(()=>props.rows.filter(r=>{
 }))
 const hasFilters=computed(()=>!!(q.value||payment.value||renewal.value||product.value||status.value))
 function reset(){q.value='';payment.value='';renewal.value='';product.value='';status.value=''}
-const columns=[{key:'order',label:'订单 / 订阅账号',wide:true},{key:'product',label:'套餐 / 地区'},{key:'fee',label:'服务费 / 优惠'},{key:'payment',label:'支付卡 / 上游金额'},{key:'status',label:'付款 / 办理状态',wide:true},{key:'renewal',label:'自动续费'},{key:'time',label:'更新时间'},{key:'action',label:'操作',wide:true}]
+const columns=[{key:'order',label:'订单 / 订阅账号',wide:true},{key:'product',label:'套餐 / 地区'},{key:'fee',label:'服务费 / 优惠'},{key:'payment',label:'支付卡 / 上游金额'},{key:'status',label:'付款 / 办理状态',wide:true},{key:'renewal',label:'自动续费'},{key:'duration',label:'耗时'},{key:'time',label:'更新时间'},{key:'action',label:'操作',wide:true}]
 </script>
 <template>
  <div class="page-heading"><div><span class="eyebrow">EVERY ORDER, IN ONE PLACE</span><h1>订单中心</h1><p>查订单、核付款、看续费，每一笔都有据可循。</p></div><a v-if="canSubscribe" href="#/subscribe" class="btn primary"><Plus :size="17"/>办理订阅</a></div>
@@ -36,8 +38,8 @@ const columns=[{key:'order',label:'订单 / 订阅账号',wide:true},{key:'produ
    <template #fee="{row}"><b class="record-money">{{cash(row.fee)}} <em>积分</em></b><small :class="{'positive':Number(row.price_snapshot?.standard)>row.fee}">{{discountText(row)}}</small><small>{{feeStates[row.payment?.fee_state]||'服务费未冻结'}}</small></template>
    <template #payment="{row}"><b class="record-money">{{upstreamAmount(row.payment).value}}</b><small>{{upstreamAmount(row.payment).label}}</small><span class="record-card" v-if="row.payment?.last4"><CreditCard :size="13"/>•••• {{row.payment.last4}}</span></template>
    <template #status="{row}"><span class="badge record-status" :class="'payment-'+paymentState(row)">{{paymentStates[paymentState(row)]||'等待处理'}}</span><small class="record-result" :class="orderTone(row)">{{orderLabel(row)}}</small><small v-if="row.payment?.message" class="record-message">{{row.payment.message}}</small></template>
-   <template #renewal="{row}"><span class="badge record-status" :class="'renewal-'+renewalState(row)">{{renewalStates[renewalState(row)]||'等待处理'}}</span><small v-if="row.workflow==='subscription'" class="record-activation" :class="row.activation">{{row.activation==='active'?'订阅已生效':row.activation==='review'?'订阅生效待核实':row.activation==='not_checked'?'历史生效状态未记录':'订阅待生效'}}</small></template>
-   <template #time="{row}"><time>{{date(row.updated_at)}}</time><small>创建 {{date(row.created_at)}}</small></template>
+   <template #renewal="{row}"><span class="badge record-status" :class="'renewal-'+renewalState(row)">{{renewalStates[renewalState(row)]||'等待处理'}}</span><small v-if="renewalNeedsConfirmation(row)" class="record-message">{{renewalConfirmationNotice}}</small><small v-else-if="row.workflow==='subscription'" class="record-activation" :class="row.activation">{{row.activation==='active'?'订阅已生效':row.activation==='review'?'订阅生效待核实':row.activation==='not_checked'?'历史生效状态未记录':'订阅待生效'}}</small></template>
+   <template #duration="{row}"><OrderDuration :order="row" :subscription="row.workflow==='subscription'"/></template><template #time="{row}"><time>{{date(row.updated_at)}}</time><small>创建 {{date(row.created_at)}}</small></template>
    <template #action="{row}"><button class="text-btn record-detail" @click="$emit('order',row)">查看详情<ArrowUpRight :size="14"/></button></template>
   </RecordsTable>
  </section>

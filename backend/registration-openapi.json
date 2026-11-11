@@ -1519,12 +1519,17 @@
             "type": "number",
             "description": "每个账号相对标准价的优惠；账户专属价优先"
           },
+          "membership_eligible": {
+            "type": "boolean",
+            "description": "当前注册服务是否参与会员减免；专属价格仍优先"
+          },
           "price_source": {
             "type": "string",
-            "description": "价格来源：会员减免或账户专属价",
+            "description": "价格来源：会员减免、专属价格或标准价",
             "enum": [
               "membership",
-              "account_override"
+              "account_override",
+              "standard"
             ]
           }
         },

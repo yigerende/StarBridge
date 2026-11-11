@@ -1,5 +1,6 @@
 import {onMounted,onUnmounted,ref,watch,type Ref} from 'vue'
 import {api,type Row} from './lib'
+import {subscriptionConfirmed} from './subscriptionStatus'
 import {useOrderUpdates} from './orderUpdates'
 
 const snapshots=new Map<string,Row>()
@@ -38,6 +39,7 @@ export function useDashboard(owner:string,path:Ref<string>,canReadOrders:()=>boo
 }
 
 export function dashboardStatus(row:Row){
+ if(subscriptionConfirmed(row))return '订阅成功'
  if(row.business==='refund')return ({queued:'排队中',processing:'办理中',verifying:'核实中',attention:'待跟进',succeeded:'服务已完成',failed:'办理失败',banned:'账号不可用',cancelled:'已取消'} as Row)[row.status]||row.status
  if(row.business==='registration')return ({queued:'排队中',running:'正在交付',review:'状态待核实',completed:'全部交付',partial:'部分交付',failed:'未完成',cancelled:'已取消'} as Row)[row.status]||row.status
  if(row.status==='review')return '付款结果待核实'

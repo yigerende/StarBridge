@@ -31,8 +31,9 @@ class RefundTests(unittest.TestCase):
         for key,value in DEFAULTS.items():
             db.execute('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT DO NOTHING',key,value)
         db.execute("UPDATE settings SET value=value||$1::jsonb WHERE key='risk'",{'api_per_minute':10000,'order_per_minute':1000,'edge_per_minute':100000})
-        db.execute("UPDATE users SET balance=200000,frozen=0,fee_override=500 WHERE id='u'")
+        db.execute("UPDATE users SET balance=200000,frozen=0 WHERE id='u'")
         db.execute("INSERT INTO users(id,email,name,password_hash,invite_code,role) VALUES('a','admin@refund.test','Admin','synthetic','admin-fixture','admin')")
+        db.execute("INSERT INTO user_service_prices(user_id,service,fee) VALUES('u','refund',500)")
         for user in ('u','v','a'):
             db.execute("INSERT INTO sessions(hash,user_id,expires_at) VALUES($1,$2,now()+interval '1 hour')",digest('test-session-'+user),user)
         db.execute("INSERT INTO api_keys(id,user_id,name,hash,prefix) VALUES('testkey','u','fixture',$1,'fixture')",digest('fixture-api-key-long-enough'))
@@ -104,7 +105,8 @@ class RefundTests(unittest.TestCase):
                 self.assertNotIn('totp_secret',timeline.text);self.assertNotIn('not-real',timeline.text)
                 # A real membership discount is used by both quote and order reservation.
                 tier=next(t for t in DEFAULTS['tiers']['items'] if t['discount']<100)
-                db.execute("UPDATE users SET membership_code=$1,fee_override=NULL WHERE id='u'",tier['code'])
+                db.execute("UPDATE users SET membership_code=$1 WHERE id='u'",tier['code'])
+                db.execute("DELETE FROM user_service_prices WHERE user_id='u' AND service='refund'")
                 member_price=(await c.get('/api/v1/refund/quote',headers=key)).json()
                 expected=(10000*tier['discount']+50)//100
                 self.assertEqual(member_price['fee'],expected)
@@ -118,7 +120,8 @@ class RefundTests(unittest.TestCase):
                 self.assertEqual(db.scalar("SELECT frozen FROM users WHERE id='u'"),expected)
                 self.assertEqual((await c.post('/api/refund/orders/'+member_id+'/cancel',headers=session('u'),json={})).status_code,200)
                 self.assertEqual(db.scalar("SELECT frozen FROM users WHERE id='u'"),0)
-                db.execute("UPDATE users SET membership_code='',fee_override=500 WHERE id='u'")
+                db.execute("UPDATE users SET membership_code='' WHERE id='u'")
+                db.execute("INSERT INTO user_service_prices(user_id,service,fee) VALUES('u','refund',500)")
                 # Disable feature; still allow order follow-up via the order capability.
                 db.execute("UPDATE settings SET value=jsonb_set(value,'{refund}','false') WHERE key='features'")
                 self.assertEqual((await c.get('/api/v1/refund/quote',headers=key)).status_code,403)

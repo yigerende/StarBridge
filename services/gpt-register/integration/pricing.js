@@ -5,7 +5,7 @@ const { lockMember } = require('./member-lock');
 // Match backend/membership.py: settled subscription spend selects the automatic
 // tier; an unexpired manual tier and the account fee override take precedence.
 async function prices(q, memberId, settings) {
-  const user = (await q.query(`SELECT u.membership_code,u.membership_until,u.fee_override,
+  const user = (await q.query(`SELECT u.id,u.membership_code,u.membership_until,
     coalesce((SELECT sum(s.spent) FROM (
       SELECT l.order_id,greatest(0,-sum(l.amount)) AS spent
       FROM ledger l JOIN orders o ON o.id=l.order_id AND o.user_id=l.user_id
@@ -14,6 +14,9 @@ async function prices(q, memberId, settings) {
       GROUP BY l.order_id) s),0) AS spent
     FROM users u JOIN platform_users p ON p.xufu_user_id=u.id WHERE p.id=$1`, [memberId])).rows[0];
   fail(user, '用户不存在', 404);
+  const exclusive = Object.fromEntries((await q.query(
+    "SELECT service,fee FROM user_service_prices WHERE user_id=$1 AND service IN ('registration_standard','registration_oauth')", [user.id]
+  )).rows.map(row => [row.service, Number(row.fee)]));
   const config = (await q.query("SELECT value FROM settings WHERE key='tiers'")).rows[0]?.value;
   const tiers = (config?.items || [{ code: 'L1', name: '启程会员', threshold: 0, discount: 100 }])
     .slice().sort((a,b) => a.threshold-b.threshold).map((t,i) => ({...t,code:t.code || `L${i+1}`}));
@@ -26,15 +29,18 @@ async function prices(q, memberId, settings) {
   }
   fail(Number.isInteger(current.discount) && current.discount >= 0 && current.discount <= 100, '会员价格配置不可用', 503);
   const membership = { current, source, until };
+  const benefitRules = (await q.query("SELECT value FROM settings WHERE key='membership_pricing'")).rows[0]?.value || {};
   return {
     membership,
     products: [false,true].map(oauth => {
       const standard = Math.round(Number(oauth ? settings.price_oauth : settings.price_standard)*100);
-      const fee = user.fee_override == null ? Math.floor((standard*current.discount+50)/100) : Number(user.fee_override);
+      const own = exclusive[oauth ? 'registration_oauth' : 'registration_standard'];
+      const eligible = benefitRules[oauth ? 'registration_oauth' : 'registration_standard'] ?? !oauth;
+      const fee = own == null ? (eligible ? Math.floor((standard*current.discount+50)/100) : standard) : own;
       fail(Number.isSafeInteger(standard) && standard>=0 && Number.isSafeInteger(fee) && fee>=0, '服务费配置不可用', 503);
       return { name: oauth ? 'OAuth 账号' : '标准账号', need_oauth: oauth,
         standard_price: standard/100, unit_price: fee/100, saved: (standard-fee)/100,
-        price_source: user.fee_override == null ? 'membership' : 'account_override' };
+        membership_eligible: eligible, price_source: own == null ? (eligible ? 'membership' : 'standard') : 'account_override' };
     }),
   };
 }

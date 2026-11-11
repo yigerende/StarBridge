@@ -328,3 +328,10 @@ CREATE TABLE IF NOT EXISTS subscription_recoveries (
 );
 CREATE INDEX IF NOT EXISTS subscription_recoveries_due ON subscription_recoveries(next_at)
  WHERE state IN ('armed','queued','running');
+
+CREATE TABLE IF NOT EXISTS user_service_prices (
+ user_id text NOT NULL REFERENCES users(id),
+ service text NOT NULL CHECK(service IN ('registration_standard','registration_oauth','refund')),
+ fee bigint NOT NULL CHECK(fee>=0 AND fee<=100000000),
+ PRIMARY KEY(user_id,service)
+);

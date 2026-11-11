@@ -57,7 +57,7 @@ test('HTTP success never proves cancellation, payment or activation',()=>{
 })
 test('paid orders retain payment success when renewal needs attention',()=>{
  const data=base();data.order.renewal='review'
- const j=buildPaymentJourney(data);assert.equal(stage(j,'payment').state,'completed');assert.equal(j.state,'review');assert.equal(j.attention,'自动续费设置')
+ const j=buildPaymentJourney(data);assert.equal(stage(j,'payment').state,'completed');assert.equal(j.state,'completed');assert.equal(j.result,'订阅成功');assert.equal(j.attention,'自动续费设置');assert.equal(stage(j,'renewal').state,'review');assert.equal(stage(j,'renewal').result,'待确认');assert.equal(j.renewalNotice,'续费处理暂未完成，不影响本次订阅结果。')
 })
 test('temporary errors do not override later authoritative success',()=>{
  const data=base();data.events=[event('checking','failed',{description:'旧异常'}),event('verification','review'),event('renewal','failed'),event('complete')]

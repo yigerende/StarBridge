@@ -2,11 +2,11 @@
 from fastapi import APIRouter, Depends, Query, Request
 from . import db
 from .common import *
-from .membership import membership_for,fee_for,fee_source
+from .membership import membership_for,fee_for,fee_source,membership_eligible
 from .product_ids import public_id, public_order
 from .product_availability import visible_products
 from .runtime import order_workflows, queue_message, worker_mode
-from . import payment_trace
+from . import payment_trace, order_timing
 from .features import capabilities, project_user
 from .email_auth import security_config, mail_ready
 from .branding import public_site
@@ -107,6 +107,7 @@ def orders(request:Request,q:str='',status:str='',workflow:str='',attention:str=
     where+=_attention_where(attention)
     args=(current(request)['id'],q,status,workflow)
     rows=db.all('SELECT '+ORDER_FIELDS+where+' ORDER BY created_at DESC,id DESC LIMIT $5 OFFSET $6',*args,page_size,(page-1)*page_size)
+    order_timing.subscriptions(rows)
     for r in rows:
         r['payment']=_order_list_payment(r)
         public_order(r,request)
@@ -184,14 +185,14 @@ def catalog(request:Request):
     cfg=config('payment')
     m=membership_for(current(request)['id']);products=visible_products(db.all('SELECT id,name,description,fee,features,tag FROM products WHERE enabled ORDER BY sort'),cfg.get('subscription_flow'))
     for p in products:
-        p['member_fee']=fee_for(m,p['fee'],p['id']);p['price_source']=fee_source(m,p['id']);p['id']=public_id(p['id'])
+        p['member_fee']=fee_for(m,p['fee'],p['id']);p['price_source']=fee_source(m,p['id']);p['membership_eligible']=membership_eligible(m,p['id']);p['id']=public_id(p['id'])
     countries=regions.enabled(cfg.get('subscription_flow'))
     flags=capabilities(current(request))
     return {'items':products,'membership':m if flags['membership'] else None,'unit':'cent_R','countries':countries,'payment_connected':flags['subscribe'] and cfg.get('enabled') is True and cfg.get('subscription_flow') in ('gener_direct_pay','cslive_go_direct_pay','cslive_full_go')}
 
 
 @admin_router.get('/overview')
-def admin_overview(request:Request, start:str='', end:str='', days:int=7, include_admin:bool=False, focus:str='all'):
+def admin_overview(request:Request, start:str='', end:str='', days:int=1, include_admin:bool=False, focus:str='all'):
     from .dashboard import shared_overview as dashboard
     return dashboard(current(request),admin=True,start=start,end=end,days=days,include_admin=include_admin,focus=focus)
 
@@ -204,6 +205,7 @@ def admin_orders(q:str='',status:str='',attention:str='',include_admin:bool=True
     where+=_attention_where(attention)
     if not include_admin:where+=" AND u.role<>'admin'"
     rows=db.all('SELECT '+ORDER_FIELDS+',o.user_id,o.note,u.email AS owner'+where+' ORDER BY o.created_at DESC,o.id DESC LIMIT $3 OFFSET $4',q,status,page_size,(page-1)*page_size)
+    order_timing.subscriptions(rows)
     for r in rows:
         r['payment']=_order_list_payment(r)
     # Aggregate the same filtered set as the list, before pagination. Payment

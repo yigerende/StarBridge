@@ -30,18 +30,36 @@ def membership_for(user_id,q=None):
     spent=q.scalar('SELECT COALESCE(sum(s.spent),0) FROM ('+SPEND+') s WHERE s.user_id=$1',user_id)
     result=membership_from(user,int(spent),q)
     result['product_prices']={public_id(row['product_id']):row['fee'] for row in q.all('SELECT product_id,fee FROM user_product_prices WHERE user_id=$1',user_id)}
+    result['service_prices']={row['service']:row['fee'] for row in q.all('SELECT service,fee FROM user_service_prices WHERE user_id=$1',user_id)}
+    result['discount_services']=discount_services(q)
     return result
 
 
+def discount_services(q=None):
+    return {'registration_standard':True,'registration_oauth':False,'refund':True,'subscription':{},**config('membership_pricing',q)}
+
+
+def membership_eligible(m,product_id):
+    rules=m.get('discount_services',{})
+    if product_id in ('registration_standard','registration_oauth','refund'):
+        return rules.get(product_id,product_id!='registration_oauth') is True
+    return rules.get('subscription',{}).get(public_id(product_id),True) is True
+
+
 def fee_for(m,standard,product_id=None):
+    if product_id in ('refund','registration_standard','registration_oauth'):
+        override=m.get('service_prices',{}).get(product_id)
+        return override if override is not None else (standard*m['current']['discount']+50)//100 if membership_eligible(m,product_id) else standard
     override=m.get('product_prices',{}).get(public_id(product_id))
     if override is not None:return override
-    return m['fee_override'] if m['fee_override'] is not None else (standard*m['current']['discount']+50)//100
+    return m['fee_override'] if m['fee_override'] is not None else (standard*m['current']['discount']+50)//100 if membership_eligible(m,product_id) else standard
 
 
 def fee_source(m,product_id):
+    if product_id in ('refund','registration_standard','registration_oauth'):
+        return 'account_override' if product_id in m.get('service_prices',{}) else 'membership' if membership_eligible(m,product_id) else 'standard'
     if public_id(product_id) in m.get('product_prices',{}):return 'product_override'
-    return 'account_override' if m['fee_override'] is not None else 'membership'
+    return 'account_override' if m['fee_override'] is not None else 'membership' if membership_eligible(m,product_id) else 'standard'
 
 
 @router.get('/me')
@@ -61,7 +79,7 @@ def membership(request: Request):
     m=membership_for(current(request)['id'])
     products=visible_products(db.all('SELECT id,name,description,fee,enabled FROM products ORDER BY sort'),config('payment').get('subscription_flow'))
     for p in products:
-        p['member_fee']=fee_for(m,p['fee'],p['id']);p['saved']=p['fee']-p['member_fee'];p['price_source']=fee_source(m,p['id'])
+        p['member_fee']=fee_for(m,p['fee'],p['id']);p['saved']=p['fee']-p['member_fee'];p['price_source']=fee_source(m,p['id']);p['membership_eligible']=membership_eligible(m,p['id'])
         if request.url.path.startswith('/api/v1/'):p['id']=public_id(p['id'])
     growth=db.all('SELECT o.id,o.product_name,o.updated_at,s.spent FROM ('+SPEND+') s JOIN orders o ON o.id=s.order_id WHERE s.user_id=$1 AND o.deleted_at IS NULL ORDER BY o.updated_at DESC LIMIT 100',current(request)['id'])
     return {'membership':m,'products':products,'growth':growth,'unit':'cent_R','basis':'settled_service_spend'}
@@ -79,4 +97,4 @@ def quote(request: Request,product_id:str=''):
         payment=config('payment',q)
         require_product_flow(product_id,payment.get('subscription_flow'))
         connected=payment.get('enabled') is True and payment.get('subscription_flow') in ('gener_direct_pay','cslive_go_direct_pay','cslive_full_go')
-        return {'fee':fee_for(m,product['fee'],product_id),'standard':product['fee'],'membership':m if allowed('membership',current(request)) else None,'payment_connected':connected and allowed('subscribe',current(request)),'price_source':fee_source(m,product_id)}
+        return {'fee':fee_for(m,product['fee'],product_id),'standard':product['fee'],'membership':m if allowed('membership',current(request)) else None,'payment_connected':connected and allowed('subscribe',current(request)),'price_source':fee_source(m,product_id),'membership_eligible':membership_eligible(m,product_id)}

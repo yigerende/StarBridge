@@ -25,6 +25,21 @@ OPTIONAL = {'site': {'icon','sidebar_default_expanded','telegram_group_url'}, 'p
 
 def validate_config(key, v):
     require(key in DEFAULTS, '不支持的配置组')
+    if key=='membership_pricing':
+        from .product_ids import internal_id, public_id
+        require(isinstance(v,dict) and set(v)==set(DEFAULTS[key]),'会员减免范围字段无效')
+        require(all(type(v[k]) is bool for k in ('registration_standard','registration_oauth','refund')),'会员减免开关须为布尔值')
+        products=v['subscription']
+        require(isinstance(products,dict) and len(products)<=200,'订阅会员减免配置无效')
+        known={p['id'] for p in db.all('SELECT id FROM products')}
+        normalized={}
+        for product,enabled in products.items():
+            require(isinstance(product,str) and internal_id(product) in known and type(enabled) is bool,'订阅套餐或减免开关无效')
+            code=public_id(product)
+            require(code not in normalized,'订阅套餐重复')
+            normalized[code]=enabled
+        v['subscription']=normalized
+        return
     if key=='risk':
         require(isinstance(v,dict),'风控配置格式无效')
         saved=config('risk')
@@ -133,9 +148,11 @@ def validate_config(key, v):
         arr=v['items'];require(isinstance(arr,list) and 1<=len(arr)<=10,'等级数量需为 1～10')
         codes=set();names=set();threshold=-1;discount=100
         for i,p in enumerate(arr):
-            require(isinstance(p,dict) and not set(p)-{'code','name','threshold','discount','description'},'等级字段无效')
+            require(isinstance(p,dict) and not set(p)-{'code','name','threshold','discount','description','original_code'},'等级字段无效')
             require(1<=length(p.get('name'))<=80 and p['name'].strip() and 0<=length(p.get('description',''))<=500,'等级名称无效')
-            require(isinstance(p.get('code'),str) and re.fullmatch(r'[A-Z][A-Z0-9_]{0,15}',p['code']) and p['code'] not in codes and p['name'].strip() not in names,'等级标识或名称重复、无效')
+            require(isinstance(p.get('code'),str) and re.fullmatch(r'[\w-]{1,32}',p['code']),'等级标识支持 1～32 位中文、字母、数字、下划线或短横线')
+            require(p['code'] not in codes and p['name'].strip() not in names,'等级标识或名称不能重复')
+            require('original_code' not in p or isinstance(p['original_code'],str),'原等级标识无效')
             integer(p.get('threshold'),0,10000000000);integer(p.get('discount'),1,100)
             require((i>0 or p['threshold']==0) and p['threshold']>threshold and p['discount']<=discount,'第一档门槛须为 0，门槛递增且折扣不能变差')
             threshold,discount=p['threshold'],p['discount'];codes.add(p['code']);names.add(p['name'].strip())
@@ -205,7 +222,15 @@ def save_settings_value(key,v,request):
             for name in ('default_id','global_id'):
                 require(not v.get(name) or q.scalar('SELECT enabled FROM resources WHERE id=$1',v[name]),'代理不存在或未启用')
         if key=='tiers':
+            old_codes={p['code'] for p in previous['items']}
+            origins=[p['original_code'] for p in v['items'] if p.get('original_code')]
+            require(len(origins)==len(set(origins)) and set(origins)<=old_codes,'等级规则已变更，请刷新后重试')
+            renames={p['original_code']:p['code'] for p in v['items'] if p.get('original_code') and p['original_code']!=p['code']}
+            if renames:
+                q.execute('UPDATE users SET membership_code=$1::jsonb->>membership_code,updated_at=now() WHERE membership_code=ANY($2)',renames,list(renames))
+                audit(q,request,'membership.renamed','tiers',json.dumps(renames,ensure_ascii=False))
             require(not q.scalar("SELECT count(*) FROM users WHERE membership_code<>'' AND (membership_until IS NULL OR membership_until>now()) AND NOT(membership_code=ANY($1::text[]))",[p['code'] for p in v['items']]),'有账户正在使用被移除的指定等级')
+            v={**v,'items':[{k:value for k,value in p.items() if k!='original_code'} for p in v['items']]}
         q.execute('UPDATE settings SET value=$2 WHERE key=$1',key,v)
         audit(q,request,'settings.updated',key,'保存配置组')
     return {'ok':True}

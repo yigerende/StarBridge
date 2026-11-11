@@ -54,6 +54,21 @@ def mark_payment_submission(order_id, recovery_context=None):
             subscription_recovery.arm(q, order_id, recovery_context)
 
 
+def _restart_country_pool_attempt(q, order_id):
+    """Called only while the unpaid, unsubmitted order/run rows are locked.
+
+    Retire the failed IPRoyal binding now; the next normal queue claim obtains
+    a fresh supplier session. Keep its session-id tombstone so it cannot be
+    assigned again. Clearing checkout state also discards its HTTP context.
+    """
+    q.execute('SELECT pg_advisory_xact_lock(1886003)')
+    removed=q.one("DELETE FROM order_proxy_sessions WHERE order_id=$1 AND source_mode='country_pool' RETURNING order_id",order_id)
+    if not removed:
+        return False
+    q.execute("UPDATE subscription_runs SET checkout_checkpoint_enc='',checkout_url_enc='',checkout_session_id='' WHERE order_id=$1",order_id)
+    return True
+
+
 def handle_failure(order_id, exc):
     """True means retained/requeued: the caller must not release funds or fail it."""
     code = trace.error_code(exc)
@@ -91,11 +106,14 @@ def handle_failure(order_id, exc):
         # The interval is the existing admin scheduler setting, not a blocking sleep.
         delay = config('scheduler', q)['retry_delay_seconds']
         count = row['network_retry_count'] + 1
+        fresh_proxy = not initialization_retry and _restart_country_pool_attempt(q,order_id)
         q.execute('UPDATE subscription_runs SET network_retry_count=$2,'
                   "network_retry_at=now()+$3*interval '1 second',updated_at=now() WHERE order_id=$1",
                   order_id, count, delay)
         q.execute("UPDATE orders SET status='queued',updated_at=now() WHERE id=$1", order_id)
         resume = '复用已生成的结账链接，从付款阶段重试' if row['checkout_checkpoint_enc'] else '重新生成结账链接'
+        if fresh_proxy:
+            resume = '申请新的代理会话，从生成结账链接开始重试'
         message = f'网络请求失败，{delay} 秒后{resume}（第 {count}/{limit} 次重试）。'
         if initialization_retry:
             message = f'未获取到设备标识，{delay} 秒后使用本单原代理会话重试初始化（第 {count}/{limit} 次重试）。'
@@ -104,5 +122,6 @@ def handle_failure(order_id, exc):
         trace.record('queue', 'waiting', 'checkout_retry_scheduled' if initialization_retry else 'network_retry_scheduled', order_id=order_id,
                      diagnostics={'network_reason': '' if initialization_retry else code if code in NETWORK_ERRORS - {'network_error'} else 'connection',
                                   'retry_number': count, 'retry_limit': limit, 'retry_delay_seconds': delay,
-                                  'checkout_reused': bool(row['checkout_checkpoint_enc'])}, q=q)
+                                  'checkout_reused': bool(row['checkout_checkpoint_enc']) and not fresh_proxy,
+                                  'proxy_refresh_pending': fresh_proxy}, q=q)
         return True

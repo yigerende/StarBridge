@@ -14,6 +14,7 @@ TIERS = [
     {'code':'L9','name':'合作伙伴','threshold':10000000,'discount':20,'description':'服务费减免 80%'},
 ]
 DEFAULTS = {
+    'membership_pricing': {'registration_standard':True,'registration_oauth':False,'refund':True,'subscription':{}},
     'regions': {'items':DEFAULT_REGIONS},
     'custom_menus': {'items':[]},
     'features': {name: True for name in FEATURES},

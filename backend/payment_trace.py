@@ -153,7 +153,7 @@ def _diagnostics(values):
             result[key] = value
         elif key == 'retry_delay_seconds' and type(value) is int and 5 <= value <= 3600:
             result[key] = value
-        elif key in {'checkout_reused', 'connection_reused', 'request_written', 'response_started',
+        elif key in {'checkout_reused', 'proxy_refresh_pending', 'connection_reused', 'request_written', 'response_started',
                      'response_headers_received', 'proxy_tunnel_established'} and type(value) is bool:
             result[key] = value
         elif key in {'proxy_connect_status', 'response_status'} and type(value) is int and 100 <= value <= 599:

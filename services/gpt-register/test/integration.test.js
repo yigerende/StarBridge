@@ -200,6 +200,7 @@ test('unified registration account, wallet and delivery isolation', { timeout: 1
       {code:'L2',name:'Silver',threshold:1000,discount:95},
       {code:'L3',name:'Free',threshold:1000000,discount:0},
     ]}]);
+    await db.query("INSERT INTO settings(key,value) VALUES('membership_pricing','{\"registration_standard\":true,\"registration_oauth\":true,\"refund\":true,\"subscription\":{}}')");
     const member = async (balance=3000) => {
       const u=await account(balance,0);
       await db.query("UPDATE users SET membership_code='L2' WHERE id=$1",[u.xufu_user_id]);
@@ -240,7 +241,7 @@ test('unified registration account, wallet and delivery isolation', { timeout: 1
       const poor=await member(474);await assert.rejects(create(poor),/可用积分不足/);
       assert.deepEqual(await wallet(poor),{balance:474,frozen:0});
     });
-    await t.test('manual expiry and account override match the existing subscription membership calculator', async () => {
+    await t.test('manual expiry and separate registration prices match the unified calculator', async () => {
       const {execFileSync}=require('node:child_process');
       const u=await member();
       for(const change of [
@@ -251,12 +252,27 @@ test('unified registration account, wallet and delivery isolation', { timeout: 1
       ]) {
         await db.query(`UPDATE users SET ${change} WHERE id=$1`,[u.xufu_user_id]);
         const expected=JSON.parse(execFileSync('python',['-c',
-          'import json,sys;from backend.membership import membership_for,fee_for;from backend import db;m=membership_for(sys.argv[1]);print(json.dumps([fee_for(m,500),fee_for(m,800)]));db.close()',u.xufu_user_id],
+          'import json,sys;from backend.membership import membership_for,fee_for;from backend import db;m=membership_for(sys.argv[1]);print(json.dumps([fee_for(m,500,"registration_standard"),fee_for(m,800,"registration_oauth")]));db.close()',u.xufu_user_id],
           {cwd:path.resolve(__dirname,'../../..'),env:{...process.env,DATABASE_URL:url.href.replaceAll('+','%20')},timeout:15000,encoding:'utf8'}));
         assert.deepEqual((await productQuote(u)).products.map(p=>Math.round(p.unit_price*100)),expected);
       }
+      await db.query("INSERT INTO user_service_prices(user_id,service,fee) VALUES($1,'registration_standard',0),($1,'registration_oauth',999)",[u.xufu_user_id]);
+      assert.deepEqual((await productQuote(u)).products.map(p=>p.unit_price),[0,9.99]);
       const o=await create(u),[row]=await items(o);await orders.finish(row.id,credentials());
       assert.equal(o.order.unit_price,0);assert.deepEqual(await wallet(u),{balance:3000,frozen:0});
+    });
+    await t.test('OAuth can opt out of membership while standard registration remains discounted', async () => {
+      const u=await member();
+      await db.query("UPDATE settings SET value=jsonb_set(value,'{registration_oauth}','false') WHERE key='membership_pricing'");
+      const quote=await productQuote(u);
+      assert.deepEqual(quote.products.map(p=>[p.unit_price,p.membership_eligible,p.price_source]),[[4.75,true,'membership'],[8,false,'standard']]);
+      const accepted=await create(u,1,id(),true);
+      assert.equal(accepted.order.unit_price,8);assert.deepEqual(await wallet(u),{balance:3000,frozen:800});
+      await db.query("INSERT INTO user_service_prices(user_id,service,fee) VALUES($1,'registration_oauth',0)",[u.xufu_user_id]);
+      const own=await productQuote(u);assert.equal(own.products[1].unit_price,0);assert.equal(own.products[1].price_source,'account_override');assert.equal(own.products[1].membership_eligible,false);
+      const [item]=await items(accepted);await orders.finish(item.id,{...credentials(),oauth:{refresh_token:'synthetic-refresh-token'}});
+      assert.deepEqual(await wallet(u),{balance:2200,frozen:0});
+      await db.query("UPDATE settings SET value=jsonb_set(value,'{registration_oauth}','true') WHERE key='membership_pricing'");
     });
     await t.test('settled subscription spend grants the identical automatic registration tier', async () => {
       const u=await account(5000,0),oid=id();

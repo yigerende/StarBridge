@@ -5,8 +5,8 @@ from . import redeem_codes
 from . import db
 from .common import *
 from .wallet import credit
-from .membership import membership_from,SPEND
-from .product_ids import internal_id
+from .membership import membership_from,discount_services,SPEND
+from .product_ids import internal_id, public_id
 from .product_availability import visible_products
 
 router=APIRouter(prefix='/api/admin',dependencies=[Depends(administrator)])
@@ -50,13 +50,25 @@ def users(q: str=''):
     prices={}
     for row in db.all('SELECT user_id,product_id,fee FROM user_product_prices'):
         prices.setdefault(row['user_id'],{})[row['product_id']]=row['fee']
+    services={}
+    for row in db.all('SELECT user_id,service,fee FROM user_service_prices'):
+        services.setdefault(row['user_id'],{})[row['service']]=row['fee']
     for row in rows:
         row['membership']=membership_from(row,row['spent']);row['product_prices']=prices.get(row['id'],{})
+        row['service_prices']=services.get(row['id'],{})
     products=visible_products(db.all('SELECT id,name,fee FROM products WHERE enabled ORDER BY sort,id'),config('payment').get('subscription_flow'))
     return {'items':rows,'tiers':config('tiers')['items'],'products':products}
 
 
 def account_options(q,request,id,value):
+    if 'service_prices' in value:
+        prices=value['service_prices']
+        require(isinstance(prices,dict) and set(prices)<= {'registration_standard','registration_oauth','refund'},'服务专属价格格式无效')
+        normalized={key:integer(fee,0,100000000,'专属价格须为有效的非负整数金额') for key,fee in prices.items()}
+        q.execute('DELETE FROM user_service_prices WHERE user_id=$1',id)
+        for service,fee in normalized.items():
+            q.execute('INSERT INTO user_service_prices(user_id,service,fee) VALUES($1,$2,$3)',id,service,fee)
+        audit(q,request,'user.service_pricing',id,'更新注册与代退专属价格：'+','.join(normalized))
     if 'membership_code' in value or 'membership_until' in value:
         old=q.one('SELECT membership_code,membership_until FROM users WHERE id=$1',id)
         code=value.get('membership_code',old['membership_code'])
@@ -87,7 +99,10 @@ async def create_user(request: Request):
     id=uid();hashed=password_hash(pw)
     try:
         with db.transaction() as q:
+            q.execute('SELECT pg_advisory_xact_lock(782518860)')
             q.execute('INSERT INTO users(id,email,name,password_hash,role,invite_code) VALUES($1,$2,$3,$4,$5,$6)',id,email,name,hashed,role,uid()[:10])
+            if v.get('fee_override') is not None:
+                q.execute('UPDATE users SET fee_override=$2 WHERE id=$1',id,integer(v['fee_override'],0,100000000))
             account_options(q,request,id,v)
             audit(q,request,'user.created',id,'新建账户 / '+role)
     except UniqueViolation:
@@ -104,6 +119,7 @@ async def update_user(id: str,request: Request):
     require(id!=current(request)['id'] or (role=='admin' and status=='active'),'不能停用或降级当前管理员')
     try:
         with db.transaction() as q:
+            q.execute('SELECT pg_advisory_xact_lock(782518860)')
             q.execute('SELECT pg_advisory_xact_lock(1886001)')
             old=q.one('SELECT role,status FROM users WHERE id=$1 AND deleted_at IS NULL FOR UPDATE',id)
             require(old is not None,'用户不存在')
@@ -158,7 +174,9 @@ def members():
         m=membership_from(u,u['spent']);u['membership']=m
         if u['role']=='member':
             code=m['current']['code'];distribution[code]=distribution.get(code,0)+1;total+=1
-    return {'items':rows,'config':config('tiers'),'distribution':distribution,'customers':total}
+    products=visible_products(db.all('SELECT id,name FROM products WHERE enabled ORDER BY sort,id'),config('payment').get('subscription_flow'))
+    return {'items':rows,'config':config('tiers'),'distribution':distribution,'customers':total,
+            'discount_services':discount_services(),'products':[{**p,'id':public_id(p['id'])} for p in products]}
 
 
 @router.put('/users/{id}/membership')

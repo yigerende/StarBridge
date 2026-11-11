@@ -466,9 +466,10 @@ export default function Workspace({
               </div>
               {unified && <>
                 <div className="p-ledger-line"><span>会员等级</span><b>{member ? `${member.current.code} · ${member.current.name}` : '读取中…'}</b></div>
-                <div className="p-ledger-line"><span>{product?.price_source === 'account_override' ? '账户专属单价' : '会员服务费减免'}</span><b>{!pricingReady ? '—' : product.price_source === 'account_override' ? `${points(price)} 积分 / 个` : `${100-member.current.discount}%`}</b></div>
+                <div className="p-ledger-line"><span>{product?.price_source === 'account_override' ? '专属价格' : product?.membership_eligible === false ? '本次计价' : '会员服务费减免'}</span><b>{!pricingReady ? '—' : product.price_source === 'account_override' ? `${points(price)} 积分 / 个` : product?.membership_eligible === false ? '标准服务费' : `${100-member.current.discount}%`}</b></div>
+                {product?.membership_eligible === false && <div className="p-ledger-line"><span>会员减免</span><b>此服务不参与会员减免</b></div>}
                 {pricingReady && product.saved > 0 && <div className="p-ledger-line"><span>本次优惠</span><b>{points(Math.round(product.saved*100)*quantity/100)} 积分</b></div>}
-                <div className="p-ledger-line"><span>优惠后服务费 / 个</span><b>{pricingReady ? points(price) : '—'} 积分</b></div>
+                <div className="p-ledger-line"><span>本次服务费 / 个</span><b>{pricingReady ? points(price) : '—'} 积分</b></div>
               </>}
               <div className="p-quote-total">
                 <span>本次预留</span>

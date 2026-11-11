@@ -448,7 +448,7 @@
     },
     {
       "path": "src/platform/openapi.js",
-      "sha256": "726ff69116a84330ce72434972698f8a655a93c5d24373909501dcaab2a62fd2"
+      "sha256": "4238d34ce1d199d5181b58c7d14d8f8a895dff44d1811aa07a6206e6036dd440"
     },
     {
       "path": "src/platform/orders.js",
@@ -522,7 +522,7 @@
     },
     {
       "path": "web/src/portal/Workspace.tsx",
-      "sha256": "b646c56a7bb09edfb6399b653bc6b96cb2bc3ba5c4af1900ef1f39f8ac53bdb7",
+      "sha256": "3e31b72dbe9eb7e25f9603e54874f19383f40b196a033a6bef70e4ecae1e0058",
       "reason": "Retain registration workflow and membership pricing; suppress order-detail fetches and links when the shared order center is disabled."
     },
     {

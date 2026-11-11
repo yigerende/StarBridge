@@ -2,10 +2,14 @@
 import {computed,onMounted,onUnmounted,ref} from 'vue'
 import {Activity,ArrowUpRight,CheckCheck,ChevronLeft,ChevronRight,Clock3,Filter,RefreshCw,Search,TriangleAlert} from 'lucide-vue-next'
 import {api,cash,date,orderLabel,orderTone,type Row} from '../lib'
+import {rangePresets,presetRange} from '../lib/report-period'
 import DataTable from './DataTable.vue'
 import Modal from './Modal.vue'
+import SubscriptionRenewal from './SubscriptionRenewal.vue'
 const props=defineProps<{admin?:boolean}>()
 const data=ref<Row>({items:[],summary:{},businesses:[],total:0,show_fees:false}),loading=ref(false),error=ref(''),detail=ref<Row|null>(null)
+const period=ref('all')
+function selectPeriod(id:string){period.value=id;if(id!=='custom'){const range=presetRange(id);start.value=range.start;end.value=range.end;apply()}}
 const search=ref(''),business=ref(''),state=ref(''),start=ref(''),end=ref(''),includeAdmin=ref(true),page=ref(1),size=ref(25)
 const applied=ref<Row>({}),names:Row={registration:'注册',subscription:'订阅',refund:'代退'}
 const states:Row={active:'进行中',completed:'已完成',partial:'部分完成',attention:'需核实',failed:'未完成',cancelled:'已取消'}
@@ -22,7 +26,7 @@ async function load(quiet=false){
  finally{if(controller===request)loading.value=false}
 }
 function apply(){applied.value={q:search.value,business:business.value,state:state.value,start:start.value,end:end.value,...(props.admin?{include_admin:String(includeAdmin.value)}:{})};page.value=1;void load()}
-function reset(){search.value='';business.value='';state.value='';start.value='';end.value='';includeAdmin.value=true;apply()}
+function reset(){period.value='all';search.value='';business.value='';state.value='';start.value='';end.value='';includeAdmin.value=true;apply()}
 function selectState(value:string){state.value=value;apply()}
 onMounted(()=>{apply();timer=setInterval(()=>{if(document.visibilityState==='visible'&&!loading.value)void load(true)},30000)})
 onUnmounted(()=>{controller?.abort();clearInterval(timer)})
@@ -31,6 +35,7 @@ onUnmounted(()=>{controller?.abort();clearInterval(timer)})
  <section class="activity-overview" :class="{'is-admin':admin}">
   <div class="page-heading"><div><h1>办理总览</h1><p>{{admin?'查看全站办理记录、客户进度和服务费结算。':'注册、订阅和代退的全部办理记录。'}}</p></div><button class="btn secondary" :disabled="loading" @click="load()"><RefreshCw :size="16"/>刷新</button></div>
   <div v-if="error" class="alert danger" role="alert">{{error}} <button class="text-btn" @click="load()">重试</button></div>
+  <div class="activity-period" aria-label="统计日期"><button v-for="item in rangePresets" :key="item.id" :class="{active:period===item.id}" :aria-pressed="period===item.id" @click="selectPeriod(item.id)">{{item.label}}</button><span>北京时间 · 按提交日期</span></div>
   <div class="activity-stats" :aria-busy="loading">
    <button :class="{selected:!state}" @click="selectState('')"><Activity :size="19"/><span>全部办理<strong>{{data.summary.total||0}}</strong><small>当前筛选范围</small></span></button>
    <button :class="{selected:state==='active'}" @click="selectState('active')"><Clock3 :size="19"/><span>进行中<strong>{{data.summary.active||0}}</strong><small>排队、执行与后续处理中</small></span></button>
@@ -44,7 +49,7 @@ onUnmounted(()=>{controller?.abort();clearInterval(timer)})
     <label class="activity-search">搜索<div class="search-box"><Search :size="16"/><input v-model="search" :placeholder="admin?'订单号、客户邮箱、办理账号或项目':'订单号、办理账号或项目'" maxlength="200"/></div></label>
     <label>业务<select v-model="business"><option value="">全部业务</option><option v-for="(name,id) in names" :key="id" :value="id">{{name}}</option></select></label>
     <label>状态<select v-model="state"><option value="">全部状态</option><option v-for="(label,key) in states" :key="key" :value="key">{{label}}</option></select></label>
-    <label>开始日期<input v-model="start" type="date"/></label><label>结束日期<input v-model="end" type="date" :min="start"/></label>
+    <label>开始日期<input v-model="start" type="date" @change="period='custom'"/></label><label>结束日期<input v-model="end" type="date" @change="period='custom'" :min="start"/></label>
     <label v-if="admin" class="activity-admin-scope"><input v-model="includeAdmin" type="checkbox"/>包含管理员</label>
     <div class="activity-filter-actions"><button class="btn primary" :disabled="loading"><Filter :size="15"/>筛选</button><button type="button" class="btn secondary" :disabled="loading" @click="reset">重置</button></div>
    </form>
@@ -52,14 +57,14 @@ onUnmounted(()=>{controller?.abort();clearInterval(timer)})
    <DataTable :rows="data.items" :columns="columns" :page-size="size" hide-toolbar hide-pagination>
     <template #record="{row}"><div class="activity-record"><span class="activity-business-label">{{names[row.business]}}</span><div><b>{{row.title}}</b><span>{{row.email||`${row.quantity} 个账号 · 已交付 ${row.delivered} 个`}}</span><small class="mono">{{row.id}}</small></div></div></template>
     <template #owner="{row}"><span class="activity-owner">{{row.owner}}</span></template>
-    <template #progress="{row}"><span class="badge" :class="tone(row)">{{status(row)}}</span><small v-if="row.business==='registration'">已交付 {{row.delivered}} / {{row.quantity}}</small></template>
+    <template #progress="{row}"><span class="badge" :class="tone(row)">{{status(row)}}</span><SubscriptionRenewal :order="row"/><small v-if="row.business==='registration'">已交付 {{row.delivered}} / {{row.quantity}}</small></template>
     <template #fees="{row}"><b>{{cash(row.settled)}} <small>已结算</small></b><span v-if="row.frozen>0">{{cash(row.frozen)}} 冻结中</span><small v-else>{{['link','renewal'].includes(row.workflow)?'不收服务费':`报价 ${cash(row.fee)} 积分`}}</small></template>
     <template #time="{row}"><span>{{date(row.created_at)}}</span><small>更新 {{date(row.updated_at)}}</small></template>
     <template #action="{row}"><button class="text-btn" @click="detail=row">查看</button></template>
    </DataTable>
    <div class="pagination"><label>每页 <select v-model.number="size" aria-label="每页条数" @change="page=1;load()"><option v-for="n in [10,25,50,100]" :key="n" :value="n">{{n}} 条</option></select></label><div><button class="icon-btn" aria-label="上一页" :disabled="loading||page<=1" @click="page--;load()"><ChevronLeft :size="16"/></button><span>{{page}} / {{pages}}</span><button class="icon-btn" aria-label="下一页" :disabled="loading||!data.has_more" @click="page++;load()"><ChevronRight :size="16"/></button></div></div>
   </section>
-  <Modal v-if="detail" title="办理记录" @close="detail=null"><div class="activity-detail-heading"><h3>{{detail.title}}</h3><span class="badge" :class="tone(detail)">{{status(detail)}}</span></div><dl class="activity-detail"><dt>订单号</dt><dd class="mono">{{detail.id}}</dd><template v-if="admin"><dt>客户</dt><dd>{{detail.owner}}</dd></template><dt>办理账号</dt><dd>{{detail.email||`${detail.quantity} 个注册账号`}}</dd><template v-if="detail.business==='registration'"><dt>交付进度</dt><dd>{{detail.delivered}} / {{detail.quantity}}</dd></template><template v-if="data.show_fees"><dt>已结算</dt><dd>{{cash(detail.settled)}} 积分</dd><dt>冻结中</dt><dd>{{cash(detail.frozen)}} 积分</dd></template><dt>提交时间</dt><dd>{{date(detail.created_at)}}</dd><dt>最近更新</dt><dd>{{date(detail.updated_at)}}</dd></dl><a v-if="detail.href" :href="detail.href" class="btn primary full">查看完整记录<ArrowUpRight :size="16"/></a></Modal>
+  <Modal v-if="detail" title="办理记录" @close="detail=null"><div class="activity-detail-heading"><h3>{{detail.title}}</h3><span class="badge" :class="tone(detail)">{{status(detail)}}</span></div><SubscriptionRenewal :order="detail"/><dl class="activity-detail"><dt>订单号</dt><dd class="mono">{{detail.id}}</dd><template v-if="admin"><dt>客户</dt><dd>{{detail.owner}}</dd></template><dt>办理账号</dt><dd>{{detail.email||`${detail.quantity} 个注册账号`}}</dd><template v-if="detail.business==='registration'"><dt>交付进度</dt><dd>{{detail.delivered}} / {{detail.quantity}}</dd></template><template v-if="data.show_fees"><dt>已结算</dt><dd>{{cash(detail.settled)}} 积分</dd><dt>冻结中</dt><dd>{{cash(detail.frozen)}} 积分</dd></template><dt>提交时间</dt><dd>{{date(detail.created_at)}}</dd><dt>最近更新</dt><dd>{{date(detail.updated_at)}}</dd></dl><a v-if="detail.href" :href="detail.href" class="btn primary full">查看完整记录<ArrowUpRight :size="16"/></a></Modal>
  </section>
 </template>
 <style scoped>
@@ -69,3 +74,5 @@ onUnmounted(()=>{controller?.abort();clearInterval(timer)})
 .activity-records :deep(.table-scroll){overflow:visible}.activity-records :deep(table),.activity-records :deep(tbody){display:block;width:100%;min-width:0}.activity-records :deep(thead){display:none}.activity-records :deep(tr){display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px 18px;padding:18px 16px;border-bottom:1px solid var(--line)}.activity-records :deep(td){padding:0;border:0;max-width:none;min-width:0;font-size:12px}.activity-records :deep(td:first-child){grid-column:1/-1;margin-bottom:3px}.activity-records :deep(td:last-child){text-align:right;align-self:end}.activity-records :deep(td:last-child button){padding:8px 12px;background:#edf5f2;border-radius:7px}.activity-record{min-width:0}.activity-record b{font-size:13px}.activity-record span{overflow-wrap:anywhere}.activity-records :deep(td>span:not(.badge)){font-size:11px}.is-admin .activity-records :deep(td:nth-child(2)){grid-column:1/-1;padding-bottom:10px;border-bottom:1px dashed var(--line)}.is-admin .activity-records :deep(td:nth-child(2):before){content:'客户 ';font-size:11px;color:var(--muted)}.is-admin .activity-owner{display:inline!important}.activity-filters>label{margin-bottom:0}.activity-records :deep(td .badge){white-space:normal}
 }
 </style>
+
+<style scoped>.activity-period{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.activity-period button{padding:9px 15px;border-radius:7px;border:1px solid var(--line);background:white;color:var(--muted);cursor:pointer}.activity-period button.active{color:var(--green);background:#edf5f2;border-color:var(--green)}.activity-period span{font-size:11px;color:var(--muted);margin-left:8px}</style>

@@ -89,7 +89,7 @@ def period(start, end, days):
     return first, last, datetime.combine(first, time(), ZONE), datetime.combine(last+timedelta(days=1), time(), ZONE)
 
 
-def overview(user, *, admin=False, start='', end='', days=7, include_admin=False, focus='all'):
+def overview(user, *, admin=False, start='', end='', days=1, include_admin=False, focus='all'):
     require(focus in ('all', 'attention'), '订单筛选无效')
     first, last, begin, until = period(start, end, days)
     flags = capabilities(user)
@@ -107,6 +107,7 @@ def overview(user, *, admin=False, start='', end='', days=7, include_admin=False
         queue_sql = """SELECT business,count(*) FILTER(WHERE status='queued') AS queued,
           count(*) FILTER(WHERE status IN ('processing','running','verifying')) AS running,
           count(*) FILTER(WHERE status IN ('review','attention')) AS review,
+          count(*) FILTER(WHERE (completed OR workflow='subscription' AND status='succeeded') AND created_at >= $3 AND created_at < $4) AS period_completed,
           count(*) FILTER(WHERE status='succeeded' AND workflow='subscription' AND (activation='review' OR renewal='review')) AS followup,
           count(*) FILTER(WHERE status='succeeded' AND workflow='subscription' AND (activation='pending' OR renewal IN ('pending','retrying'))) AS settling
           FROM scoped GROUP BY business"""
@@ -116,14 +117,14 @@ def overview(user, *, admin=False, start='', end='', days=7, include_admin=False
         if admin:
             projection += """,(SELECT jsonb_build_object(
               'orders',count(*) FILTER(WHERE created_at >= $3 AND created_at < $4),
-              'completed',count(*) FILTER(WHERE completed AND created_at >= $3 AND created_at < $4),
+              'completed',count(*) FILTER(WHERE (completed OR workflow='subscription' AND status='succeeded') AND created_at >= $3 AND created_at < $4),
               'partial',count(*) FILTER(WHERE business='registration' AND status='partial' AND created_at >= $3 AND created_at < $4)) FROM scoped) AS totals,
               (SELECT coalesce(jsonb_agg(r),'[]') FROM (SELECT to_char(created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM-DD') AS day,
               business,count(*) AS value FROM scoped WHERE created_at >= $3 AND created_at < $4 GROUP BY 1,2) r) AS trend_orders"""
         activity = q.one(cte+projection, *args, focus=='attention')
         current, recent = activity['queues'], activity['recent_orders']
         queues = {r['business']: r for r in current}
-        empty = dict(queued=0, running=0, review=0, followup=0, settling=0)
+        empty = dict(queued=0, running=0, review=0, followup=0, settling=0, period_completed=0)
         for name in ('subscription', 'registration', 'refund'):
             queues.setdefault(name, dict(empty, business=name))
         available = dict(available=0, expiring=0, next_order_id=None)
@@ -169,6 +170,8 @@ def overview(user, *, admin=False, start='', end='', days=7, include_admin=False
             trend_orders = activity['trend_orders']
             trend_fees = q.all("SELECT to_char(l.created_at AT TIME ZONE 'Asia/Shanghai','YYYY-MM-DD') AS day,l.business,coalesce(sum(-l.amount),0) AS value"+ledger_where+' GROUP BY 1,2', *args)
             totals['settled'] = sum(row['value'] for row in trend_fees)
+            for name, queue in queues.items():
+                queue['period_settled'] = sum(row['value'] for row in trend_fees if row['business']==name)
             series = {(first+timedelta(days=i)).isoformat(): dict(day=(first+timedelta(days=i)).isoformat(),subscription=0,registration=0,subscription_fees=0,registration_fees=0,refund=0,refund_fees=0) for i in range((last-first).days+1)}
             for records, suffix in ((trend_orders,''),(trend_fees,'_fees')):
                 for row in records:

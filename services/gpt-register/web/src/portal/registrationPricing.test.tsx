@@ -43,7 +43,7 @@ it('blocks new submissions after quote failure and accepts a zero account overri
   mount();await screen.findByRole('alert');
   expect(screen.getByRole('button',{name:'报价暂不可用'})).toBeDisabled();
   failed=false;fireEvent.click(screen.getByRole('button',{name:'重新获取报价'}));
-  await screen.findByText('账户专属单价');
+  await screen.findByText('专属价格');
   expect(screen.getByRole('button',{name:'提交注册'})).toBeEnabled();
   expect(within(screen.getByRole('complementary')).getByText('0 积分 / 个')).toBeInTheDocument();
 });

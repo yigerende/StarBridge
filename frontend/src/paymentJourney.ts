@@ -1,4 +1,5 @@
 import {minorAmount} from './currency.ts'
+import {subscriptionConfirmed,renewalNeedsConfirmation,renewalConfirmationNotice} from './subscriptionStatus.ts'
 import type {Row} from './lib'
 
 type State='completed'|'running'|'waiting'|'review'|'failed'|'skipped'
@@ -21,7 +22,7 @@ export const flowNames:Record<string,string>={gener_direct_pay:'gener 提链 →
 export const paymentNames:Record<string,string>={gener_direct_pay:'HTTP 直连付款',cslive_go_direct_pay:'HTTP 直连付款',cslive_full_go:'cs-live Go 一体付款'}
 const paymentStates:Record<string,[State,string]>={preparing:['running','准备中'],quoted:['running','报价已就绪'],submitting:['running','付款处理中'],checking:['running','核实付款结果'],succeeded:['completed','付款成功'],failed:['failed','付款未完成'],cancelled:['skipped','已停止'],review:['review','付款结果待核实'],action_required:['review','等待官方验证']}
 const activationStates:Record<string,[State,string]>={active:['completed','订阅已生效'],pending:['waiting','等待生效核实'],review:['review','订阅生效待核实'],not_checked:['waiting','未单独记录核实结果']}
-const renewalStates:Record<string,[State,string]>={disabled:['completed','自动续费已关闭'],kept:['skipped','按要求保留自动续费'],review:['review','关闭续费待处理'],retrying:['running','正在重新处理续费'],pending:['waiting','等待处理'],not_started:['waiting','尚未开始']}
+const renewalStates:Record<string,[State,string]>={disabled:['completed','自动续费已关闭'],kept:['skipped','按要求保留自动续费'],review:['review','待确认'],retrying:['running','正在重新处理续费'],pending:['waiting','等待处理'],not_started:['waiting','尚未开始']}
 function requestCount(events:Row[],kind:string|string[]){
  const kinds=Array.isArray(kind)?kind:[kind]
  const ids=new Set(events.filter(e=>kinds.includes(e.diagnostics?.request_kind)&&e.http_status>0&&e.request_id).map(e=>e.request_id))
@@ -103,7 +104,8 @@ export function buildPaymentJourney(input:Input){
  const activeStages=stages.filter(s=>subscription||['checkout','complete'].includes(s.id)||p.state&&['billing','payment'].includes(s.id))
  const problems=activeStages.filter(s=>['failed','review'].includes(s.state)&&s.id!=='complete')
  const followupDone=o.activation==='active'&&['disabled','kept'].includes(o.renewal)
- if(o.status==='succeeded')set('complete',problems.length?['review','付款完成，后续仍需处理']:subscription&&!followupDone?['waiting','付款成功，正在处理后续核实']:['completed',subscription?'订阅办理完成':'办理完成'])
+ if(subscriptionConfirmed(o,p)&&problems.every(s=>s.id==='renewal'))set('complete',['completed','订阅成功'])
+ else if(o.status==='succeeded')set('complete',problems.length?['review','付款完成，后续仍需处理']:subscription&&!followupDone?['waiting','付款成功，正在处理后续核实']:['completed',subscription?'订阅办理完成':'办理完成'])
  else if(stopped)set('complete',[o.status==='failed'?'failed':'skipped',o.status==='failed'?'本次办理未完成':'本次办理已停止'])
  else if(o.status==='review'||problems.length)set('complete',['review','有待核实事项'])
  else if(o.workflow==='link'&&checkoutDone)set('complete',['completed','结账链接已生成'])
@@ -141,5 +143,5 @@ export function buildPaymentJourney(input:Input){
   {label:'本轮出口 IP',value:ip},
   ...(subscription?[{label:'订阅 / 自动续费',value:`${stage('activation').result} · ${stage('renewal').result}`}]:[])
  ]
- return {stages:activeStages,summary,rounds,total,result:stage('complete').result,state:stage('complete').state,attention:activeStages.filter(s=>['failed','review'].includes(s.state)&&s.id!=='complete').map(s=>s.title).join('、')}
+ return {renewalNotice:renewalNeedsConfirmation(o,p)?renewalConfirmationNotice:'',stages:activeStages,summary,rounds,total,result:stage('complete').result,state:stage('complete').state,attention:activeStages.filter(s=>['failed','review'].includes(s.state)&&s.id!=='complete').map(s=>s.title).join('、')}
 }

@@ -11,3 +11,13 @@ export function shiftPeriod(anchor:string,period:Period,direction:number):string
  const result=d.toISOString().slice(0,10);
  return result<'1900-01-01'||result>'9998-12-31'?anchor:result;
 }
+
+export const rangePresets=[{id:'all',label:'全部'},{id:'today',label:'今天'},{id:'yesterday',label:'昨天'},{id:'week',label:'本周'},{id:'month',label:'本月'},{id:'custom',label:'自定义'}];
+export function presetRange(id:string, today=todayBeijing()):{start:string;end:string}{
+ if(id==='all'||id==='custom')return {start:'',end:''};
+ const d=new Date(today+'T00:00:00Z');
+ if(id==='yesterday'){d.setUTCDate(d.getUTCDate()-1);const day=d.toISOString().slice(0,10);return {start:day,end:day}}
+ if(id==='week')d.setUTCDate(d.getUTCDate()-((d.getUTCDay()+6)%7));
+ if(id==='month')d.setUTCDate(1);
+ return {start:d.toISOString().slice(0,10),end:today};
+}

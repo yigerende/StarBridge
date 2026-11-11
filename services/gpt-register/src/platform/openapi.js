@@ -171,7 +171,8 @@ const schemas = {
     unit_price: points("当前账户优惠后的完整单价，单位积分，最多两位小数；OAuth 无需再加标准价"),
     standard_price: points('减免前的标准单价，单位积分'),
     saved: {type:'number',description:'每个账号相对标准价的优惠；账户专属价优先'},
-    price_source: str('价格来源：会员减免或账户专属价',{enum:['membership','account_override']}),
+    membership_eligible: bool('当前注册服务是否参与会员减免；专属价格仍优先'),
+    price_source: str('价格来源：会员减免、专属价格或标准价',{enum:['membership','account_override','standard']}),
   }, ['name','need_oauth','unit_price']),
   Order: obj({
     id: str("订单 ID；用于查进度和筛选交付账号"),

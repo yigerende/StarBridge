@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "星桥 API",
-    "version": "2.5.0",
+    "version": "2.5.1",
     "description": "使用同一个 API 密钥查询账户、订阅套餐、代退报价和积分钱包，提交申请并跟踪办理结果。当前可用功能见 GET /api/v1/me 的 features；重置登录密码后需重新创建 API 密钥。 请求按来源 IP 限流，同一出口的账号和密钥共用请求额度；注册、订阅和代退共用下单限额。429 按 Retry-After 等待，重试仍使用原幂等键。"
   },
   "servers": [
@@ -481,7 +481,7 @@
       "get": {
         "operationId": "get_quote",
         "summary": "查询服务费报价",
-        "description": "查询当前账户在指定套餐的服务费，不创建订单。优先使用该套餐专属价，其次账户通用价，否则按当前会员等级计算；实际订单保留下单时的报价快照。",
+        "description": "查询当前账户在指定套餐的服务费，不创建订单。优先使用该套餐专属价，其次订阅默认专属价，否则按当前会员等级计算；实际订单保留下单时的报价快照。",
         "security": [
           {
             "BearerKey": []
@@ -518,9 +518,14 @@
                       "enum": [
                         "product_override",
                         "account_override",
-                        "membership"
+                        "membership",
+                        "standard"
                       ],
-                      "description": "本次价格来源：product_override 为该套餐专属价，account_override 为账户通用价，membership 为当前会员折扣；按此顺序优先使用。"
+                      "description": "本次价格来源：product_override 为该套餐专属价，account_override 为订阅默认专属价，membership 为当前会员折扣；按此顺序优先使用。 standard 表示该服务不参与会员减免，按标准价计费。"
+                    },
+                    "membership_eligible": {
+                      "type": "boolean",
+                      "description": "该服务是否参与会员减免；false 时按标准价计费，有专属价格时仍优先使用专属价格。"
                     }
                   }
                 },
@@ -779,9 +784,14 @@
                             "enum": [
                               "product_override",
                               "account_override",
-                              "membership"
+                              "membership",
+                              "standard"
                             ],
-                            "description": "本次价格来源：product_override 为该套餐专属价，account_override 为账户通用价，membership 为当前会员折扣；按此顺序优先使用。"
+                            "description": "本次价格来源：product_override 为该套餐专属价，account_override 为订阅默认专属价，membership 为当前会员折扣；按此顺序优先使用。 standard 表示该服务不参与会员减免，按标准价计费。"
+                          },
+                          "membership_eligible": {
+                            "type": "boolean",
+                            "description": "该服务是否参与会员减免；false 时按标准价计费，有专属价格时仍优先使用专属价格。"
                           }
                         }
                       },
@@ -4142,9 +4152,14 @@
                       "enum": [
                         "membership",
                         "account_override",
-                        "product_override"
+                        "product_override",
+                        "standard"
                       ],
-                      "description": "计价来源：会员等级、账户通用专属价或代退专属价。专属价优先于会员等级。"
+                      "description": "计价来源：account_override 为代退专属价格，membership 为会员折扣。专属价格不叠加会员折扣。 standard 表示该服务不参与会员减免，按标准价计费。"
+                    },
+                    "membership_eligible": {
+                      "type": "boolean",
+                      "description": "该服务是否参与会员减免；false 时按标准价计费，有专属价格时仍优先使用专属价格。"
                     }
                   }
                 },
@@ -5741,7 +5756,7 @@
               "integer",
               "null"
             ],
-            "description": "账户通用服务费，积分最小单位；优先使用套餐专属价，其次此值，均未设置时使用会员折扣。"
+            "description": "订阅默认专属服务费，积分最小单位；优先使用套餐专属价，其次此值，均未设置时使用会员折扣。"
           },
           "tiers": {
             "type": "array",
@@ -5752,7 +5767,7 @@
           },
           "product_prices": {
             "type": "object",
-            "description": "该账户设置的套餐专属服务费，键为套餐接口标识，值为积分最小单位；0 为有效免费价，缺少该键表示沿用账户通用价或会员折扣。",
+            "description": "该账户设置的套餐专属服务费，键为套餐接口标识，值为积分最小单位；0 为有效免费价，缺少该键表示沿用订阅默认专属价或会员折扣。",
             "additionalProperties": {
               "type": "integer",
               "minimum": 0,
@@ -5763,6 +5778,51 @@
                 "pro20x": 900
               }
             ]
+          },
+          "service_prices": {
+            "type": "object",
+            "description": "当前账户的注册和代退专属价格，单位为积分最小单位。0 为免费；缺少对应项表示按会员折扣计价。",
+            "properties": {
+              "registration_standard": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "标准注册专属服务费。"
+              },
+              "registration_oauth": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "OAuth 注册专属服务费。"
+              },
+              "refund": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "代退专属服务费。"
+              }
+            },
+            "additionalProperties": false
+          },
+          "discount_services": {
+            "type": "object",
+            "description": "各服务参与会员减免的范围。专属价格仍优先。",
+            "properties": {
+              "registration_standard": {
+                "type": "boolean"
+              },
+              "registration_oauth": {
+                "type": "boolean"
+              },
+              "refund": {
+                "type": "boolean"
+              },
+              "subscription": {
+                "type": "object",
+                "description": "键为订阅套餐标识，false 表示不参与会员减免。",
+                "additionalProperties": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "additionalProperties": false
           }
         }
       },
@@ -5897,7 +5957,7 @@
           },
           "member_fee": {
             "type": "integer",
-            "description": "当前账户实际服务费，积分最小单位；优先使用套餐专属价，其次账户通用价，最后会员折扣。",
+            "description": "当前账户实际服务费，积分最小单位；优先使用套餐专属价，其次订阅默认专属价，最后会员折扣。",
             "minimum": 0
           },
           "features": {
@@ -5917,9 +5977,14 @@
             "enum": [
               "product_override",
               "account_override",
-              "membership"
+              "membership",
+              "standard"
             ],
-            "description": "本次价格来源：product_override 为该套餐专属价，account_override 为账户通用价，membership 为当前会员折扣；按此顺序优先使用。"
+            "description": "本次价格来源：product_override 为该套餐专属价，account_override 为订阅默认专属价，membership 为当前会员折扣；按此顺序优先使用。 standard 表示该服务不参与会员减免，按标准价计费。"
+          },
+          "membership_eligible": {
+            "type": "boolean",
+            "description": "该服务是否参与会员减免；false 时按标准价计费，有专属价格时仍优先使用专属价格。"
           }
         }
       },
@@ -6120,6 +6185,10 @@
               "activation",
               "renewal"
             ]
+          },
+          "timing": {
+            "$ref": "#/components/schemas/OrderTiming",
+            "description": "订单列表返回的耗时信息。"
           }
         }
       },
@@ -6191,7 +6260,7 @@
               "integer",
               "null"
             ],
-            "description": "账户通用服务费，积分最小单位；null 表示未设置。套餐专属价优先，其次此值，最后会员折扣。"
+            "description": "订阅默认专属服务费，积分最小单位；null 表示未设置。套餐专属价优先，其次此值，最后会员折扣。"
           },
           "unit": {
             "type": "string",
@@ -6636,7 +6705,7 @@
               "integer",
               "null"
             ],
-            "description": "账户通用服务费，积分最小单位；null 表示未设置。套餐专属价优先，其次此值，最后会员折扣。"
+            "description": "订阅默认专属服务费，积分最小单位；null 表示未设置。套餐专属价优先，其次此值，最后会员折扣。"
           }
         }
       },
@@ -6680,7 +6749,7 @@
               "integer",
               "null"
             ],
-            "description": "账户通用服务费，积分最小单位；null 表示未设置。套餐专属价优先，其次此值，最后会员折扣。 对应资金、伙伴计划或会员功能关闭时可能不返回。"
+            "description": "订阅默认专属服务费，积分最小单位；null 表示未设置。套餐专属价优先，其次此值，最后会员折扣。 对应资金、伙伴计划或会员功能关闭时可能不返回。"
           },
           "membership": {
             "description": "当前账户会员与专属计价信息。 会员中心关闭时为 null。",
@@ -7321,6 +7390,10 @@
           "http_status": {
             "type": "integer",
             "description": "可选登录验证结果码；401 表示账号登录验证未通过，与查询请求自身的 HTTP 状态不同。"
+          },
+          "timing": {
+            "$ref": "#/components/schemas/OrderTiming",
+            "description": "订单列表返回的耗时信息。"
           }
         }
       },
@@ -7713,6 +7786,56 @@
           "timezone": {
             "type": "string",
             "description": "统计日期使用 Asia/Shanghai。"
+          }
+        }
+      },
+      "OrderTiming": {
+        "type": "object",
+        "description": "实际办理耗时。缺少历史时间时返回 null，不根据订单修改时间推算。",
+        "properties": {
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "订阅开始执行时间。"
+          },
+          "paid_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "确认付款成功的时间。"
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "本次处理结束时间；仍在处理时为 null。"
+          },
+          "payment_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "订阅开始执行至确认付款成功的秒数，不含排队。"
+          },
+          "total_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "提交至处理结束的秒数，含排队与重试；仍在处理时为已用时长。"
+          },
+          "ongoing": {
+            "type": "boolean",
+            "description": "是否仍在处理或等待。"
           }
         }
       }

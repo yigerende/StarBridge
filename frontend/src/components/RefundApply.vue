@@ -9,7 +9,7 @@ const quote=ref<Row>(),mode=ref('single'),email=ref(''),password=ref(''),totp=re
 let fingerprint='',key=''
 const parsed=computed(()=>{try{return {accounts:parseAccounts(raw.value),error:''}}catch(e){return {accounts:[],error:(e as Error).message}}})
 const member=computed(()=>quote.value?.membership||props.user.membership)
-const exclusive=computed(()=>['account_override','product_override'].includes(quote.value?.price_source)||member.value?.fee_override!=null)
+const exclusive=computed(()=>['account_override','product_override'].includes(quote.value?.price_source))
 const available=computed(()=>Number(props.user.balance||0)-Number(props.user.frozen||0))
 const count=computed(()=>mode.value==='single'?1:parsed.value.accounts.length),total=computed(()=>count.value*(quote.value?.fee||0))
 async function load(){try{quote.value=await api('/refund/quote')}catch(e){error.value=(e as Error).message}}
@@ -51,9 +51,9 @@ onMounted(load)
   </section>
   <aside class="refund-aside">
    <section class="panel refund-price"><header><h2>费用确认</h2><span>按账号计费</span></header>
-    <div class="refund-member"><div><Crown :size="17"/><b>{{member?.current?.name||'当前会员'}}</b><a href="#/membership">会员权益<ArrowRight :size="13"/></a></div><p v-if="exclusive">已使用账户专属服务费</p><p v-else-if="member?.current?.discount<100">代退服务费享 {{Number((member.current.discount/10).toFixed(2))}} 折优惠</p><p v-else>代退支持会员减免，当前等级按标准服务费计价。</p></div>
+    <div class="refund-member"><div><Crown :size="17"/><b>{{member?.current?.name||'当前会员'}}</b><a href="#/membership">会员权益<ArrowRight :size="13"/></a></div><p v-if="exclusive">已使用专属价格</p><p v-else-if="quote?.membership_eligible!==false&&member?.current?.discount<100">代退服务费享 {{Number((member.current.discount/10).toFixed(2))}} 折优惠</p><p v-else-if="quote?.membership_eligible!==false">代退支持会员减免，当前等级按标准服务费计价。</p><p v-if="quote?.membership_eligible===false">此服务不参与会员减免</p></div>
     <div class="refund-unit-price"><h2>本次服务费</h2><strong>{{quote?cash(quote.fee):'—'}}<small>积分 / 账号</small></strong></div>
-    <dl><div><dt>标准服务费</dt><dd>{{quote?cash(quote.standard):'—'}} 积分</dd></div><div :class="{positive:quote?.saved>0}"><dt>{{exclusive?'专属价减免':'会员减免'}}</dt><dd>{{quote?.saved>0?'− ':''}}{{quote?cash(Math.max(0,quote.saved)):'—'}} 积分 / 个</dd></div><div><dt>申请数量</dt><dd>{{count}} 个</dd></div><div class="refund-total"><dt>本次冻结</dt><dd>{{quote?cash(total):'—'}} <small>积分</small></dd></div><div><dt>账户可用</dt><dd>{{cash(available)}} 积分</dd></div></dl>
+    <dl><div><dt>标准服务费</dt><dd>{{quote?cash(quote.standard):'—'}} 积分</dd></div><div v-if="exclusive"><dt>专属价格</dt><dd>{{cash(quote?.fee)}} 积分 / 个</dd></div><div v-if="!exclusive&&quote?.membership_eligible!==false" :class="{positive:quote?.saved>0}"><dt>会员减免</dt><dd>{{quote?.saved>0?'− ':''}}{{quote?cash(Math.max(0,quote.saved)):'—'}} 积分 / 个</dd></div><div><dt>申请数量</dt><dd>{{count}} 个</dd></div><div class="refund-total"><dt>本次冻结</dt><dd>{{quote?cash(total):'—'}} <small>积分</small></dd></div><div><dt>账户可用</dt><dd>{{cash(available)}} 积分</dd></div></dl>
     <p v-if="quote&&!quote.accepting" class="refund-notice">当前暂未开放受理，请稍后再试。</p><p v-else-if="quote&&!quote.executing" class="refund-notice">当前可提交申请，等待队列恢复后办理。</p>
    </section>
    <section class="refund-guide"><h3>服务费如何处理</h3><p><LockKeyhole :size="16"/><span>提交申请时冻结服务费</span></p><p><CheckCircle2 :size="16"/><span>服务完成后结算一次</span></p><p><RotateCcw :size="16"/><span>失败或排队取消后释放</span></p><small>结果待核实时保持冻结，可在订单中心跟进。仅排队中的申请支持取消。</small></section>
