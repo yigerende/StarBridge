@@ -18,9 +18,10 @@ const model=defineModel<Row>({required:true})
    </section>
   </template>
   <template v-else>
-   <label>会员等级<select v-model="model.membership_code" required><option value="__choose__" disabled>请选择</option><option value="">恢复自动等级</option><option v-for="tier in tiers" :key="tier.code" :value="tier.code">{{tier.name}}</option></select></label>
+   <label>会员等级<select v-model="model.membership_code" required><option value="__choose__" disabled>请选择</option><option value="">清除等级调整</option><option v-for="tier in tiers" :key="tier.code" :value="tier.code">{{tier.name}}</option></select></label>
    <label v-if="model.membership_code&&model.membership_code!=='__choose__'">到期时间<input v-model="model.membership_until" type="datetime-local"/><small>留空表示长期有效。</small></label>
-   <p v-if="model.membership_code===''" class="muted small">按每个账户的累计消费重新计算会员等级。</p>
+   <p v-if="model.membership_code&&model.membership_code!=='__choose__'" class="muted small">累计成长补足至所选等级门槛，后续消费继续累计升级。</p>
+   <p v-if="model.membership_code===''" class="muted small">移除等级调整的补足值，按实际累计消费重新定级。</p>
   </template>
  </div>
 </template>

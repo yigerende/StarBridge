@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "星桥 API",
-    "version": "2.5.1",
+    "version": "2.6.0",
     "description": "使用同一个 API 密钥查询账户、订阅套餐、代退报价和积分钱包，提交申请并跟踪办理结果。当前可用功能见 GET /api/v1/me 的 features；重置登录密码后需重新创建 API 密钥。 请求按来源 IP 限流，同一出口的账号和密钥共用请求额度；注册、订阅和代退共用下单限额。429 按 Retry-After 等待，重试仍使用原幂等键。"
   },
   "servers": [
@@ -832,7 +832,7 @@
                       "type": "string",
                       "description": "成长依据。",
                       "enum": [
-                        "settled_service_spend"
+                        "membership_growth"
                       ]
                     }
                   }
@@ -874,7 +874,7 @@
                   "products": [],
                   "growth": [],
                   "unit": "cent_R",
-                  "basis": "settled_service_spend"
+                  "basis": "membership_growth"
                 }
               }
             }
@@ -5702,7 +5702,7 @@
           },
           "threshold": {
             "type": "integer",
-            "description": "累计消费门槛，单位：积分最小单位（展示时除以 100）。",
+            "description": "会员累计成长门槛，单位为积分最小单位（展示时除以100）。",
             "minimum": 0
           },
           "discount": {
@@ -5724,7 +5724,7 @@
           },
           "automatic": {
             "$ref": "#/components/schemas/Tier",
-            "description": "按累计已结算服务消费计算的自动等级。"
+            "description": "按统一累计成长计算的等级，与 current 一致。"
           },
           "next": {
             "anyOf": [
@@ -5735,16 +5735,16 @@
                 "type": "null"
               }
             ],
-            "description": "自动升级的下一等级；已达最高等级时为 null，不受人工指定等级影响。"
+            "description": "当前等级的下一档；已达最高等级时为 null。"
           },
           "spent": {
             "type": "integer",
-            "description": "已结算服务费累计消费，单位：积分最小单位（展示时除以 100）。",
+            "description": "会员累计成长，包含成功结算服务费与有效等级调整；单位为积分最小单位，展示时除以100，不等同钱包实际支出。",
             "minimum": 0
           },
           "remaining": {
             "type": "integer",
-            "description": "距下一等级所需消费，单位：积分最小单位（展示时除以 100）。",
+            "description": "距下一等级尚需累计的成长，单位为积分最小单位。",
             "minimum": 0
           },
           "progress": {
@@ -5753,7 +5753,7 @@
           },
           "source": {
             "type": "string",
-            "description": "等级来源。",
+            "description": "累计成长是否包含等级调整：manual 表示已设置调整，automatic 表示仅按实际消费累计。",
             "enum": [
               "automatic",
               "manual"
@@ -5764,7 +5764,7 @@
               "string",
               "null"
             ],
-            "description": "人工指定等级的到期时间；null 表示永久指定或当前使用自动等级，结合 source 判断。",
+            "description": "本次成长调整的截止时间；null 表示无期限或没有调整。到期移除调整值后重新定级。",
             "format": "date-time"
           },
           "fee_override": {
@@ -5839,6 +5839,16 @@
               }
             },
             "additionalProperties": false
+          },
+          "growth_credit": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "当前有效的等级调整补足值，积分最小单位；不计入钱包收入或支出。"
+          },
+          "settled_spent": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "实际成功结算的服务费净累计，积分最小单位，不含等级调整。"
           }
         }
       },

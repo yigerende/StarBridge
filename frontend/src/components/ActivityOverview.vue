@@ -12,9 +12,9 @@ const props=defineProps<{admin?:boolean;user?:Row;pub?:Row}>()
 const record=ref<Row|null>(null)
 function openRecord(row:Row){if(props.admin)record.value=row;else detail.value=row}
 const data=ref<Row>({items:[],summary:{},businesses:[],total:0,show_fees:false}),loading=ref(false),error=ref(''),detail=ref<Row|null>(null)
-const period=ref('all')
+const period=ref('today'),initialRange=presetRange('today')
 function selectPeriod(id:string){period.value=id;if(id!=='custom'){const range=presetRange(id);start.value=range.start;end.value=range.end;apply()}}
-const search=ref(''),business=ref(''),state=ref(''),start=ref(''),end=ref(''),includeAdmin=ref(true),page=ref(1),size=ref(25)
+const search=ref(''),business=ref(''),state=ref(''),start=ref(initialRange.start),end=ref(initialRange.end),includeAdmin=ref(true),page=ref(1),size=ref(25)
 const applied=ref<Row>({}),names:Row={registration:'注册',subscription:'订阅',refund:'代退'}
 const states:Row={active:'进行中',completed:'已完成',partial:'部分完成',attention:'需核实',failed:'未完成',cancelled:'已取消'}
 const businesses=computed(()=>['registration','subscription','refund'].map(id=>({id,...(data.value.businesses.find((r:Row)=>r.business===id)||{total:0,active:0,settled:0})})))
@@ -30,7 +30,7 @@ async function load(quiet=false){
  finally{if(controller===request)loading.value=false}
 }
 function apply(){applied.value={q:search.value,business:business.value,state:state.value,start:start.value,end:end.value,...(props.admin?{include_admin:String(includeAdmin.value)}:{})};page.value=1;void load()}
-function reset(){period.value='all';search.value='';business.value='';state.value='';start.value='';end.value='';includeAdmin.value=true;apply()}
+function reset(){period.value='today';const range=presetRange('today');search.value='';business.value='';state.value='';start.value=range.start;end.value=range.end;includeAdmin.value=true;apply()}
 function selectState(value:string){state.value=value;apply()}
 onMounted(()=>{apply();timer=setInterval(()=>{if(document.visibilityState==='visible'&&!loading.value)void load(true)},30000)})
 onUnmounted(()=>{controller?.abort();clearInterval(timer)})

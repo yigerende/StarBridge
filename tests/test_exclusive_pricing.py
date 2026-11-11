@@ -19,7 +19,8 @@ class ExclusivePricingTests(unittest.TestCase):
             db.execute('INSERT INTO settings(key,value) VALUES($1,$2) ON CONFLICT DO NOTHING',key,value)
         db.execute("UPDATE settings SET value=value||'{\"subscription_flow\":\"cslive_go_direct_pay\"}'::jsonb WHERE key='payment'")
         db.execute("INSERT INTO products(id,name,description,fee) VALUES('plus','Plus','',1000),('pro','Pro','',2000)")
-        db.execute("UPDATE users SET membership_code='L9',fee_override=777 WHERE id='u'")
+        db.execute("UPDATE users SET fee_override=777 WHERE id='u'")
+        with db.transaction() as q:membership.assign_membership(q,['u'],'L9',None)
 
     def save(self, prices):
         with db.transaction() as q:

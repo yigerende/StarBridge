@@ -21,7 +21,7 @@ async function browserFixture(handler){
 }
 test('refund proxy targets, ordered backups and mobile layout',async()=>{
  const writes=[]
- const data={runtime_ready:true,settings:{enabled:false,max_parallel:2,max_attempts:2,retry_seconds:30,mother_interval_seconds:0,child_proxy_id:'primary',child_proxy_backups:[],child_proxy_cooldown_seconds:300,mother_failover:{enabled:true,max_switches:3,retry_seconds:30},recovery:{enabled:true,max_retries:3,verify_intervals:[30],cleanup_intervals:[15],alert_seconds:600,cleanup_failed:true}},proxies:[{id:'primary',name:'主用厂商',target:'both',enabled:true},{id:'backup1',name:'备用厂商 A',target:'child',enabled:true},{id:'backup2',name:'备用厂商 B',target:'child',enabled:true},{id:'mother',name:'母号专用',target:'mother',enabled:true}],mothers:[]}
+ const data={runtime_ready:true,settings:{enabled:false,max_parallel:2,max_attempts:2,retry_seconds:30,mother_interval_seconds:0,child_proxy_id:'primary',child_proxy_backups:[],child_proxy_cooldown_seconds:300,mother_failover:{enabled:true,max_switches:3,retry_seconds:30},recovery:{enabled:true,max_retries:3,verify_intervals:[30],cleanup_intervals:[15],alert_seconds:600,cleanup_failed:true}},proxies:[{id:'primary',name:'主用厂商',target:'both',enabled:true,failure_until:new Date(Date.now()+120000).toISOString()},{id:'backup1',name:'备用厂商 A',target:'child',enabled:true},{id:'backup2',name:'备用厂商 B',target:'child',enabled:true},{id:'mother',name:'母号专用',target:'mother',enabled:true}],mothers:[]}
  const {browser,page,errors}=await browserFixture((req,p)=>{
   if(p==='/api/admin/refund/settings'){
    if(req.method()==='PUT'){data.settings=req.postDataJSON().settings;writes.push(data.settings);return {ok:true}}
@@ -41,6 +41,7 @@ test('refund proxy targets, ordered backups and mobile layout',async()=>{
   assert.deepEqual(writes[0].child_proxy_backups,['backup2','backup1']);assert.equal(writes[0].child_proxy_cooldown_seconds,180)
   for(const width of [1440,1024,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await page.screenshot({path:path.join(output,`refund-${width}.png`),fullPage:true})}
   await page.setViewportSize({width:1440,height:1000});await page.getByRole('tab',{name:'代退代理',exact:true}).click()
+  await page.getByRole('columnheader',{name:'冷却释放时间'}).waitFor();await page.getByText('冷却中',{exact:true}).waitFor();assert.ok(await page.getByText('未在冷却',{exact:true}).count()>0);
   await page.getByRole('button',{name:'录入代理'}).click();await page.getByLabel('代理名称',{exact:true}).fill('第三厂商')
   await page.getByRole('dialog').getByRole('combobox').selectOption('child');await page.getByLabel('代理地址',{exact:true}).fill('http://fixture.invalid:8080')
   await page.getByRole('dialog').getByRole('button',{name:'保存',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'})
@@ -78,7 +79,7 @@ test('subscription three modes, independent country inventory and import',async(
 })
 
 test('manual vendors, primary/backup order and cooldown round-trip',async()=>{
- const writes=[];let resource={id:'primary',name:'主用厂商',country:'PH',vendor:'711proxy',ip_mode:'static',endpoint:'http://fixture.invalid:8080',enabled:true,weight:1,capacity:5,failover_priority:0,in_use:0,last_status:'untested'}
+ const writes=[];let resource={id:'primary',name:'主用厂商',country:'PH',vendor:'711proxy',ip_mode:'static',endpoint:'http://fixture.invalid:8080',enabled:true,weight:1,capacity:5,failover_priority:0,in_use:0,last_status:'untested',cooldown_until:new Date(Date.now()+120000).toISOString()}
  const cfg={proxy:{mode:'manual',default_id:'',global_id:'',match_country:true,request_timeout_seconds:60,failure_cooldown_seconds:300},regions:{items:[{code:'PH',name:'菲律宾',currency:'PHP',enabled:true}]}}
  const {browser,page,errors}=await browserFixture((req,p)=>{
   if(p==='/api/admin/settings')return cfg
@@ -88,6 +89,7 @@ test('manual vendors, primary/backup order and cooldown round-trip',async()=>{
  })
  try{
   await page.goto('http://127.0.0.1:18970/#/admin/resources')
+  await page.getByRole('columnheader',{name:'冷却释放时间'}).waitFor();await page.getByText('冷却中',{exact:true}).waitFor();
   await page.locator('.proxy-table').getByRole('button',{name:'编辑',exact:true}).click()
   const dialog=page.getByRole('dialog')
   await dialog.getByLabel('代理厂商').selectOption('1024proxy')
@@ -122,9 +124,10 @@ test('price catalog stays complete while payment selector follows supplied count
  try{
   for(const list of [[countries[0],countries[1]],[countries[7]]]){
    paymentCountries=list;await page.goto('http://127.0.0.1:18970/#/subscribe');await page.reload()
-   await page.getByRole('combobox',{name:'国家 / 地区',exact:true}).click()
+   const countrySelect=page.getByRole('combobox',{name:'国家 / 地区',exact:true});assert.match(await countrySelect.innerText(),/请选择支付国家/);assert.match(await page.locator('.confirmation-plan').innerText(),/请选择支付国家/);assert.equal(await page.getByRole('button',{name:'开始订阅办理',exact:true}).isDisabled(),true);
+   await countrySelect.click()
    assert.equal(await page.getByRole('listbox',{name:'可选国家'}).getByRole('option').count(),list.length)
-   await page.getByRole('combobox',{name:'国家 / 地区',exact:true}).click()
+   await page.getByRole('listbox',{name:'可选国家'}).getByRole('option').first().click();assert.match(await countrySelect.innerText(),new RegExp(list[0].code));assert.equal(await page.getByRole('option',{selected:true}).count(),0);
    await page.getByRole('button',{name:'各国订阅价格',exact:true}).click()
    const dialog=page.getByRole('dialog',{name:'各国订阅价格',exact:true})
    await dialog.getByText('Plus · 211 个地区',{exact:true}).waitFor()

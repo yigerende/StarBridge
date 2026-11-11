@@ -5,7 +5,7 @@ from . import redeem_codes
 from . import db
 from .common import *
 from .wallet import credit
-from .membership import membership_from,discount_services,SPEND
+from .membership import membership_from,assign_membership,discount_services,SPEND
 from .product_ids import internal_id, public_id
 from .product_availability import visible_products
 
@@ -60,7 +60,7 @@ def users(q: str='', role: str='', status: str='', tier: str='', page: int=1, pa
             SELECT * FROM jsonb_to_recordset($5::jsonb->'items') AS t(code text,threshold bigint,position int)
         ), accounts AS (
             SELECT u.id,u.email,u.name,u.role,u.status,u.balance,u.frozen,u.fee_override,
-                   u.membership_code,u.membership_until,u.invite_code,u.created_at,
+                   u.membership_code,u.membership_until,u.membership_growth_credit,u.invite_code,u.created_at,
                    COALESCE(s.spent,0)::bigint AS spent
             FROM users u LEFT JOIN (SELECT user_id,sum(spent) AS spent FROM ("""+SPEND+""") s GROUP BY user_id) s ON s.user_id=u.id
             WHERE u.deleted_at IS NULL
@@ -68,9 +68,8 @@ def users(q: str='', role: str='', status: str='', tier: str='', page: int=1, pa
               AND ($2='' OR u.role=$2) AND ($3='' OR u.status=$3)
         ), filtered AS (
             SELECT a.* FROM accounts a
-            LEFT JOIN tiers manual ON manual.code=a.membership_code AND (a.membership_until IS NULL OR a.membership_until>$6)
-            LEFT JOIN LATERAL (SELECT code FROM tiers WHERE threshold<=a.spent OR position=0 ORDER BY threshold DESC,position DESC LIMIT 1) automatic ON true
-            WHERE $4='' OR COALESCE(manual.code,automatic.code)=$4
+            LEFT JOIN LATERAL (SELECT code FROM tiers WHERE threshold<=a.spent+CASE WHEN a.membership_code<>'' AND (a.membership_until IS NULL OR a.membership_until>$6) THEN a.membership_growth_credit ELSE 0 END OR position=0 ORDER BY threshold DESC,position DESC LIMIT 1) effective ON true
+            WHERE $4='' OR effective.code=$4
         ) """
         args=(q,role,status,tier,tier_rows,now())
         total=tx.scalar(query+'SELECT count(*) FROM filtered',*args)
@@ -132,7 +131,7 @@ def batch_settings_value(value,request):
             require(isinstance(code,str) and (code=='' or any(t['code']==code for t in config('tiers',q)['items'])),'会员等级不存在')
             if not code:until=None
             require(until is None or until>now(),'会员到期时间必须晚于现在')
-            q.execute('UPDATE users SET membership_code=$2,membership_until=$3 WHERE id=ANY($1)',ids,code,until)
+            assign_membership(q,ids,code,until)
             count+=1
         require(count>0,'请选择至少一项要调整的设置')
         q.execute('UPDATE users SET updated_at=now() WHERE id=ANY($1)',ids)
@@ -156,7 +155,7 @@ def account_options(q,request,id,value):
         require(isinstance(code,str) and (code=='' or any(t['code']==code for t in config('tiers',q)['items'])),'会员等级不存在')
         if not code:until=None
         require(until is None or until>now() or (code==old['membership_code'] and until==old['membership_until']),'会员到期时间必须晚于现在')
-        q.execute('UPDATE users SET membership_code=$2,membership_until=$3 WHERE id=$1',id,code,until)
+        assign_membership(q,[id],code,until)
     if 'product_prices' in value:
         prices=value['product_prices'];require(isinstance(prices,dict) and len(prices)<=200,'套餐专属价格格式无效')
         enabled={p['id'] for p in visible_products(q.all('SELECT id FROM products WHERE enabled'),config('payment',q).get('subscription_flow'))}
@@ -248,7 +247,7 @@ async def adjust_balance(id: str,request: Request):
 
 @router.get('/membership')
 def members():
-    rows=db.all('SELECT u.id,u.email,u.name,u.role,u.status,u.fee_override,u.membership_code,u.membership_until,COALESCE(s.spent,0)::bigint AS spent FROM users u LEFT JOIN (SELECT user_id,sum(spent)::bigint AS spent FROM ('+SPEND+') s GROUP BY user_id) s ON s.user_id=u.id WHERE u.deleted_at IS NULL ORDER BY u.created_at DESC')
+    rows=db.all('SELECT u.id,u.email,u.name,u.role,u.status,u.fee_override,u.membership_code,u.membership_until,u.membership_growth_credit,COALESCE(s.spent,0)::bigint AS spent FROM users u LEFT JOIN (SELECT user_id,sum(spent)::bigint AS spent FROM ('+SPEND+') s GROUP BY user_id) s ON s.user_id=u.id WHERE u.deleted_at IS NULL ORDER BY u.created_at DESC')
     distribution={};total=0
     for u in rows:
         m=membership_from(u,u['spent']);u['membership']=m
@@ -268,7 +267,7 @@ async def set_membership(id: str,request: Request):
         q.execute('SELECT pg_advisory_xact_lock(782518860)')
         require(code=='' or any(t['code']==code for t in config('tiers',q)['items']),'等级不存在')
         if not code:until=None
-        require(q.execute('UPDATE users SET membership_code=$2,membership_until=$3,updated_at=now() WHERE id=$1 AND deleted_at IS NULL',id,code,until)==1,'账户不存在',404)
+        assign_membership(q,[id],code,until)
         audit(q,request,'membership.adjusted',id,json.dumps({'code':code,'until':until.isoformat() if until else None,'reason':reason},ensure_ascii=False))
     return {'ok':True}
 

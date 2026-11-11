@@ -11,21 +11,36 @@ SPEND="""SELECT l.user_id,l.order_id,GREATEST(0,-sum(l.amount))::bigint AS spent
 def membership_from(user,spent,q=None,*,tiers=None,at=None):
     tiers=sorted(config('tiers',q)['items'] if tiers is None else tiers,key=lambda x:x['threshold'])
     tiers=[dict(t,code=t.get('code') or f'L{i+1}') for i,t in enumerate(tiers)]
-    automatic=tiers[0]
+    settled_spent=int(spent)
+    active=bool(user.get('membership_code')) and (not user.get('membership_until') or user['membership_until']>(at or now()))
+    adjustment=int(user.get('membership_growth_credit') or 0) if active else 0
+    spent=max(0,settled_spent+adjustment)
+    selected=tiers[0]
     for t in tiers:
-        if spent>=t['threshold']: automatic=t
-    selected=automatic; source='automatic'; until=None
-    if user.get('membership_code') and (not user.get('membership_until') or user['membership_until']>(at or now())):
-        selected=next((t for t in tiers if t['code']==user['membership_code']),automatic)
-        if selected['code']==user['membership_code']:
-            source='manual';until=user.get('membership_until')
-    following=next((t for t in tiers if t['threshold']>automatic['threshold']),None)
-    return {'current':selected,'automatic':automatic,'next':following,'spent':spent,'remaining':following['threshold']-spent if following else 0,'progress':(spent-automatic['threshold'])*100//(following['threshold']-automatic['threshold']) if following else 100,'source':source,'until':until,'fee_override':user.get('fee_override'),'tiers':tiers}
+        if spent>=t['threshold']:selected=t
+    following=next((t for t in tiers if t['threshold']>selected['threshold']),None)
+    return {'current':selected,'automatic':selected,'next':following,'spent':spent,'settled_spent':settled_spent,'growth_credit':adjustment,'remaining':following['threshold']-spent if following else 0,'progress':(spent-selected['threshold'])*100//(following['threshold']-selected['threshold']) if following else 100,'source':'manual' if active else 'automatic','until':user.get('membership_until') if active else None,'fee_override':user.get('fee_override'),'tiers':tiers}
+
+
+def assign_membership(q,ids,code,until):
+    """Top up one growth total; repeated saves preserve subsequent earned growth."""
+    rows=q.all('SELECT id,membership_code,membership_until,membership_growth_credit FROM users WHERE id=ANY($1) AND deleted_at IS NULL ORDER BY id FOR UPDATE',sorted(ids))
+    require(len(rows)==len(ids),'账户不存在',404)
+    tier=next((t for t in config('tiers',q)['items'] if t['code']==code),None)
+    require(not code or tier is not None,'会员等级不存在')
+    sums={r['user_id']:int(r['spent']) for r in q.all('SELECT user_id,sum(spent) AS spent FROM ('+SPEND+') s WHERE user_id=ANY($1) GROUP BY user_id',ids)}
+    at=now()
+    for row in rows:
+        credit=row['membership_growth_credit']
+        if not code:credit=0
+        elif row['membership_code']!=code or (row['membership_until'] and row['membership_until']<=at and (until is None or until>at)):
+            credit=max(0,tier['threshold']-sums.get(row['id'],0))
+        q.execute('UPDATE users SET membership_code=$2,membership_until=$3,membership_growth_credit=$4,updated_at=now() WHERE id=$1',row['id'],code,until if code else None,credit)
 
 
 def membership_for(user_id,q=None):
     q=q or db
-    user=q.one('SELECT membership_code,membership_until,fee_override FROM users WHERE id=$1',user_id)
+    user=q.one('SELECT membership_code,membership_until,membership_growth_credit,fee_override FROM users WHERE id=$1',user_id)
     require(user is not None,'用户不存在',404)
     spent=q.scalar('SELECT COALESCE(sum(s.spent),0) FROM ('+SPEND+') s WHERE s.user_id=$1',user_id)
     result=membership_from(user,int(spent),q)
@@ -82,7 +97,7 @@ def membership(request: Request):
         p['member_fee']=fee_for(m,p['fee'],p['id']);p['saved']=p['fee']-p['member_fee'];p['price_source']=fee_source(m,p['id']);p['membership_eligible']=membership_eligible(m,p['id'])
         if request.url.path.startswith('/api/v1/'):p['id']=public_id(p['id'])
     growth=db.all('SELECT o.id,o.product_name,o.updated_at,s.spent FROM ('+SPEND+') s JOIN orders o ON o.id=s.order_id WHERE s.user_id=$1 AND o.deleted_at IS NULL ORDER BY o.updated_at DESC LIMIT 100',current(request)['id'])
-    return {'membership':m,'products':products,'growth':growth,'unit':'cent_R','basis':'settled_service_spend'}
+    return {'membership':m,'products':products,'growth':growth,'unit':'cent_R','basis':'membership_growth'}
 
 
 @router.get('/quote')

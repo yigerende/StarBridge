@@ -388,3 +388,24 @@ BEGIN
  GET DIAGNOSTICS changed=ROW_COUNT;
  RETURN changed;
 END $$;
+
+-- Convert existing membership grants once; only growth credit changes, never money.
+DO $$
+BEGIN
+ IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='users' AND column_name='membership_growth_credit') THEN
+  ALTER TABLE users ADD COLUMN membership_growth_credit bigint NOT NULL DEFAULT 0 CHECK(membership_growth_credit>=0);
+  WITH spends AS (
+   SELECT user_id,sum(spent)::bigint spent FROM (
+    SELECT l.user_id,l.order_id,GREATEST(0,-sum(l.amount))::bigint spent
+    FROM ledger l JOIN orders o ON o.id=l.order_id AND o.user_id=l.user_id
+    WHERE o.status='succeeded' AND ((l.kind='charge' AND l.amount<0) OR (l.kind='refund' AND l.amount>0))
+    GROUP BY l.user_id,l.order_id
+   ) per_order GROUP BY user_id
+  ), grants AS (
+   SELECT u.id,GREATEST(0,(t->>'threshold')::bigint-COALESCE(s.spent,0)) credit
+   FROM users u LEFT JOIN spends s ON s.user_id=u.id
+   CROSS JOIN settings cfg CROSS JOIN LATERAL jsonb_array_elements(cfg.value->'items') t
+   WHERE cfg.key='tiers' AND u.membership_code=t->>'code'
+  ) UPDATE users u SET membership_growth_credit=g.credit FROM grants g WHERE u.id=g.id;
+ END IF;
+END $$;

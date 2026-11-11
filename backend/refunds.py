@@ -176,7 +176,11 @@ async def timeline(id:str,request:Request):return await call('timeline',current(
 
 @admin.get('/orders/{id}')
 async def admin_detail(id:str,request:Request):
-    return await call('admin_detail',current(request)['id'],id=id)
+    result=dict(await call('admin_detail',current(request)['id'],id=id))
+    result['mother']=await asyncio.to_thread(db.one,"""SELECT m.id,m.name,m.email,m.deleted_at,
+      e.released AND e.recovery_mode='mother_switch' AS reassigning
+      FROM refund_execution e JOIN refund_mothers m ON m.id=e.mother_id WHERE e.refund_id=$1""",id)
+    return result
 
 @admin.post('/orders/{id}/resume')
 async def resume(id:str,request:Request):

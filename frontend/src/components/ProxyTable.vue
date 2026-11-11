@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import {ref,onUnmounted} from 'vue'
+import {ref,onMounted,onUnmounted,watch} from 'vue'
 import {ShieldCheck,RefreshCw,Globe2} from 'lucide-vue-next'
 import {api,date,labels,notify,regionLabel,type Row} from '../lib'
 import DataTable from './DataTable.vue'
 import Modal from './Modal.vue'
+import ProxyCooldown from './ProxyCooldown.vue'
+const cooldowns=ref<Row>({});let cooldownTimer:ReturnType<typeof setInterval>|undefined
 const props=defineProps<{rows:Row[];busy:boolean}>()
 const emit=defineEmits<{refresh:[];edit:[Row];remove:[Row]}>()
 const modal=ref(false),title=ref(''),check=ref<Row>({}),error=ref(''),working=ref(false)
@@ -12,7 +14,9 @@ const stabilityNames:Row={stable:'两次出口一致',changed:'两次出口不�
 const stageNames:Row={proxy_connect:'代理连接 / 隧道建立',tls:'TLS 握手',response:'等待目标响应',body:'读取目标响应'}
 let poll:ReturnType<typeof setTimeout>|undefined,revision=0
 const controller=new AbortController()
-onUnmounted(()=>{revision++;clearTimeout(poll);controller.abort()})
+onUnmounted(()=>{revision++;clearTimeout(poll);clearInterval(cooldownTimer);controller.abort()})
+watch(()=>props.rows,rows=>{cooldowns.value=Object.fromEntries(rows.map(r=>[r.id,{cooldown_until:r.cooldown_until,proxy_failures:r.proxy_failures,probe_until:r.probe_until}]))},{immediate:true})
+onMounted(()=>{cooldownTimer=setInterval(async()=>{if(document.visibilityState!=='visible'||props.busy||working.value)return;try{const d=await api('/admin/resources','GET',undefined,{},signal());cooldowns.value=Object.fromEntries(d.items.map((r:Row)=>[r.id,{cooldown_until:r.cooldown_until,proxy_failures:r.proxy_failures,probe_until:r.probe_until}]))}catch{}},15000)})
 const signal=()=>AbortSignal.any([controller.signal,AbortSignal.timeout(12000)])
 async function setGlobal(row:Row){
  if(working.value||props.busy)return;working.value=true
@@ -37,11 +41,12 @@ function close(){modal.value=false;revision++;clearTimeout(poll)}
 function tone(s:string){return s==='pass'?'active':s==='fail'?'failed':'review'}
 </script>
 <template>
-<div class="panel proxy-table"><DataTable :rows="rows" :columns="[{key:'name',label:'代理名称 / 用途'},{key:'endpoint',label:'代理地址'},{key:'country',label:'订阅地区'},{key:'capacity',label:'占用 / 容量'},{key:'last_ip',label:'出口 IP / 地区'},{key:'quality',label:'质量评分'},{key:'openai',label:'OpenAI'},{key:'action',label:'操作'}]">
- <template #name="{row}"><b>{{row.name}}</b><small>{{({iproyal:'IPRoyal',cliproxy:'Cliproxy','1024proxy':'1024','711proxy':'711',other:'其他'} as Row)[row.vendor]||'其他'}} · {{row.ip_mode==='static'?'静态':'动态'}}<template v-if="row.ip_mode==='dynamic'"> · 会话 {{row.session_minutes}} 分钟</template></small><div class="proxy-flags"><span class="badge">{{row.failover_priority?`备用 ${row.failover_priority}`:'主用'}}</span><span v-if="row.cooldown_until && new Date(row.cooldown_until).getTime()>Date.now()" class="badge review">冷却至 {{date(row.cooldown_until)}}</span><span v-else-if="row.proxy_failures" class="badge review">{{row.probe_until && new Date(row.probe_until).getTime()>Date.now()?'恢复试用中':'等待恢复试用'}}</span><span v-if="row.is_global" class="badge active"><Globe2 :size="12"/>全局代理</span><span v-if="!row.enabled" class="badge disabled">已停用</span><span v-else-if="!row.is_global" class="muted small">已启用</span></div></template>
+<div class="panel proxy-table"><DataTable :rows="rows" :columns="[{key:'name',label:'代理名称 / 用途'},{key:'endpoint',label:'代理地址'},{key:'country',label:'订阅地区'},{key:'capacity',label:'占用 / 容量'},{key:'cooldown',label:'冷却释放时间'},{key:'last_ip',label:'出口 IP / 地区'},{key:'quality',label:'质量评分'},{key:'openai',label:'OpenAI'},{key:'action',label:'操作'}]">
+ <template #name="{row}"><b>{{row.name}}</b><small>{{({iproyal:'IPRoyal',cliproxy:'Cliproxy','1024proxy':'1024','711proxy':'711',other:'其他'} as Row)[row.vendor]||'其他'}} · {{row.ip_mode==='static'?'静态':'动态'}}<template v-if="row.ip_mode==='dynamic'"> · 会话 {{row.session_minutes}} 分钟</template></small><div class="proxy-flags"><span class="badge">{{row.failover_priority?`备用 ${row.failover_priority}`:'主用'}}</span><span v-if="row.is_global" class="badge active"><Globe2 :size="12"/>全局代理</span><span v-if="!row.enabled" class="badge disabled">已停用</span><span v-else-if="!row.is_global" class="muted small">已启用</span></div></template>
  <template #endpoint="{row}"><code class="proxy-endpoint">{{row.endpoint}}</code></template>
  <template #country="{row}">{{row.ip_mode==='dynamic'?'按订单国家自动匹配':regionLabel(row.country)}}</template>
  <template #capacity="{row}">{{row.in_use}} / {{row.capacity}}</template>
+ <template #cooldown="{row}"><ProxyCooldown :until="cooldowns[row.id]?.cooldown_until" :failures="cooldowns[row.id]?.proxy_failures" :probe-until="cooldowns[row.id]?.probe_until"/></template>
  <template #last_ip="{row}">{{row.last_ip||'—'}}<small>{{row.last_country||'未检测'}} · {{row.last_latency_ms||0}} ms</small><small>{{labels[row.last_status]||row.last_status}} · {{date(row.last_checked)}}</small></template>
  <template #quality="{row}"><button v-if="row.quality_result?.checked_at" class="text-btn proxy-score" @click="view(row,'quality')"><b>{{row.quality_result.score??'—'}}</b><span>{{row.quality_result.grade||''}}</span></button><span v-else class="muted">未测试</span><small v-if="row.quality_result?.checked_at">{{date(row.quality_result.checked_at)}}</small></template>
  <template #openai="{row}"><button v-if="row.openai_result?.checked_at" class="badge" :class="tone(row.openai_result.status)" @click="view(row,'openai')">{{statusNames[row.openai_result.status]}}</button><span v-else class="muted">未测试</span><small v-if="row.openai_result?.checked_at">{{date(row.openai_result.checked_at)}}</small></template>

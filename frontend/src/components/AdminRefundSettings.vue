@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import ProxyCooldown from "./ProxyCooldown.vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import {api as bridgeAPI,labels as statuses} from '../lib'
 async function api<T=any>(path:string,options?:{method?:string;body?:string}):Promise<T>{return bridgeAPI(path,options?.method||'GET',options?.body?JSON.parse(options.body):undefined) as Promise<T>}
 import ResourceCheckSummary from "../refund/ResourceCheckSummary.vue";
@@ -102,7 +103,10 @@ async function save(){
  }catch(e){formError.value=(e as Error).message}finally{busy.value=false}
 }
 function openOrder(id:string){window.location.hash='/admin/orders?business=refund&order_id='+id}
-onMounted(load);
+let resourceTimer:ReturnType<typeof setInterval>|undefined,resourcesDisposed=false;
+const resourceController=new AbortController();
+onMounted(()=>{void load();resourceTimer=setInterval(async()=>{if(section.value!=='proxies'||document.visibilityState!=='visible'||busy.value||modal.value)return;try{const d=await bridgeAPI("/admin/refund/settings","GET",undefined,{},AbortSignal.any([resourceController.signal,AbortSignal.timeout(12000)]));if(!resourcesDisposed&&!busy.value&&!modal.value)proxies.value=d.proxies}catch{}},15000)});
+onUnmounted(()=>{resourcesDisposed=true;clearInterval(resourceTimer);resourceController.abort()});
 </script>
 <template>
  <div class="page-heading"><div><span class="eyebrow">REFUND OPERATIONS</span><h1>代退资源与调度</h1><p>管理代退母号与独立代理，设置并行、重试和异常恢复。</p></div><button class="btn secondary" :disabled="busy" @click="load">刷新状态</button></div>
@@ -177,9 +181,9 @@ onMounted(load);
   </section>
   <section v-show="section==='proxies'" id="refund-resource-proxies" role="tabpanel" class="panel">
    <div class="section-title"><div><h2>代退代理</h2><p>连接信息加密保管，列表只展示名称与可用状态。</p></div><button class="btn primary" :disabled="busy" @click="editProxy()">录入代理</button></div>
-   <div class="table-scroll"><table><thead><tr><th>名称</th><th>适用对象</th><th>状态</th><th>配置</th><th>连接测试</th><th>操作</th></tr></thead><tbody>
-    <tr v-for="p in proxies" :key="p.id"><td>{{p.name}}</td><td>{{targetName(p)}}</td><td><span class="badge" :class="p.enabled?'green':'gray'">{{p.enabled?'启用':'停用'}}</span></td><td>{{settings.child_proxy_id===p.id?'子号主用':settings.child_proxy_backups.includes(p.id)?'子号备用 '+(settings.child_proxy_backups.indexOf(p.id)+1):'连接信息已保存'}}<small v-if="p.failure_until &amp;&amp; new Date(p.failure_until).getTime()>Date.now()" class="block form-error">故障冷却至 {{displayTime(p.failure_until)}}</small></td><td><ResourceCheckSummary :check="p.check"/></td><td><div class="execution-actions"><button class="btn secondary" :disabled="busy" @click="checkProxy(p)">测试代理</button><button class="btn secondary" :disabled="busy" @click="editProxy(p)">编辑</button><button class="btn secondary danger" :disabled="busy" @click="removing={kind:'proxies',id:p.id,name:p.name};modal='delete';formError=''">删除</button></div></td></tr>
-    <tr v-if="!proxies.length"><td colspan="6" class="empty-state">还没有网络出口配置。</td></tr>
+   <div class="table-scroll"><table><thead><tr><th>名称</th><th>适用对象</th><th>状态</th><th>配置</th><th>冷却释放时间</th><th>连接测试</th><th>操作</th></tr></thead><tbody>
+    <tr v-for="p in proxies" :key="p.id"><td>{{p.name}}</td><td>{{targetName(p)}}</td><td><span class="badge" :class="p.enabled?'green':'gray'">{{p.enabled?'启用':'停用'}}</span></td><td>{{settings.child_proxy_id===p.id?'子号主用':settings.child_proxy_backups.includes(p.id)?'子号备用 '+(settings.child_proxy_backups.indexOf(p.id)+1):'连接信息已保存'}}</td><td><ProxyCooldown :until="p.failure_until"/></td><td><ResourceCheckSummary :check="p.check"/></td><td><div class="execution-actions"><button class="btn secondary" :disabled="busy" @click="checkProxy(p)">测试代理</button><button class="btn secondary" :disabled="busy" @click="editProxy(p)">编辑</button><button class="btn secondary danger" :disabled="busy" @click="removing={kind:'proxies',id:p.id,name:p.name};modal='delete';formError=''">删除</button></div></td></tr>
+    <tr v-if="!proxies.length"><td colspan="7" class="empty-state">还没有网络出口配置。</td></tr>
    </tbody></table></div>
   </section>
  </div>

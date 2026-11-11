@@ -3,7 +3,7 @@ from unittest.mock import patch
 from concurrent.futures import ThreadPoolExecutor
 from fastapi.testclient import TestClient
 import test_registration_account as fixture
-from backend import db, admin_accounts
+from backend import db, admin_accounts, membership
 from backend.common import BusinessError, digest
 from backend.seed import DEFAULTS
 
@@ -27,7 +27,8 @@ class AccountFilterTests(unittest.TestCase):
         self.assertEqual(len(set(ids)),525);self.assertEqual(ids,sorted(ids,reverse=True))
         self.assertEqual(admin_accounts.users(q='fixture-0001')['items'][0]['email'],'account1@example.test')
         self.assertEqual(admin_accounts.users(q='ACCOUNT525@EXAMPLE.TEST')['total'],1)
-        db.execute("UPDATE users SET role='admin',status='disabled',membership_code='gold' WHERE id='fixture-0001'")
+        db.execute("UPDATE users SET role='admin',status='disabled' WHERE id='fixture-0001'")
+        with db.transaction() as q:membership.assign_membership(q,['fixture-0001'],'gold',None)
         result=admin_accounts.users(q='分页客户',role='admin',status='disabled',tier='gold')
         self.assertEqual([r['id'] for r in result['items']],['fixture-0001'])
         db.execute("UPDATE users SET deleted_at=now() WHERE id='fixture-0001'")
@@ -37,16 +38,16 @@ class AccountFilterTests(unittest.TestCase):
         db.execute("INSERT INTO products(id,name,description,fee) VALUES('plus','Plus','fixture',1000)")
         db.execute("INSERT INTO orders(id,user_id,product_id,product_name,email,status,fee,idempotency_key,request_hash) VALUES('paid','u','plus','Plus','u@example.test','succeeded',1500,'paid','fixture')")
         db.execute("INSERT INTO ledger(user_id,order_id,kind,amount,balance_after,frozen_after,reference,description) VALUES('u','paid','charge',-1500,0,0,'paid','fixture')")
-        db.execute("UPDATE users SET membership_code='gold' WHERE id='v'")
+        with db.transaction() as q:membership.assign_membership(q,['v'],'gold',None)
         db.execute("INSERT INTO user_service_prices(user_id,service,fee) VALUES('u','refund',0)")
         self.assertEqual({r['id'] for r in admin_accounts.users(tier='gold')['items']},{'u','v'})
         db.execute("UPDATE users SET membership_until=now()-interval '1 day' WHERE id='v'")
         result=admin_accounts.users(tier='gold')
         self.assertEqual([r['id'] for r in result['items']],['u']);self.assertEqual(result['items'][0]['service_prices'],{'refund':0})
         self.assertEqual(admin_accounts.users(tier='base')['items'][0]['id'],'v')
-        db.execute("UPDATE users SET membership_code='base' WHERE id='u'")
-        self.assertEqual(admin_accounts.users(tier='gold')['total'],0)
-        self.assertEqual(admin_accounts.users(tier='base')['total'],2)
+        with db.transaction() as q:membership.assign_membership(q,['u'],'base',None)
+        self.assertEqual(admin_accounts.users(tier='gold')['total'],1)
+        self.assertEqual(admin_accounts.users(tier='base')['total'],1)
 
     def test_literal_search_empty_pages_and_validation(self):
         db.execute("UPDATE users SET name='百分%_客户' WHERE id='u'")

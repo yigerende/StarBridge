@@ -11,7 +11,7 @@ from fastapi import FastAPI,Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse
 from starlette.middleware.gzip import GZipMiddleware
-from . import db,auth,membership,wallet,admin_accounts,settings,proxies,records,admin_content,renewals,subscription,subscription_cslive_go,subscription_cslive_full
+from . import db,auth,membership,wallet,admin_accounts,settings,proxies,records,admin_content,customer_finance,renewals,subscription,subscription_cslive_go,subscription_cslive_full
 from .common import *
 from .seed import seed
 from .runtime import worker_mode
@@ -175,6 +175,7 @@ app.include_router(support.router)
 app.include_router(support.customer_router)
 app.include_router(activity.router)
 app.include_router(activity.admin_router)
+app.include_router(customer_finance.router)
 
 
 @app.get('/health/live')

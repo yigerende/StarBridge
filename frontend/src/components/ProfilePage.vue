@@ -48,7 +48,7 @@ async function save(){
   </div>
   <section v-if="membership" class="panel profile-membership">
    <div class="profile-tier"><span class="profile-tier-emblem"><ShieldCheck :size="23"/><b>{{membership.current.code}}</b></span><div><span class="eyebrow">MEMBERSHIP</span><h2>{{membership.current.name}}</h2><p>{{membership.fee_override!=null?'专属服务单价 '+cash(membership.fee_override)+' 积分 / 次':'服务费减免 '+(100-membership.current.discount)+'%'}}</p></div></div>
-   <div class="profile-growth"><div><span>会员成长</span><b>{{cash(membership.spent)}} <small>积分 有效消费</small></b></div><div class="profile-growth-track" role="progressbar" aria-label="账户会员成长" :aria-valuenow="membership.progress" aria-valuemin="0" aria-valuemax="100"><i :style="{width:membership.progress+'%'}"></i></div><p v-if="membership.next">距离自动升级至 <b>{{membership.next.name}}</b>，还需 {{cash(membership.remaining)}} 积分</p><p v-else>已达到最高自动等级</p><small v-if="membership.source==='manual'">当前为运营指定等级 · 自动等级 {{membership.automatic.name}}{{membership.until?' · 有效至 '+date(membership.until):''}}</small></div>
+   <div class="profile-growth"><div><span>会员成长</span><b>{{cash(membership.spent)}} <small>积分 累计成长</small></b></div><div class="profile-growth-track" role="progressbar" aria-label="账户会员成长" :aria-valuenow="membership.progress" aria-valuemin="0" aria-valuemax="100"><i :style="{width:membership.progress+'%'}"></i></div><p v-if="membership.next">距离自动升级至 <b>{{membership.next.name}}</b>，还需 {{cash(membership.remaining)}} 积分</p><p v-else>已达到最高等级</p><small v-if="membership.growth_credit>0">已包含等级调整{{membership.until?' · 本次调整有效至 '+date(membership.until):''}}</small></div>
    <a class="profile-member-link" href="#/membership">查看权益<ArrowRight :size="16"/></a>
   </section>
   <section class="panel profile-security">

@@ -227,7 +227,7 @@ class BackendTests(LaunchAuditTests,SubscriptionRecoveryTests,SubscriptionPaymen
             db.execute('INSERT INTO ledger(user_id,kind,amount,balance_after,frozen_after,reference,description,order_id) VALUES($1,$2,$3,0,0,$4,\'测试\',$5)',id,kind,amount,ref,order)
         m=self.ok(user.get('/api/membership'))['membership'];self.assertEqual(m['spent'],250000);self.assertEqual(m['current']['code'],'L2')
         self.ok(self.client.put('/api/admin/users/'+id+'/membership',json={'code':'L9','until':None,'reason':'合作测试'}))
-        m=self.ok(user.get('/api/membership'))['membership'];self.assertEqual(m['current']['code'],'L9');self.assertEqual(m['automatic']['code'],'L2')
+        m=self.ok(user.get('/api/membership'))['membership'];self.assertEqual(m['current']['code'],'L9');self.assertEqual(m['automatic']['code'],'L9')
         bad={'items':DEFAULTS['tiers']['items'][:-1]}
         self.assertEqual(self.client.put('/api/admin/settings/tiers',json=bad).status_code,400)
         self.ok(self.client.put('/api/admin/users/'+id+'/membership',json={'code':'','until':None,'reason':'恢复自动'}))
@@ -351,7 +351,8 @@ class BackendTests(LaunchAuditTests,SubscriptionRecoveryTests,SubscriptionPaymen
             self.assertEqual((standard['fee'],standard['standard']),(101,101))
             self.assertEqual(standard['membership']['current']['code'],'L1')
             self.assertFalse(standard['payment_connected'])
-            db.execute("UPDATE users SET membership_code='L3' WHERE id=$1",id)
+            from backend.membership import assign_membership
+            with db.transaction() as q:assign_membership(q,[id],'L3',None)
             discounted=self.ok(user.get(path))
             self.assertEqual(discounted['fee'],91)
             self.assertEqual(discounted['membership']['current']['discount'],90)

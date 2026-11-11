@@ -135,7 +135,8 @@ class RefundTests(unittest.TestCase):
                 self.assertNotIn('totp_secret',timeline.text);self.assertNotIn('not-real',timeline.text)
                 # A real membership discount is used by both quote and order reservation.
                 tier=next(t for t in DEFAULTS['tiers']['items'] if t['discount']<100)
-                db.execute("UPDATE users SET membership_code=$1 WHERE id='u'",tier['code'])
+                from backend.membership import assign_membership
+                with db.transaction() as q:assign_membership(q,['u'],tier['code'],None)
                 db.execute("DELETE FROM user_service_prices WHERE user_id='u' AND service='refund'")
                 member_price=(await c.get('/api/v1/refund/quote',headers=key)).json()
                 expected=(10000*tier['discount']+50)//100
