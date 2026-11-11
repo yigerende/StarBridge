@@ -7,30 +7,32 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"llm-refund/internal/refundprovider"
 )
 
 type RefundJob struct {
-	VerificationOnly  bool                    `json:"verification_only"`
-	TerminalCode      string                  `json:"terminal_code,omitempty"`
-	FallbackPhase     string                  `json:"fallback_phase"`
-	DiagnosticContext RefundDiagnosticContext `json:"-"`
-	MotherFingerprint string                  `json:"-"`
-	MotherAttemptKey  string                  `json:"-"`
-	RecoveryMode      string                  `json:"recovery_mode"`
-	PersonalBaseline  *PersonalSnapshot       `json:"personal_baseline"`
-	ID                string                  `json:"id"`
-	UserID            string                  `json:"-"`
-	LeaseToken        string                  `json:"-"`
-	Step              string                  `json:"step"`
-	ChildUserID       string                  `json:"child_user_id"`
-	Account           refundprovider.Account  `json:"account"`
-	Mother            RefundMother            `json:"mother"`
-	ChildProxy        string                  `json:"child_proxy"`
-	MotherProxy       string                  `json:"mother_proxy"`
-	Settings          RefundSettings          `json:"settings"`
+	ProxyAttemptStarted time.Time               `json:"-"`
+	VerificationOnly    bool                    `json:"verification_only"`
+	TerminalCode        string                  `json:"terminal_code,omitempty"`
+	FallbackPhase       string                  `json:"fallback_phase"`
+	DiagnosticContext   RefundDiagnosticContext `json:"-"`
+	MotherFingerprint   string                  `json:"-"`
+	MotherAttemptKey    string                  `json:"-"`
+	RecoveryMode        string                  `json:"recovery_mode"`
+	PersonalBaseline    *PersonalSnapshot       `json:"personal_baseline"`
+	ID                  string                  `json:"id"`
+	UserID              string                  `json:"-"`
+	LeaseToken          string                  `json:"-"`
+	Step                string                  `json:"step"`
+	ChildUserID         string                  `json:"child_user_id"`
+	Account             refundprovider.Account  `json:"account"`
+	Mother              RefundMother            `json:"mother"`
+	ChildProxy          string                  `json:"child_proxy"`
+	MotherProxy         string                  `json:"mother_proxy"`
+	Settings            RefundSettings          `json:"settings"`
 }
 
 // ClaimRefund serializes allocation in the database, not in process memory.
@@ -45,7 +47,7 @@ func (s *Store) ClaimRefund(ctx context.Context) (*RefundJob, error) {
 		return nil, err
 	}
 	var cfg RefundSettings
-	if err = tx.QueryRow(ctx, "SELECT enabled,max_parallel,login_attempts,retry_seconds,COALESCE(child_proxy_id,''),mother_interval_seconds,recovery,mother_failover FROM refund_settings WHERE id").Scan(&cfg.Enabled, &cfg.MaxParallel, &cfg.LoginAttempts, &cfg.RetrySeconds, &cfg.ChildProxyID, &cfg.MotherIntervalSeconds, &cfg.Recovery, &cfg.MotherFailover); err != nil {
+	if err = tx.QueryRow(ctx, "SELECT enabled,max_parallel,login_attempts,retry_seconds,COALESCE(child_proxy_id,''),mother_interval_seconds,recovery,mother_failover,child_proxy_backups,child_proxy_cooldown_seconds FROM refund_settings WHERE id").Scan(&cfg.Enabled, &cfg.MaxParallel, &cfg.LoginAttempts, &cfg.RetrySeconds, &cfg.ChildProxyID, &cfg.MotherIntervalSeconds, &cfg.Recovery, &cfg.MotherFailover, &cfg.ChildProxyBackups, &cfg.ChildProxyCooldownSeconds); err != nil {
 		return nil, err
 	}
 	recoveryEnabled := cfg.Recovery != nil && cfg.Recovery.Enabled
@@ -65,8 +67,11 @@ func (s *Store) ClaimRefund(ctx context.Context) (*RefundJob, error) {
  WHERE NOT e.released AND (r.status IN ('processing','verifying') OR (r.status='attention' AND $2 AND e.recovery_started_at IS NULL AND e.step IN ('submitting','accepted','removing')))
  AND (e.next_attempt_at IS NULL OR e.next_attempt_at<=now()) AND (e.recovery_mode='' OR $2 OR (e.recovery_mode='cleanup' AND e.terminal_code='password_verification_failed')) AND ((e.recovery_mode<>'fallback' AND e.fallback_phase<>'reinvite') OR $3)
  AND (e.lease_until IS NULL OR e.lease_until<now()) AND m.enabled AND p.enabled
- AND (e.step IN ('accepted','removing') OR e.recovery_mode='cleanup' OR EXISTS(SELECT 1 FROM refund_proxies cp WHERE cp.id=COALESCE(e.child_proxy_id,NULLIF($1,'')) AND cp.enabled))
- ORDER BY COALESCE(e.next_attempt_at,e.updated_at),e.refund_id LIMIT 1`, cfg.ChildProxyID, recoveryEnabled, fallbackEnabled).Scan(&job.ID, &job.UserID, &job.Mother.ID, &job.Step, &job.ChildUserID, &oldToken, &childProxyID, &job.RecoveryMode, &job.PersonalBaseline, &previousStatus, &job.FallbackPhase, &job.TerminalCode, &job.VerificationOnly)
+ AND (e.step IN ('accepted','removing') OR e.recovery_mode='cleanup' OR e.child_proxy_switch_pending OR EXISTS(SELECT 1 FROM refund_proxies cp WHERE cp.id=COALESCE(e.child_proxy_id,NULLIF($1,'')) AND cp.enabled))
+ AND (NOT e.child_proxy_switch_pending OR e.step IN ('accepted','removing') OR e.recovery_mode='cleanup'
+   OR EXISTS(SELECT 1 FROM refund_proxies cp WHERE cp.id=ANY($4::text[]) AND cp.enabled AND cp.deleted_at IS NULL
+     AND cp.target IN ('both','child') AND (cp.failure_until IS NULL OR cp.failure_until<=now()) AND (cp.probe_until IS NULL OR cp.probe_until<=now())))
+ ORDER BY COALESCE(e.next_attempt_at,e.updated_at),e.refund_id LIMIT 1`, cfg.ChildProxyID, recoveryEnabled, fallbackEnabled, childCandidates(cfg)).Scan(&job.ID, &job.UserID, &job.Mother.ID, &job.Step, &job.ChildUserID, &oldToken, &childProxyID, &job.RecoveryMode, &job.PersonalBaseline, &previousStatus, &job.FallbackPhase, &job.TerminalCode, &job.VerificationOnly)
 	existing := err == nil
 	if !existing && err == pgx.ErrNoRows && maintenanceWaiting() {
 		return nil, nil
@@ -119,11 +124,19 @@ func (s *Store) ClaimRefund(ctx context.Context) (*RefundJob, error) {
 		// New and safely reassigned requests share one FIFO queue. A waiting switch
 		// consumes no worker/mother and retains its original child proxy and fee.
 		failoverEnabled := cfg.MotherFailover != nil && cfg.MotherFailover.Enabled
+		primary, selectErr := selectChildProxy(ctx, tx, cfg, "")
+		if selectErr != nil {
+			return nil, selectErr
+		}
+		if primary == "" {
+			return nil, nil
+		}
+
 		err = tx.QueryRow(ctx, `SELECT r.id,r.user_id,m.id,COALESCE(e.child_proxy_id,NULLIF($3,''),'')
  FROM refunds r JOIN users u ON u.id=r.user_id LEFT JOIN refund_execution e ON e.refund_id=r.id
  JOIN LATERAL (
   SELECT m.id FROM refund_mothers m JOIN refund_proxies p ON p.id=m.proxy_id
-  WHERE m.deleted_at IS NULL AND p.deleted_at IS NULL AND m.enabled AND p.enabled AND (m.token_expires_at IS NULL OR m.token_expires_at>now())
+  WHERE m.deleted_at IS NULL AND p.deleted_at IS NULL AND m.enabled AND p.enabled AND p.target IN ('both','mother') AND (m.token_expires_at IS NULL OR m.token_expires_at>now())
   AND (m.auth_failed_fingerprint IS NULL OR m.auth_failed_fingerprint<>md5(m.secret))
   AND NOT ((m.id||':'||md5(m.secret)||':'||md5(p.secret))=ANY(COALESCE(e.failed_mothers,'{}'::text[])))
   AND NOT EXISTS(SELECT 1 FROM refund_execution busy JOIN refund_mothers previous ON previous.id=busy.mother_id WHERE previous.team_id=m.team_id AND NOT busy.released AND busy.mother_released_at IS NULL)
@@ -132,10 +145,10 @@ func (s *Store) ClaimRefund(ctx context.Context) (*RefundJob, error) {
  ) m ON true
  WHERE r.status='queued' AND u.status='active' AND u.deleted_at IS NULL
  AND (e.refund_id IS NULL OR ($2 AND e.released AND e.step='assigned' AND e.recovery_mode='mother_switch' AND e.next_attempt_at<=now()))
- AND EXISTS(SELECT 1 FROM refund_proxies cp WHERE cp.id=COALESCE(e.child_proxy_id,NULLIF($3,'')) AND cp.enabled AND (cp.deleted_at IS NULL OR e.child_proxy_id=cp.id))
+ AND EXISTS(SELECT 1 FROM refund_proxies cp WHERE cp.id=COALESCE(e.child_proxy_id,NULLIF($3,'')) AND cp.enabled AND ((cp.deleted_at IS NULL AND cp.target IN ('both','child')) OR e.child_proxy_id=cp.id))
  AND NOT EXISTS(SELECT 1 FROM refund_execution other JOIN refunds old ON old.id=other.refund_id
   WHERE lower(old.email)=lower(r.email) AND (NOT other.released OR old.status='succeeded'))
- ORDER BY r.created_at,r.id LIMIT 1`, cfg.MotherIntervalSeconds, failoverEnabled, cfg.ChildProxyID).Scan(&job.ID, &job.UserID, &job.Mother.ID, &childProxyID)
+ ORDER BY r.created_at,r.id LIMIT 1`, cfg.MotherIntervalSeconds, failoverEnabled, primary).Scan(&job.ID, &job.UserID, &job.Mother.ID, &childProxyID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
 		}
@@ -158,6 +171,26 @@ func (s *Store) ClaimRefund(ctx context.Context) (*RefundJob, error) {
 	if childProxyID == "" {
 		childProxyID = cfg.ChildProxyID
 	}
+	if existing && job.Step != "accepted" && job.Step != "removing" && job.RecoveryMode != "cleanup" {
+		var pending bool
+		if err = tx.QueryRow(ctx, "SELECT child_proxy_switch_pending FROM refund_execution WHERE refund_id=$1", job.ID).Scan(&pending); err != nil {
+			return nil, err
+		}
+		if pending {
+			next, e := selectChildProxy(ctx, tx, cfg, childProxyID)
+			if e != nil {
+				return nil, e
+			}
+			if next == "" {
+				return nil, nil
+			}
+			if err = setChildProxy(ctx, tx, job, childProxyID, next); err != nil {
+				return nil, err
+			}
+			childProxyID = next
+		}
+	}
+	job.ProxyAttemptStarted = time.Now().UTC()
 	var childProxySecret []byte
 	if job.Step != "accepted" && job.Step != "removing" && job.RecoveryMode != "cleanup" {
 		err = tx.QueryRow(ctx, "SELECT secret FROM refund_proxies WHERE id=$1 AND enabled", childProxyID).Scan(&childProxySecret)
@@ -189,6 +222,11 @@ func (s *Store) ClaimRefund(ctx context.Context) (*RefundJob, error) {
 	if err = s.openSecret(job.ID, accountSecret, &job.Account); err != nil {
 		return nil, err
 	}
+	if job.ChildProxy != "" {
+		if _, err = tx.Exec(ctx, "UPDATE refund_proxies SET probe_until=now()+interval '90 seconds' WHERE id=$1 AND failure_at IS NOT NULL", childProxyID); err != nil {
+			return nil, err
+		}
+	}
 	job.DiagnosticContext.Step, job.DiagnosticContext.Mode = job.Step, job.RecoveryMode
 	job.DiagnosticContext.MotherID, job.DiagnosticContext.MotherProxyID, job.DiagnosticContext.ChildProxyID = job.Mother.ID, job.Mother.ProxyID, childProxyID
 	if err = tx.Commit(ctx); err != nil {
@@ -200,6 +238,9 @@ func (s *Store) RenewRefundLease(ctx context.Context, j *RefundJob) error {
 	tag, err := s.Pool.Exec(ctx, "UPDATE refund_execution SET lease_until=now()+interval '90 seconds' WHERE refund_id=$1 AND lease_token=$2 AND lease_until>now() AND NOT released", j.ID, j.LeaseToken)
 	if err == nil && tag.RowsAffected() != 1 {
 		return ErrState
+	}
+	if err == nil {
+		_, err = s.Pool.Exec(ctx, "UPDATE refund_proxies SET probe_until=now()+interval '90 seconds' WHERE id=$1 AND probe_until IS NOT NULL", j.DiagnosticContext.ChildProxyID)
 	}
 	return err
 }
@@ -376,6 +417,9 @@ func (s *Store) RefundCheckpoint(ctx context.Context, j *RefundJob, c Checkpoint
 		next = "login"
 		message = "正在使用密码和 2FA 登录受邀团队。"
 	case "merge_v2_ready":
+		if err = clearChildProxyFailure(ctx, tx, j); err != nil {
+			return err
+		}
 		if (step != "login" && step != "ready") || c.TeamID != j.Mother.TeamID || strings.TrimSpace(c.UserID) == "" || len(c.UserID) > 150 {
 			return ErrState
 		}
@@ -400,6 +444,9 @@ func (s *Store) RefundCheckpoint(ctx context.Context, j *RefundJob, c Checkpoint
 		next = "login"
 		message = "停用请求未受理，保留账号并等待重新处理。"
 	case "merge_v2_accepted":
+		if err = clearChildProxyFailure(ctx, tx, j); err != nil {
+			return err
+		}
 		if step != "submitting" && step != "accepted" {
 			return ErrState
 		}

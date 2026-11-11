@@ -41,6 +41,36 @@ class RefundTests(unittest.TestCase):
     def test_http_wallet_permissions_idempotency_and_parallel_reads(self):
         asyncio.run(self.scenario())
 
+    def test_proxy_scope_and_backup_settings_through_private_bridge(self):
+        async def scenario():
+            await refunds.start()
+            try:
+                async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://testserver') as c:
+                    admin={'Cookie':'xupay_session=test-session-a'}
+                    user={'Cookie':'xupay_session=test-session-u'}
+                    ids=[]
+                    for target in ('both','child','mother'):
+                        data={'name':'Fixture '+target,'url':'http://fixture.invalid:8080','target':target,'enabled':True}
+                        self.assertEqual((await c.post('/api/admin/refund/proxies',headers=user,json=data)).status_code,403)
+                        response=await c.post('/api/admin/refund/proxies',headers=admin,json=data)
+                        self.assertEqual(response.status_code,200,response.text)
+                    info=(await c.get('/api/admin/refund/settings',headers=admin)).json()
+                    by={p['target']:p['id'] for p in info['proxies']}
+                    cfg=info['settings'];cfg.update(child_proxy_id=by['both'],child_proxy_backups=[by['child']],child_proxy_cooldown_seconds=180)
+                    self.assertEqual((await c.put('/api/admin/refund/settings',headers=user,json={'settings':cfg})).status_code,403)
+                    response=await c.put('/api/admin/refund/settings',headers=admin,json={'settings':cfg})
+                    self.assertEqual(response.status_code,200,response.text)
+                    saved=(await c.get('/api/admin/refund/settings',headers=admin)).json()
+                    self.assertEqual(saved['settings']['child_proxy_backups'],[by['child']])
+                    self.assertEqual(saved['settings']['child_proxy_cooldown_seconds'],180)
+                    self.assertNotIn('fixture.invalid',json.dumps(saved))
+                    cfg['child_proxy_backups']=[by['mother']]
+                    self.assertEqual((await c.put('/api/admin/refund/settings',headers=admin,json={'settings':cfg})).status_code,400)
+                    self.assertEqual((await c.delete('/api/admin/refund/proxies/'+by['child'],headers=admin)).status_code,200)
+                    self.assertEqual((await c.get('/api/admin/refund/settings',headers=admin)).json()['settings']['child_proxy_backups'],[])
+            finally:await refunds.stop()
+        asyncio.run(scenario())
+
     async def scenario(self):
         await refunds.start()
         try:

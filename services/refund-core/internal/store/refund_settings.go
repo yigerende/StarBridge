@@ -15,22 +15,27 @@ import (
 )
 
 type RefundSettings struct {
-	MotherFailover        *MotherFailoverSettings `json:"mother_failover"`
-	Recovery              *RefundRecoverySettings `json:"recovery"`
-	ChildProxyID          string                  `json:"child_proxy_id"`
-	Enabled               bool                    `json:"enabled"`
-	MaxParallel           int                     `json:"max_parallel"`
-	LoginAttempts         int                     `json:"max_attempts"`
-	RetrySeconds          int                     `json:"retry_seconds"`
-	MotherIntervalSeconds int                     `json:"mother_interval_seconds"`
+	ChildProxyBackups         []string                `json:"child_proxy_backups"`
+	ChildProxyCooldownSeconds int                     `json:"child_proxy_cooldown_seconds"`
+	MotherFailover            *MotherFailoverSettings `json:"mother_failover"`
+	Recovery                  *RefundRecoverySettings `json:"recovery"`
+	ChildProxyID              string                  `json:"child_proxy_id"`
+	Enabled                   bool                    `json:"enabled"`
+	MaxParallel               int                     `json:"max_parallel"`
+	LoginAttempts             int                     `json:"max_attempts"`
+	RetrySeconds              int                     `json:"retry_seconds"`
+	MotherIntervalSeconds     int                     `json:"mother_interval_seconds"`
 }
 type RefundProxy struct {
-	Check     *ResourceCheck `json:"check,omitempty"`
-	ID        string         `json:"id"`
-	Name      string         `json:"name"`
-	Enabled   bool           `json:"enabled"`
-	HasSecret bool           `json:"has_secret"`
-	URL       string         `json:"url,omitempty"`
+	Target       string         `json:"target"`
+	FailureUntil *time.Time     `json:"failure_until"`
+	FailureCode  string         `json:"failure_code"`
+	Check        *ResourceCheck `json:"check,omitempty"`
+	ID           string         `json:"id"`
+	Name         string         `json:"name"`
+	Enabled      bool           `json:"enabled"`
+	HasSecret    bool           `json:"has_secret"`
+	URL          string         `json:"url,omitempty"`
 }
 type RefundMother struct {
 	AuthBlocked    bool           `json:"auth_blocked"`
@@ -78,7 +83,7 @@ func (s *Store) openSecret(id string, data []byte, value any) error {
 }
 func (s *Store) RefundSettings(ctx context.Context) (RefundSettings, error) {
 	var v RefundSettings
-	err := s.Pool.QueryRow(ctx, "SELECT enabled,max_parallel,login_attempts,retry_seconds,COALESCE(child_proxy_id,''),mother_interval_seconds,recovery,mother_failover FROM refund_settings WHERE id").Scan(&v.Enabled, &v.MaxParallel, &v.LoginAttempts, &v.RetrySeconds, &v.ChildProxyID, &v.MotherIntervalSeconds, &v.Recovery, &v.MotherFailover)
+	err := s.Pool.QueryRow(ctx, "SELECT enabled,max_parallel,login_attempts,retry_seconds,COALESCE(child_proxy_id,''),mother_interval_seconds,recovery,mother_failover,child_proxy_backups,child_proxy_cooldown_seconds FROM refund_settings WHERE id").Scan(&v.Enabled, &v.MaxParallel, &v.LoginAttempts, &v.RetrySeconds, &v.ChildProxyID, &v.MotherIntervalSeconds, &v.Recovery, &v.MotherFailover, &v.ChildProxyBackups, &v.ChildProxyCooldownSeconds)
 	return v, err
 }
 func (s *Store) ProviderReady(ctx context.Context) bool {
@@ -86,12 +91,29 @@ func (s *Store) ProviderReady(ctx context.Context) bool {
 		return false
 	}
 	var ready bool
-	_ = s.Pool.QueryRow(ctx, `SELECT enabled AND EXISTS(SELECT 1 FROM refund_proxies p WHERE p.id=child_proxy_id AND p.enabled AND p.deleted_at IS NULL) AND EXISTS(SELECT 1 FROM refund_mothers m JOIN refund_proxies p ON p.id=m.proxy_id WHERE m.deleted_at IS NULL AND p.deleted_at IS NULL AND m.enabled AND p.enabled AND (m.token_expires_at IS NULL OR m.token_expires_at>now()) AND (m.auth_failed_fingerprint IS NULL OR m.auth_failed_fingerprint<>md5(m.secret))) FROM refund_settings WHERE id`).Scan(&ready)
+	_ = s.Pool.QueryRow(ctx, `SELECT enabled AND EXISTS(SELECT 1 FROM refund_proxies p WHERE p.id=ANY(array_prepend(child_proxy_id,child_proxy_backups)) AND p.enabled AND p.deleted_at IS NULL AND p.target IN ('both','child')) AND EXISTS(SELECT 1 FROM refund_mothers m JOIN refund_proxies p ON p.id=m.proxy_id WHERE m.deleted_at IS NULL AND p.deleted_at IS NULL AND m.enabled AND p.enabled AND p.target IN ('both','mother') AND (m.token_expires_at IS NULL OR m.token_expires_at>now()) AND (m.auth_failed_fingerprint IS NULL OR m.auth_failed_fingerprint<>md5(m.secret))) FROM refund_settings WHERE id`).Scan(&ready)
 	return ready
 }
 func (s *Store) SetRefundRuntimeAvailable(v bool) { s.runtimeReady.Store(v) }
 func (s *Store) RefundRuntimeAvailable() bool     { return s.runtimeReady.Load() }
 func (s *Store) SaveRefundSettings(ctx context.Context, actor string, v RefundSettings) error {
+	if v.ChildProxyCooldownSeconds == 0 {
+		v.ChildProxyCooldownSeconds = 300
+	}
+	if v.ChildProxyCooldownSeconds < 30 || v.ChildProxyCooldownSeconds > 3600 || len(v.ChildProxyBackups) > 20 {
+		return invalid("代理冷却须为30～3600秒，备用代理最多20条")
+	}
+	if v.ChildProxyBackups == nil {
+		v.ChildProxyBackups = []string{}
+	}
+	seen := map[string]bool{v.ChildProxyID: true}
+	for _, id := range v.ChildProxyBackups {
+		if id == "" || seen[id] {
+			return invalid("主用与备用代理不能重复")
+		}
+		seen[id] = true
+	}
+
 	if v.MotherFailover != nil {
 		if err := v.MotherFailover.Validate(); err != nil {
 			return err
@@ -131,10 +153,19 @@ func (s *Store) SaveRefundSettings(ctx context.Context, actor string, v RefundSe
 			return err
 		}
 	}
+	for _, id := range v.ChildProxyBackups {
+		var ok bool
+		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM refund_proxies WHERE id=$1 AND deleted_at IS NULL AND target IN ('both','child'))", id).Scan(&ok); err != nil {
+			return err
+		}
+		if !ok {
+			return invalid("备用代理不存在或不适用于子号")
+		}
+	}
 	v.ChildProxyID = strings.TrimSpace(v.ChildProxyID)
 	if v.ChildProxyID != "" {
 		var available bool
-		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM refund_proxies WHERE id=$1 AND deleted_at IS NULL AND (enabled OR NOT $2))", v.ChildProxyID, v.Enabled).Scan(&available); err != nil {
+		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM refund_proxies WHERE id=$1 AND deleted_at IS NULL AND target IN ('both','child') AND (enabled OR NOT $2))", v.ChildProxyID, v.Enabled).Scan(&available); err != nil {
 			return err
 		}
 		if !available {
@@ -146,14 +177,14 @@ func (s *Store) SaveRefundSettings(ctx context.Context, actor string, v RefundSe
 			return invalid("请先配置子号全局代理")
 		}
 		var ok bool
-		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM refund_mothers m JOIN refund_proxies p ON p.id=m.proxy_id WHERE m.deleted_at IS NULL AND p.deleted_at IS NULL AND m.enabled AND p.enabled)`).Scan(&ok); err != nil {
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM refund_mothers m JOIN refund_proxies p ON p.id=m.proxy_id WHERE m.deleted_at IS NULL AND p.deleted_at IS NULL AND m.enabled AND p.enabled AND p.target IN ('both','mother'))`).Scan(&ok); err != nil {
 			return err
 		}
 		if !ok {
 			return invalid("请先配置并启用母号与代理")
 		}
 	}
-	_, err = tx.Exec(ctx, "UPDATE refund_settings SET enabled=$1,max_parallel=$2,login_attempts=$3,retry_seconds=$4,child_proxy_id=NULLIF($5,''),mother_interval_seconds=$6,recovery=COALESCE($7::jsonb,recovery),mother_failover=COALESCE($8::jsonb,mother_failover),updated_at=now() WHERE id", v.Enabled, v.MaxParallel, v.LoginAttempts, v.RetrySeconds, v.ChildProxyID, v.MotherIntervalSeconds, v.Recovery, v.MotherFailover)
+	_, err = tx.Exec(ctx, "UPDATE refund_settings SET enabled=$1,max_parallel=$2,login_attempts=$3,retry_seconds=$4,child_proxy_id=NULLIF($5,''),mother_interval_seconds=$6,recovery=COALESCE($7::jsonb,recovery),mother_failover=COALESCE($8::jsonb,mother_failover),child_proxy_backups=$9,child_proxy_cooldown_seconds=$10,updated_at=now() WHERE id", v.Enabled, v.MaxParallel, v.LoginAttempts, v.RetrySeconds, v.ChildProxyID, v.MotherIntervalSeconds, v.Recovery, v.MotherFailover, v.ChildProxyBackups, v.ChildProxyCooldownSeconds)
 	if err == nil {
 		err = audit(ctx, tx, actor, "refund.settings", "settings", v)
 	}
@@ -163,7 +194,7 @@ func (s *Store) SaveRefundSettings(ctx context.Context, actor string, v RefundSe
 	return tx.Commit(ctx)
 }
 func (s *Store) RefundProxies(ctx context.Context) ([]RefundProxy, error) {
-	rows, err := s.Pool.Query(ctx, "SELECT id,name,enabled,check_json FROM refund_proxies WHERE deleted_at IS NULL ORDER BY name,id")
+	rows, err := s.Pool.Query(ctx, "SELECT id,name,enabled,check_json,target,failure_until,failure_code FROM refund_proxies WHERE deleted_at IS NULL ORDER BY name,id")
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +203,7 @@ func (s *Store) RefundProxies(ctx context.Context) ([]RefundProxy, error) {
 	for rows.Next() {
 		var v RefundProxy
 		v.HasSecret = true
-		if err = rows.Scan(&v.ID, &v.Name, &v.Enabled, &v.Check); err != nil {
+		if err = rows.Scan(&v.ID, &v.Name, &v.Enabled, &v.Check, &v.Target, &v.FailureUntil, &v.FailureCode); err != nil {
 			return nil, err
 		}
 		out = append(out, v)
@@ -209,6 +240,13 @@ func settingError(err error) error {
 	return err
 }
 func (s *Store) SaveRefundProxy(ctx context.Context, actor string, v RefundProxy) (string, error) {
+	if v.Target == "" {
+		v.Target = "both"
+	}
+	if !oneOf(v.Target, "both", "mother", "child") {
+		return "", invalid("请选择代理适用对象")
+	}
+
 	v.Name = strings.TrimSpace(v.Name)
 	if v.Name == "" || len(v.Name) > 100 {
 		return "", invalid("请填写代理名称（最多100字节）")
@@ -256,15 +294,18 @@ func (s *Store) SaveRefundProxy(ctx context.Context, actor string, v RefundProxy
 		if e != nil {
 			return "", e
 		}
-		_, err = tx.Exec(ctx, `INSERT INTO refund_proxies(id,name,secret,enabled) VALUES($1,$2,$3,$4) ON CONFLICT(id) DO UPDATE SET name=excluded.name,secret=excluded.secret,enabled=excluded.enabled,check_json=NULL,updated_at=now()`, v.ID, v.Name, secret, v.Enabled)
+		_, err = tx.Exec(ctx, `INSERT INTO refund_proxies(id,name,secret,enabled,target) VALUES($1,$2,$3,$4,$5) ON CONFLICT(id) DO UPDATE SET name=excluded.name,secret=excluded.secret,enabled=excluded.enabled,target=excluded.target,failure_until=NULL,failure_at=NULL,failure_code='',probe_until=NULL,check_json=NULL,updated_at=now()`, v.ID, v.Name, secret, v.Enabled, v.Target)
 	} else {
-		_, err = tx.Exec(ctx, "UPDATE refund_proxies SET name=$2,enabled=$3,check_json=NULL,updated_at=now() WHERE id=$1", v.ID, v.Name, v.Enabled)
+		_, err = tx.Exec(ctx, "UPDATE refund_proxies SET name=$2,enabled=$3,target=$4,check_json=NULL,updated_at=now() WHERE id=$1", v.ID, v.Name, v.Enabled, v.Target)
+	}
+	if err == nil && v.Target == "mother" {
+		_, err = tx.Exec(ctx, "UPDATE refund_settings SET child_proxy_id=CASE WHEN child_proxy_id=$1 THEN NULL ELSE child_proxy_id END,child_proxy_backups=array_remove(child_proxy_backups,$1) WHERE id", v.ID)
 	}
 	if err == nil {
 		_, err = tx.Exec(ctx, "UPDATE refund_mothers SET check_json=NULL WHERE proxy_id=$1", v.ID)
 	}
 	if err == nil {
-		err = audit(ctx, tx, actor, "refund.proxy.save", v.ID, map[string]any{"name": v.Name, "enabled": v.Enabled, "secret_changed": v.URL != ""})
+		err = audit(ctx, tx, actor, "refund.proxy.save", v.ID, map[string]any{"name": v.Name, "enabled": v.Enabled, "secret_changed": v.URL != "", "target": v.Target})
 	}
 	if err != nil {
 		return "", settingError(err)
@@ -301,7 +342,7 @@ func (s *Store) SaveRefundMother(ctx context.Context, actor string, v RefundMoth
 		return "", err
 	}
 	var proxyExists bool
-	if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM refund_proxies WHERE id=$1 AND deleted_at IS NULL)", v.ProxyID).Scan(&proxyExists); err != nil {
+	if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM refund_proxies WHERE id=$1 AND deleted_at IS NULL AND target IN ('both','mother'))", v.ProxyID).Scan(&proxyExists); err != nil {
 		return "", err
 	}
 	if !proxyExists {
@@ -386,7 +427,7 @@ func (s *Store) DeleteRefundResource(ctx context.Context, actor, kind, id string
 		return ErrNotFound
 	}
 	if kind == "proxy" {
-		if _, err = tx.Exec(ctx, "UPDATE refund_settings SET child_proxy_id=NULL,updated_at=now() WHERE child_proxy_id=$1", id); err != nil {
+		if _, err = tx.Exec(ctx, "UPDATE refund_settings SET child_proxy_id=CASE WHEN child_proxy_id=$1 THEN NULL ELSE child_proxy_id END,child_proxy_backups=array_remove(child_proxy_backups,$1),updated_at=now() WHERE child_proxy_id=$1 OR $1=ANY(child_proxy_backups)", id); err != nil {
 			return err
 		}
 		if _, err = tx.Exec(ctx, "UPDATE refund_mothers SET check_json=NULL WHERE proxy_id=$1", id); err != nil {

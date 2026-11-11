@@ -120,11 +120,16 @@ def _acquire_order_proxy(order_id: str, country: str, duration_sec: int) -> str:
             if existing['source_mode'] != country_pool.mode(q):
                 raise country_pool.PoolError('proxy_mode_changed')
             if existing['expires_at'] > now():
+                from .national_proxies import ensure_order
+                ensure_order(order_id, q)
                 return decrypt(existing['endpoint_enc'])
             raise RuntimeError('proxy_session_expired')
 
         if country_pool.mode(q) == 'country_pool':
             return country_pool.acquire_order(q, order_id, country)
+        if country_pool.mode(q) == 'national_pool':
+            from .national_proxies import acquire_order
+            return acquire_order(q, order_id, country)
         proxy_cfg = config('proxy', q)
         default_id = proxy_cfg.get('default_id', '')
         row = q.one(

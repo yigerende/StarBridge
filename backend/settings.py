@@ -113,7 +113,7 @@ def validate_config(key, v):
                     and supported-{'promax'} <= set(v['checkout_types']) <= supported
                     and all(t in ('hosted','oaics') for t in v['checkout_types'].values()),'请为每个套餐选择链接类型')
     if key=='proxy':
-        require(v.get('mode','manual') in ('manual','country_pool'),'代理模式无效')
+        require(v.get('mode','manual') in ('manual','country_pool','national_pool'),'代理模式无效')
         require(v['match_country'] is True,'代理必须按订阅地区自动匹配')
         for name in ('default_id','global_id'):
             if name in v: require(0<=length(v[name])<=64,'代理标识无效')

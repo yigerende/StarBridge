@@ -205,6 +205,9 @@ def run_task(job,client_factory=proxy_client):
                 q.execute('SELECT pg_advisory_xact_lock(1886003)')
                 if country_pool.mode(q)=='country_pool':
                     endpoint=country_pool.acquire_renewal(q,id)
+                elif country_pool.mode(q)=='national_pool':
+                    from .national_proxies import acquire_renewal
+                    endpoint=acquire_renewal(q,id)
                 else:
                     if q.scalar('SELECT task_id FROM renewal_proxy_sessions WHERE task_id=$1',id):
                         raise country_pool.PoolError('proxy_mode_changed')

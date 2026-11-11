@@ -51,8 +51,8 @@
     {
       "path": "internal/store/mother_probe.go",
       "source_sha256": "579909cb4792057322fc14f7c804e7d473bca9abc03c5b25e02123830fe47ff2",
-      "sha256": "264e6e54010c62cc9b35340e8a9a04f831b371999517f1c2d0a4b055eb0a1a89",
-      "adaptation": "Require a current proxy for administrator mother checks; assigned execution credentials remain unchanged."
+      "sha256": "05795b6c648678ad1a6d84981a8ce097d3127296aadfdadadb6a71198ff4ca66",
+      "adaptation": "Validate mother eligibility when selecting a proxy; retain private assigned credentials."
     },
     {
       "path": "internal/store/proxy_url.go",
@@ -72,8 +72,8 @@
     {
       "path": "internal/store/refund_execution.go",
       "source_sha256": "a4818dd74885d0221b42fe569249837d869df2a31fbed8191ebea69462901dcc",
-      "sha256": "462d4559e77753a32f20962c3daadaf160225795571e04f70f790237cc65769d",
-      "adaptation": "Match StarBridge active/deleted users and updater drain state. Exclude retired proxies only for new allocations; existing reservations and mother-switch child bindings retain their original proxies. Execution and recovery transitions remain unchanged."
+      "sha256": "8ef4bfed8a8c13de5ec0f3d33b8ee4f162ce148f43cffa2b0ff5af27ef06c2b1",
+      "adaptation": "Use unified users and maintenance drain; select durable child primary/backups and cooldown probes, preserve assigned retired resources and original submission checkpoints; waiting child failover cannot block mother-only completion."
     },
     {
       "path": "internal/store/refund_invite_recovery.go",
@@ -113,13 +113,14 @@
     {
       "path": "internal/store/refund_recovery.go",
       "source_sha256": "a726c1f1912a79d0adc885df45c52d10990acea87d07b27e8da95be1b9422963",
-      "sha256": "a726c1f1912a79d0adc885df45c52d10990acea87d07b27e8da95be1b9422963"
+      "sha256": "3592d81613efa7cd1f47bc64c4b7ef5e4ee5c9beac86ef7fbed3dd3709eaed7d",
+      "adaptation": "After original lease fencing, mark explicitly attributed child transport failures for cooldown and next-attempt proxy selection; existing phase, retry budgets and unknown-submission verification remain authoritative."
     },
     {
       "path": "internal/store/refund_settings.go",
       "source_sha256": "0e510a8592ad24e48db15e9bf4ce6795d582e48a40548db2959839c66216bf26",
-      "sha256": "50d0affaaa5ba3191917bbef5ca237697ba8e9fda421baf93c77808765a25d2b",
-      "adaptation": "Allow admin proxy deletion regardless of references, retain private records for assigned orders, clear the global selection, and reject retired resources for new configuration and readiness."
+      "sha256": "9dcacb55c6ae5e58df0ed78e9da0c49fa1679c01fb89d937f147abe1109242b6",
+      "adaptation": "Unified administrator resource deletion, mother/child eligibility, ordered child backup configuration, and readiness. Retain private assigned resource rows."
     },
     {
       "path": "internal/store/refund_timeline.go",
@@ -134,8 +135,8 @@
     {
       "path": "internal/store/resource_check.go",
       "source_sha256": "0b7a0af0f0770c91fdbba7a5d854d7d5f976d7f7f3a0af5d4492935f9f299e91",
-      "sha256": "5b2bce5bf119fa913591664507cd5be4e62824c170305b5f8691d97a1b2d2803",
-      "adaptation": "Exclude retired proxy records from admin probes and ignore late diagnostic results after deletion."
+      "sha256": "9a8154fa7c18d16aec82ede042888655cb667e5184aa0dc470c20c8a64962051",
+      "adaptation": "A successful administrator probe clears only older child proxy failures."
     },
     {
       "path": "runtime/README.md",

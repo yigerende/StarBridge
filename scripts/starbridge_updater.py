@@ -148,7 +148,7 @@ class Updater:
          (SELECT count(*) FROM platform_items WHERE status IN ('queued','running','oauth_pending','review'))+
          (SELECT count(*) FROM proxy_checks WHERE state IN ('queued','running'))+
          (SELECT count(*) FROM proxy_leases WHERE expires_at>now())+
-         (SELECT count(*) FROM pg_locks WHERE locktype='advisory' AND granted AND database=(SELECT oid FROM pg_database WHERE datname=current_database()) AND classid IN (1886011,1886012,1886015));"""
+         (SELECT count(*) FROM pg_locks WHERE locktype='advisory' AND granted AND database=(SELECT oid FROM pg_database WHERE datname=current_database()) AND (classid IN (1886011,1886012,1886015) OR (classid=0 AND objid=1886018 AND objsubid=1)));"""
         if self.sql("SELECT to_regclass('refund_execution') IS NOT NULL")=='t':
             query=query.rstrip(';')+"+(SELECT count(*) FROM refund_execution WHERE NOT released);"
         deadline=time.monotonic()+600

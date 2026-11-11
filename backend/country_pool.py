@@ -22,11 +22,11 @@ DEFAULTS = dict(username='', subuser_hash='', auth_type='credentials', lifetime_
                 token_enc='', password_enc='', countries=[], synced_at='', checked_at='',
                 last_error='', revision='', suppressed=[])
 ERRORS = {
-    'pool_not_configured':'国家代理池尚未配置完整', 'pool_auth_failed':'IPRoyal 认证失败，请检查 API 令牌及账户',
+    'pool_not_configured':'独立会话代理尚未配置完整', 'pool_auth_failed':'IPRoyal 认证失败，请检查 API 令牌及账户',
     'pool_rate_limited':'IPRoyal 接口请求受限，请稍后重试', 'pool_unavailable':'IPRoyal 接口暂时不可用',
     'pool_invalid_response':'IPRoyal 返回的代理或国家数据不符合要求',
     'pool_country_unavailable':'IPRoyal 当前不支持此国家，请检查国家同步结果',
-    'pool_capacity':'国家代理池会话已占满，等待空闲资源',
+    'pool_capacity':'暂无空闲代理，等待资源后继续',
     'proxy_mode_changed':'代理模式与本单绑定不一致，请核查原订单',
     'proxy_session_expired':'本单代理会话已过期',
 }
@@ -111,7 +111,7 @@ def listing():
 
 def save_config(value, request=None):
     allowed={'username','password','token','subuser_hash','auth_type','lifetime_seconds','max_parallel','renewal_country','auto_sync','import_resource_id'}
-    require(isinstance(value,dict) and not set(value)-allowed,'国家代理池配置字段无效')
+    require(isinstance(value,dict) and not set(value)-allowed,'独立会话代理配置字段无效')
     with db.transaction() as q:
         q.execute('SELECT pg_advisory_xact_lock($1)',PROXY_LOCK)
         cfg=settings(q)
@@ -139,14 +139,14 @@ def save_config(value, request=None):
         require(cfg['auth_type'] in ('credentials','subuser'),'账户认证方式无效')
         integer(cfg['lifetime_seconds'],60,86400,'粘性会话有效期须为 60～86400 秒')
         integer(cfg['max_parallel'],1,100,'并发上限须为 1～100')
-        require(type(cfg['auto_sync']) is bool and isinstance(cfg['renewal_country'],str) and re.fullmatch('[A-Z]{2}',cfg['renewal_country']),'国家代理池配置无效')
-        if mode(q)=='country_pool': require(ready(cfg),'启用中的国家代理池必须保留完整凭据')
+        require(type(cfg['auto_sync']) is bool and isinstance(cfg['renewal_country'],str) and re.fullmatch('[A-Z]{2}',cfg['renewal_country']),'独立会话代理配置无效')
+        if mode(q)=='country_pool': require(ready(cfg),'启用中的独立会话代理必须保留完整凭据')
         old=settings(q)
         connection_changed=any(cfg[k]!=old[k] for k in ('token_enc','username','password_enc','subuser_hash','auth_type'))
         cfg['revision']=uid()
         if connection_changed:cfg.update(checked_at='',synced_at='',countries=[],last_error='')
         write(q,cfg)
-        if request:audit(q,request,'country_pool.saved','iproyal','保存国家代理池配置（凭据不记录）')
+        if request:audit(q,request,'country_pool.saved','iproyal','保存独立会话代理配置（凭据不记录）')
     return {'ok':True}
 
 
@@ -254,8 +254,9 @@ def acquire_order(q,order_id,country):
 
 
 def acquire_renewal(q,task_id):
-    existing=q.one('SELECT endpoint_enc,expires_at FROM renewal_proxy_sessions WHERE task_id=$1',task_id)
+    existing=q.one('SELECT endpoint_enc,expires_at,source_mode FROM renewal_proxy_sessions WHERE task_id=$1',task_id)
     if existing:
+        if existing['source_mode'] != 'country_pool':raise PoolError('proxy_mode_changed')
         if existing['expires_at']<=now():raise PoolError('proxy_session_expired')
         return decrypt(existing['endpoint_enc'])
     cfg=settings(q)
@@ -291,15 +292,22 @@ def blockers(q):
 
 
 def change_mode(q,target):
-    require(target in ('manual','country_pool'),'代理模式无效')
+    require(target in ('manual','country_pool','national_pool'),'代理模式无效')
     if target==mode(q):return
+    require(q.scalar('SELECT pg_try_advisory_xact_lock(1886018)'),'国家代理正在更新，请稍后切换',409)
     busy=blockers(q)
     require(not any(busy.values()),'存在未结束的办理任务或代理占用，请等待完成；订单：'+(', '.join(x[:12] for x in busy['orders']) or '无')+'；续费任务：'+str(len(busy['renewals']))+'；检测/租约：'+str(busy['checks']+busy['leases']),409)
     queued=q.all("SELECT DISTINCT country FROM orders WHERE deleted_at IS NULL AND status='queued'")
     if target=='country_pool':
-        cfg=settings(q);require(ready(cfg) and cfg['countries'],'请先配置国家代理池并同步国家')
+        cfg=settings(q);require(ready(cfg) and cfg['countries'],'请先配置独立会话代理并同步国家')
         supported={r['code'] for r in cfg['countries']}
         require(cfg['renewal_country'] in supported,'默认续费国家不可用')
+    elif target=='national_pool':
+        from .national_proxies import countries, supports
+        supported=countries(q)
+        require(supported,'请先导入国家代理')
+        require(supports(config('national_pool',q).get('renewal_country','PH'),q),'默认续费国家不可用')
+        if 'GLOBAL' in supported:supported|={r['country'] for r in queued}
     else:
         dynamic=q.scalar("SELECT EXISTS(SELECT 1 FROM resources WHERE enabled AND vendor='iproyal' AND ip_mode='dynamic')")
         supported={r['country'] for r in queued} if dynamic else {r['country'] for r in q.all('SELECT DISTINCT country FROM resources WHERE enabled')}

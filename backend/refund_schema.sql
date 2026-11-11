@@ -109,3 +109,14 @@ ALTER TABLE refund_settings ADD COLUMN IF NOT EXISTS service_fee bigint NOT NULL
 ALTER TABLE ledger ADD COLUMN IF NOT EXISTS refund_order_id text REFERENCES refunds(id);
 CREATE UNIQUE INDEX IF NOT EXISTS refund_settle_once ON ledger(refund_order_id) WHERE business='refund' AND kind='charge';
 CREATE INDEX IF NOT EXISTS ledger_activity_order ON ledger(user_id,business,(COALESCE(order_id,registration_order_id,refund_order_id)));
+
+-- Child proxy failover is scheduler state; the protocol keeps its original steps.
+ALTER TABLE refund_proxies ADD COLUMN IF NOT EXISTS target TEXT NOT NULL DEFAULT 'both' CHECK(target IN ('both','mother','child'));
+ALTER TABLE refund_proxies ADD COLUMN IF NOT EXISTS failure_until TIMESTAMPTZ;
+ALTER TABLE refund_proxies ADD COLUMN IF NOT EXISTS failure_at TIMESTAMPTZ;
+ALTER TABLE refund_proxies ADD COLUMN IF NOT EXISTS failure_code TEXT NOT NULL DEFAULT '';
+ALTER TABLE refund_proxies ADD COLUMN IF NOT EXISTS probe_until TIMESTAMPTZ;
+ALTER TABLE refund_settings ADD COLUMN IF NOT EXISTS child_proxy_backups TEXT[] NOT NULL DEFAULT '{}';
+ALTER TABLE refund_settings ADD COLUMN IF NOT EXISTS child_proxy_cooldown_seconds INTEGER NOT NULL DEFAULT 300 CHECK(child_proxy_cooldown_seconds BETWEEN 30 AND 3600);
+ALTER TABLE refund_execution ADD COLUMN IF NOT EXISTS child_proxy_switch_pending BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE refund_execution ADD COLUMN IF NOT EXISTS child_proxy_switches INTEGER NOT NULL DEFAULT 0;

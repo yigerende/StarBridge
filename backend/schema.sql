@@ -335,3 +335,42 @@ CREATE TABLE IF NOT EXISTS user_service_prices (
  fee bigint NOT NULL CHECK(fee>=0 AND fee<=100000000),
  PRIMARY KEY(user_id,service)
 );
+
+-- Subscription inventory is isolated from registration pools and usage.
+ALTER TABLE order_proxy_sessions ADD COLUMN IF NOT EXISTS cooldown_minutes integer NOT NULL DEFAULT 0;
+ALTER TABLE renewal_proxy_sessions ADD COLUMN IF NOT EXISTS source_mode text NOT NULL DEFAULT 'country_pool';
+ALTER TABLE renewal_proxy_sessions ADD COLUMN IF NOT EXISTS cooldown_minutes integer NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS subscription_country_entries (
+ country text NOT NULL, id text NOT NULL, endpoint_enc text NOT NULL,
+ session_minutes integer NOT NULL DEFAULT 0 CHECK(session_minutes>=0),
+ PRIMARY KEY(country,id)
+);
+CREATE TABLE IF NOT EXISTS subscription_country_usage (
+ id text PRIMARY KEY, owner_kind text NOT NULL CHECK(owner_kind IN ('order','renewal')),
+ owner_id text NOT NULL, session_minutes integer NOT NULL DEFAULT 0,
+ in_use boolean NOT NULL DEFAULT true, last_used_at timestamptz NOT NULL DEFAULT now(),
+ released_at timestamptz, cooldown_until timestamptz
+);
+CREATE INDEX IF NOT EXISTS subscription_country_usage_active ON subscription_country_usage(owner_kind,owner_id) WHERE in_use;
+CREATE OR REPLACE FUNCTION subscription_country_reap() RETURNS integer LANGUAGE plpgsql AS $$
+DECLARE changed integer;
+BEGIN
+ IF NOT pg_try_advisory_xact_lock(1886018) THEN RETURN 0; END IF;
+ UPDATE subscription_country_usage u SET in_use=false,released_at=now(),
+   cooldown_until=now()+u.session_minutes*interval '1 minute'
+ WHERE u.in_use AND NOT (
+   (u.owner_kind='order' AND EXISTS(SELECT 1 FROM orders o WHERE o.id=u.owner_id AND (
+     (o.deleted_at IS NULL AND (o.status IN ('queued','processing')
+       OR EXISTS(SELECT 1 FROM subscription_recoveries r WHERE r.order_id=o.id AND r.state IN ('armed','queued','running') AND r.deadline>now())
+       OR (o.status='succeeded' AND (o.activation='pending' OR o.renewal IN ('pending','retrying'))
+           AND NOT EXISTS(SELECT 1 FROM subscription_followups f WHERE f.order_id=o.id AND (f.warning_code<>'' OR f.phase='completed')))))
+     OR EXISTS(SELECT 1 FROM pg_locks l WHERE l.locktype='advisory' AND l.granted
+       AND l.database=(SELECT oid FROM pg_database WHERE datname=current_database())
+       AND l.classid IN (1886011,1886012,1886015) AND l.objsubid=2
+       AND l.objid::bigint=(hashtext(o.id)::bigint & 4294967295)))))
+   OR (u.owner_kind='renewal' AND EXISTS(SELECT 1 FROM renewal_tasks t WHERE t.id=u.owner_id
+       AND (t.status IN ('queued','processing','checking') OR t.lease_until>now())))
+ );
+ GET DIAGNOSTICS changed=ROW_COUNT;
+ RETURN changed;
+END $$;

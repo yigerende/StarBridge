@@ -278,7 +278,13 @@ func (s *Store) FinishRefundAttempt(ctx context.Context, j *RefundJob, d RefundD
 		return nil
 	}
 	// Read current settings, including changes made while an attempt was running.
-	if err = tx.QueryRow(ctx, "SELECT recovery,retry_seconds,mother_failover FROM refund_settings WHERE id").Scan(&j.Settings.Recovery, &j.Settings.RetrySeconds, &j.Settings.MotherFailover); err != nil {
+	if err = tx.QueryRow(ctx, "SELECT recovery,retry_seconds,mother_failover,child_proxy_cooldown_seconds FROM refund_settings WHERE id").Scan(&j.Settings.Recovery, &j.Settings.RetrySeconds, &j.Settings.MotherFailover, &j.Settings.ChildProxyCooldownSeconds); err != nil {
+		return err
+	}
+	if childProxyNetworkFailure(d) {
+		d.Retryable = true
+	}
+	if err = recordChildProxyFailure(ctx, tx, j, d); err != nil {
 		return err
 	}
 	if err = recordInviteAuthorizationFailure(ctx, tx, j, step, d); err != nil {

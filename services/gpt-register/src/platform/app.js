@@ -125,6 +125,7 @@ function buildPlatform({
   });
   registerAuth(app, db, crypt, { publicOrigin, secureCookies });
   registerApi(app, db, orders, crypt);
+  if (process.env.XUFU_INTEGRATION === '1') require('../../integration/subscription-proxies').registerSubscriptionProxies(app, db, cwd);
   if (sessionProxy) require('./session-proxy-api').registerSessionProxy(app, sessionProxy.config, sessionProxy.allocator);
   require("./partners").registerPartners(app,db);
   for (const route of ["/site-icon", "/favicon.ico", "/site-icon/default"]) {

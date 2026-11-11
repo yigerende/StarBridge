@@ -95,7 +95,7 @@ def handle_failure(order_id, exc):
             delay = config('scheduler', q)['retry_delay_seconds']
             q.execute("UPDATE subscription_runs SET network_retry_at=now()+$2*interval '1 second',updated_at=now() WHERE order_id=$1", order_id, delay)
             q.execute("UPDATE orders SET status='queued',updated_at=now() WHERE id=$1", order_id)
-            q.execute("INSERT INTO order_events(order_id,stage,message) VALUES($1,'queued','国家代理池会话已占满，等待资源后继续。')", order_id)
+            q.execute("INSERT INTO order_events(order_id,stage,message) VALUES($1,'queued','暂无空闲代理，等待资源后继续。')", order_id)
             return True
         cfg = config('payment', q)
         limit = cfg.get('network_restart_limit', 2)

@@ -61,6 +61,8 @@ def worker_loop(stop):
                         except Exception as e:log.error('Background operation failed (%s)',type(e).__name__)
                         group.remove(future)
             try:
+                from .national_proxies import reap
+                reap()
                 if not price_jobs and time.monotonic()-last_price_tick>=5:
                     price_jobs.add(executor.submit(price_reference.refresh_tick,stop));last_price_tick=time.monotonic()
                 if time.monotonic()-last_maintenance>60:

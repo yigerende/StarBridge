@@ -34,10 +34,11 @@ class DashboardTests(unittest.TestCase):
         self.sub('review-for-update',status='review')
         before=db.one("SELECT * FROM orders WHERE id='review-for-update'")
         service.wait_idle()
-        with db.transaction() as q:
-            q.execute('SELECT pg_advisory_xact_lock(1886015,42)')
-            with patch.object(updater.time,'monotonic',side_effect=[0,0,601]),patch.object(updater.time,'sleep'):
-                with self.assertRaises(updater.UpdateError):service.wait_idle()
+        for lock in ('pg_advisory_xact_lock(1886015,42)', 'pg_advisory_xact_lock(1886018)'):
+            with db.transaction() as q:
+                q.execute('SELECT '+lock)
+                with patch.object(updater.time,'monotonic',side_effect=[0,0,601]),patch.object(updater.time,'sleep'):
+                    with self.assertRaises(updater.UpdateError):service.wait_idle()
         db.execute("UPDATE orders SET status='processing' WHERE id='review-for-update'")
         with patch.object(updater.time,'monotonic',side_effect=[0,0,601]),patch.object(updater.time,'sleep'):
             with self.assertRaises(updater.UpdateError):service.wait_idle()

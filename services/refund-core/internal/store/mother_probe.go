@@ -51,7 +51,7 @@ func (s *Store) PrepareMotherProbe(ctx context.Context, actor string, v RefundMo
 		return nil, invalid("请先解析母号凭据并填写团队 ID")
 	}
 	var proxySecret []byte
-	err = tx.QueryRow(ctx, "SELECT secret FROM refund_proxies WHERE id=$1 AND enabled AND deleted_at IS NULL", v.ProxyID).Scan(&proxySecret)
+	err = tx.QueryRow(ctx, "SELECT secret FROM refund_proxies WHERE id=$1 AND enabled AND deleted_at IS NULL AND target IN ('both','mother')", v.ProxyID).Scan(&proxySecret)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, invalid("请先选择已启用的母号专属代理")
 	}

@@ -31,6 +31,10 @@ def enabled(flow=None,q=None):
         cfg=country_pool.settings(q)
         supported={r['code'] for r in cfg['countries']} if country_pool.ready(cfg) else set()
         rows=[r for r in rows if r['code'] in supported]
+    if country_pool.mode(q)=='national_pool':
+        from .national_proxies import countries
+        codes=countries(q)
+        rows=[r for r in rows if r['code'] in codes or 'GLOBAL' in codes]
     return rows
 
 
@@ -72,6 +76,8 @@ def listing():
     from . import country_pool
     cfg=country_pool.settings();current=country_pool.mode()
     pool_codes={r['code'] for r in cfg['countries']}
+    from .national_proxies import countries
+    national_codes=countries()
     manual_codes={r['country'] for r in db.all('SELECT DISTINCT country FROM resources WHERE enabled')}
     manual_template=db.scalar("SELECT EXISTS(SELECT 1 FROM resources WHERE enabled AND vendor='iproyal' AND ip_mode='dynamic')")
     flow=config('payment').get('subscription_flow')
@@ -79,6 +85,7 @@ def listing():
     for row in items():
         supported=flow=='cslive_go_direct_pay' or row['code'] in LEGACY_CODES
         available=row['code'] in pool_codes if current=='country_pool' else manual_template or row['code'] in manual_codes
+        if current=='national_pool':available=row['code'] in national_codes or 'GLOBAL' in national_codes
         rows.append(dict(row,proxy_available=available,flow_supported=supported,pool_supported=row['code'] in pool_codes))
     return {'items':rows,'proxy_mode':current,'currencies':sorted({r['currency'] for r in country_pool.COUNTRY_REFERENCE.values()}),'flow':flow}
 
@@ -89,7 +96,10 @@ def check_enable(row,q):
     from . import country_pool
     if country_pool.mode(q)=='country_pool':
         cfg=country_pool.settings(q)
-        require(country_pool.ready(cfg) and row['code'] in {r['code'] for r in cfg['countries']},'当前国家代理池不支持此国家')
+        require(country_pool.ready(cfg) and row['code'] in {r['code'] for r in cfg['countries']},'当前独立会话代理不支持此国家')
+    if country_pool.mode(q)=='national_pool':
+        from .national_proxies import supports
+        require(supports(row['code'],q),'当前国家代理未配置此国家')
 
 
 @router.post('/regions/batch')

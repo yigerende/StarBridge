@@ -409,6 +409,8 @@ def _run(order_id, *, plan=None, responses=(), proxy_url=None, request_context=N
             return {'state': 'completed', 'warning_code': ''}
         if cp is None and plan is None:
             raise FollowupError('checkpoint_missing')
+        from .national_proxies import ensure_order
+        ensure_order(order_id)
         proxy = db.one('SELECT endpoint_enc,expires_at FROM order_proxy_sessions WHERE order_id=$1', order_id)
         if not proxy or not proxy['endpoint_enc']:
             raise FollowupError('proxy_session_missing')

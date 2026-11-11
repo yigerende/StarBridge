@@ -9,7 +9,7 @@ const availableResources=computed(()=>props.resources.filter(r=>r.vendor==='ipro
 const visible=computed(()=>data.value.countries.filter((r:Row)=>[r.code,r.name,r.currency].some(v=>String(v).toLowerCase().includes(search.value.toLowerCase()))))
 async function load(){data.value=await api('/admin/country-pool');const s=data.value.settings;form.value={auth_type:s.auth_type,username:s.username,subuser_hash:s.subuser_hash,lifetime_seconds:s.lifetime_seconds,max_parallel:s.max_parallel,renewal_country:s.renewal_country,auto_sync:s.auto_sync,token:'',password:''}}
 async function run(fn:()=>Promise<void>){if(busy.value)return;busy.value=true;error.value='';result.value='';try{await fn()}catch(e){error.value=(e as Error).message}finally{busy.value=false}}
-async function save(){await run(async()=>{await api('/admin/country-pool','PUT',form.value);await load();notify('国家代理池配置已保存');emit('changed')})}
+async function save(){await run(async()=>{await api('/admin/country-pool','PUT',form.value);await load();notify('独立会话代理配置已保存');emit('changed')})}
 async function importResource(){await run(async()=>{await api('/admin/country-pool','PUT',{import_resource_id:importId.value});await load();notify('已复制代理账号及现有粘性时长');emit('changed')})}
 async function sync(){await run(async()=>{const r=await api('/admin/country-pool/sync','POST',{});await load();result.value=`同步 ${r.countries} 个国家，新增 ${r.added} 个待开放地区。`;emit('changed')})}
 onMounted(()=>run(load))

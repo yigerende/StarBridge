@@ -429,8 +429,8 @@
     },
     {
       "path": "src/platform/app.js",
-      "sha256": "41d0ab0942e9a40d8bb70d36ad3fe6766997216ac54fb1efd0bf25e560d6c9d3",
-      "reason": "Enforce unified customer feature switches for member and admin sessions, API keys, documentation and profile summaries; retain separate administrator routes."
+      "sha256": "f2363e26a3f7b384598c36b87b1bde3fa19657ad6fdafd0474820298eceba603",
+      "reason": "Unified native application and authenticated subscription-only proxy catalog adapter; original registration engine and proxy providers unchanged."
     },
     {
       "path": "src/platform/customer-center.js",

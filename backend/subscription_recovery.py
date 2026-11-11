@@ -166,6 +166,8 @@ def _run(order_id):
     db.execute("UPDATE subscription_recoveries SET state='running',attempts=attempts+1,"
                "next_at=now()+interval '5 seconds',updated_at=now() WHERE order_id=$1", order_id)
     row['attempts'] += 1
+    from .national_proxies import ensure_order
+    ensure_order(order_id)
     endpoint = decrypt(row['endpoint_enc'])
     with trace.scope(order_id, row['trace_round']):
         if not row['paid_at']:
