@@ -8,7 +8,7 @@ def document():
     registration=json.loads((directory/'registration-openapi.json').read_text(encoding='utf-8'))
     # Customer wording and unified membership fields; the engine contract stays intact.
     registration['paths']['/open/v1/products']['get']['description']='查询标准注册及含 OAuth 服务的当前单价、会员减免和每单数量上限。下单使用 quantity 与 need_oauth，无需 product_id。'
-    registration['paths']['/open/v1/products']['get']['responses']['200']['content']['application/json']['example']['products']=[{'name': '标准账号', 'need_oauth': False, 'unit_price': 50, 'standard_price': 50, 'saved': 0, 'price_source': 'membership'}, {'name': 'OAuth 账号', 'need_oauth': True, 'unit_price': 100, 'standard_price': 100, 'saved': 0, 'price_source': 'membership'}]
+    registration['paths']['/open/v1/products']['get']['responses']['200']['content']['application/json']['example']['products']=[{'name': '标准账号', 'need_oauth': False, 'unit_price': 50, 'standard_price': 50, 'saved': 0, 'membership_eligible': True, 'price_source': 'membership'}, {'name': 'OAuth 账号', 'need_oauth': True, 'unit_price': 100, 'standard_price': 100, 'saved': 0, 'membership_eligible': False, 'price_source': 'standard'}]
     registration['paths']['/open/v1/products']['get']['responses']['200']['content']['application/json']['example']['membership']={'current': {'code': 'L1', 'name': '会员', 'threshold': 0, 'discount': 100, 'description': ''}, 'source': 'automatic', 'until': None}
     registration['paths']['/open/v1/registration-regions']['get']['description']='查询可选地区代码和名称。下单传返回的 code；省略或传 random 表示随机地区。已受理订单保留下单时的选择。'
     registration['paths']['/open/v1/registration-orders']['post']['requestBody']['content']['application/json']['schema']['properties']['registration_region']['description']='可选注册地区；传地区查询返回的 code，例如 JP。省略或 random 表示随机。相同请求标识重试须保留原参数。'
@@ -21,7 +21,7 @@ def document():
     registration['components']['schemas']['Products']['properties']['membership']['description']='当前账户会员信息。'
     registration['components']['schemas']['Product']['properties']['standard_price']['description']='每个账号的标准服务费，单位为积分。'
     registration['components']['schemas']['Product']['properties']['saved']['description']='标准价减实际单价，单位为积分；专属价高于标准价时可能为负。'
-    registration['components']['schemas']['Product']['properties']['price_source']['description']='本次单价来源。'
+    registration['components']['schemas']['Product']['properties']['price_source']['description']='本次单价来源：account_override 为注册专属价，membership 为会员价，standard 为不参与会员减免时的标准价。'
     registration['components']['schemas']['Order']['properties']['cancel_requested']['description']='是否已请求停止未交付部分；true 不代表所有办理已结束，继续查询最终状态。'
     registration['components']['schemas']['Account']['properties']['created_at']['description']='交付账号记录创建时间；未知时为 null。'
     registration['components']['schemas']['Account']['properties']['download_expires_at']['description']='领取截止时间；到期后账号不再出现在列表中，凭据及导出不可用。'
@@ -59,7 +59,7 @@ def document():
         if category!='securitySchemes':
             result['components'].setdefault(category,{}).update({'Registration'+name:adapt(value) for name,value in values.items()})
     result['tags'].extend({**tag,'name':'注册 · '+tag['name']} for tag in registration['tags'])
-    result['info'].update(title='星桥用户开放 API',version='2.5.0',description='使用同一个 API 密钥接入注册与账号交付、订阅办理、代退办理及积分钱包。先查询服务与报价，提交后保存订单编号并查询办理结果。密钥只能访问所属账户的数据，可用功能见 GET /api/v1/me 的 features。')
+    result['info'].update(title='星桥用户开放 API',description='使用同一个 API 密钥接入注册与账号交付、订阅办理、代退办理及积分钱包。先查询服务与报价，提交后保存订单编号并查询办理结果。密钥只能访问所属账户的数据，可用功能见 GET /api/v1/me 的 features。')
     result['x-guides'].append({'id':'registration','title':'注册与账号交付','create':'registration_create_order','detail':'registration_get_order','example':'standard','steps':[
         '查询注册服务与价格、可选注册地区，并核对统一钱包的可用积分。',
         '提交 quantity、need_oauth 和可选 registration_region，保存 Idempotency-Key 与响应订单 id。新订单返回 HTTP 202，幂等重放返回 200。',
