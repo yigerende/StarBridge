@@ -106,23 +106,8 @@ def _acquire_order_proxy(order_id: str, country: str, duration_sec: int) -> str:
         if country_pool.mode(q) == 'national_pool':
             from .national_proxies import acquire_order
             return acquire_order(q, order_id, country)
-        proxy_cfg = config('proxy', q)
-        default_id = proxy_cfg.get('default_id', '')
-        row = q.one(
-            "SELECT r.id,r.endpoint_enc,r.vendor,r.ip_mode FROM resources r "
-            "WHERE r.enabled AND r.kind='proxy' AND (r.country=$2 OR (r.vendor='iproyal' AND r.ip_mode='dynamic')) "
-            "AND (SELECT count(*) FROM proxy_leases l WHERE l.resource_id=r.id AND l.expires_at>now())<r.capacity "
-            "ORDER BY (r.id=$1) DESC,(r.last_status='failed'),random()*r.weight DESC LIMIT 1",
-            default_id, country)
-        require(row, '无可用代理，请检查代理配置', 503)
-        endpoint, lifetime_sec = _proxy_url_with_session(
-            {'endpoint_enc': row['endpoint_enc'], 'vendor': row.get('vendor', ''), 'ip_mode': row.get('ip_mode', 'dynamic')}, country)
-        lease = uid()
-        q.execute("INSERT INTO proxy_leases(id,resource_id,expires_at) VALUES($1,$2,now()+($3*interval '1 second'))",
-                  lease, row['id'], duration_sec)
-        q.execute("INSERT INTO order_proxy_sessions(order_id,resource_id,endpoint_enc,expires_at) VALUES($1,$2,$3,now()+($4*interval '1 second'))",
-                  order_id, row['id'], encrypt(endpoint), lifetime_sec)
-        return endpoint
+        from .manual_proxies import acquire_order
+        return acquire_order(q, order_id, country, duration_sec, _proxy_url_with_session)
 
 
 def _pick_billing(q) -> dict:
@@ -330,6 +315,9 @@ def _succeed_order(order_id, user_id, fee, last4, charged_amount, charged_curren
         code = 'renewal_disabled' if ren == 'disabled' else 'renewal_kept'
         trace.record('renewal', 'completed', code, order_id=order_id, q=q)
         trace.record('complete', 'completed' if act == 'active' else 'review', 'completed' if act == 'active' else 'review', order_id=order_id, q=q)
+        from .manual_proxies import succeeded, release
+        succeeded(order_id, q)
+        release(q, order_id)
 
 
 def _review_order(order_id, message, code):

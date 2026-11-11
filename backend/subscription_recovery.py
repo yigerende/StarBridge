@@ -60,6 +60,8 @@ def queue_payment(q, order_id):
 
 
 def paid(q, order_id):
+    from .manual_proxies import succeeded
+    succeeded(order_id, q)
     timeout = config('payment', q)['subscription_wait_seconds']
     q.execute("UPDATE subscription_recoveries SET stage='followup',state='armed',attempts=0,"
               "deadline=LEAST((SELECT expires_at FROM order_proxy_sessions WHERE order_id=$1),now()+$2*interval '1 second'),"
@@ -68,6 +70,8 @@ def paid(q, order_id):
 
 def close(q, order_id):
     q.execute("UPDATE subscription_recoveries SET state='completed',context_enc='',updated_at=now() WHERE order_id=$1", order_id)
+    from .manual_proxies import release
+    release(q, order_id)
 
 
 def followup_saved(q, order_id, phase, warning):

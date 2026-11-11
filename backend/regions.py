@@ -21,21 +21,24 @@ def items(q=None):
 
 def enabled(flow=None,q=None):
     if flow is None:flow=config('payment',q).get('subscription_flow')
-    rows=[{k:r[k] for k in ('code','name','currency')} for r in items(q)
-          if r['enabled'] and (flow=='cslive_go_direct_pay' or r['code'] in LEGACY_CODES)]
-    if flow!='cslive_go_direct_pay':
-        original={r['code']:r['currency'] for r in DEFAULT_REGIONS}
-        for row in rows:row['currency']=original[row['code']]
     from . import country_pool
-    if country_pool.mode(q)=='country_pool':
-        cfg=country_pool.settings(q)
-        supported={r['code'] for r in cfg['countries']} if country_pool.ready(cfg) else set()
-        rows=[r for r in rows if r['code'] in supported]
     if country_pool.mode(q)=='national_pool':
         from .national_proxies import countries
-        codes=countries(q)
-        rows=[r for r in rows if r['code'] in codes or 'GLOBAL' in codes]
+        codes=countries(q)-{'GLOBAL'}
+        configured={r['code']:r for r in items(q)}
+        # Pulled countries define this selector. Reuse local names/currencies
+        # without adding or changing the subscription region catalog.
+        rows=[{k:r[k] for k in ('code','name','currency')}
+              for code in sorted(codes)
+              if (r:=configured.get(code) or country_pool.COUNTRY_REFERENCE.get(code))
+              and re.fullmatch('[A-Z]{3}',r.get('currency',''))]
+    else:
+        rows=[{k:r[k] for k in ('code','name','currency')} for r in items(q) if r['enabled']]
+    if flow!='cslive_go_direct_pay':
+        original={r['code']:r['currency'] for r in DEFAULT_REGIONS}
+        rows=[dict(row,currency=original[row['code']]) for row in rows if row['code'] in original]
     return rows
+
 
 
 def selected(code,flow=None,q=None):
@@ -93,13 +96,7 @@ def listing():
 def check_enable(row,q):
     if not row['enabled']:return
     require(config('payment',q).get('subscription_flow')=='cslive_go_direct_pay' or row['code'] in LEGACY_CODES,'当前办理流程不支持此国家')
-    from . import country_pool
-    if country_pool.mode(q)=='country_pool':
-        cfg=country_pool.settings(q)
-        require(country_pool.ready(cfg) and row['code'] in {r['code'] for r in cfg['countries']},'当前独立会话代理不支持此国家')
-    if country_pool.mode(q)=='national_pool':
-        from .national_proxies import supports
-        require(supports(row['code'],q),'当前国家代理未配置此国家')
+
 
 
 @router.post('/regions/batch')

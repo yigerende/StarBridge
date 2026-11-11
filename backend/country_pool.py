@@ -166,23 +166,14 @@ def sync(request=None):
             if latest['revision']==cfg['revision']:
                 latest.update(last_error=str(exc),last_sync_attempt=now().isoformat());write(q,latest)
         raise
-    from .regions import items
     with db.transaction() as q:
         q.execute('SELECT pg_advisory_xact_lock($1)',PROXY_LOCK)
         latest=settings(q)
         require(latest['revision']==cfg['revision'],'配置已经变化，请重新同步',409)
-        q.execute("SELECT value FROM settings WHERE key='regions' FOR UPDATE")
-        old=items(q);known={r['code'] for r in old};added=[]
-        for row in rows:
-            if row['code'] not in known and row['code'] not in latest['suppressed']:
-                added.append({**row,'enabled':False,'sort':min(10000,len(old)+len(added))})
-        require(len(old)+len(added)<=300,'地区数量超过上限')
-        region_cfg=config('regions',q)
-        q.execute("UPDATE settings SET value=$1 WHERE key='regions'",{**region_cfg,'items':old+added})
         latest.update(countries=rows,synced_at=now().isoformat(),last_sync_attempt=now().isoformat(),checked_at=now().isoformat(),last_error='')
         write(q,latest)
-        if request:audit(q,request,'country_pool.synced','iproyal',f'同步 {len(rows)} 个国家，新增 {len(added)} 个待开放地区')
-    return dict(ok=True,countries=len(rows),added=len(added))
+        if request:audit(q,request,'country_pool.synced','iproyal',f'同步 {len(rows)} 个代理国家')
+    return dict(ok=True,countries=len(rows),added=0)
 
 
 @router.post('/country-pool/sync')

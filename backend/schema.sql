@@ -73,7 +73,16 @@ CREATE TABLE IF NOT EXISTS announcements (id text PRIMARY KEY,title text NOT NUL
 
 CREATE TABLE IF NOT EXISTS resources (id text PRIMARY KEY,name text NOT NULL,kind text NOT NULL DEFAULT 'proxy',country text NOT NULL DEFAULT 'PH',endpoint_enc text NOT NULL,enabled boolean NOT NULL DEFAULT true,weight int NOT NULL DEFAULT 1,capacity int NOT NULL DEFAULT 1,last_status text NOT NULL DEFAULT 'untested',last_checked timestamptz,created_at timestamptz DEFAULT now());
 
-ALTER TABLE resources ADD COLUMN IF NOT EXISTS vendor text NOT NULL DEFAULT '' CHECK (vendor IN ('','iproyal','cliproxy','other'));
+ALTER TABLE resources ADD COLUMN IF NOT EXISTS vendor text NOT NULL DEFAULT '';
+ALTER TABLE resources DROP CONSTRAINT IF EXISTS resources_vendor_check;
+ALTER TABLE resources ADD CONSTRAINT resources_vendor_check CHECK (vendor IN ('','iproyal','cliproxy','1024proxy','711proxy','other'));
+ALTER TABLE resources ADD COLUMN IF NOT EXISTS failover_priority integer NOT NULL DEFAULT 0 CHECK (failover_priority BETWEEN 0 AND 100);
+ALTER TABLE resources ADD COLUMN IF NOT EXISTS proxy_revision text NOT NULL DEFAULT '';
+ALTER TABLE resources ADD COLUMN IF NOT EXISTS proxy_failures integer NOT NULL DEFAULT 0;
+ALTER TABLE resources ADD COLUMN IF NOT EXISTS health_generation integer NOT NULL DEFAULT 0;
+ALTER TABLE resources ADD COLUMN IF NOT EXISTS cooldown_until timestamptz;
+ALTER TABLE resources ADD COLUMN IF NOT EXISTS probe_owner text NOT NULL DEFAULT '';
+ALTER TABLE resources ADD COLUMN IF NOT EXISTS probe_until timestamptz;
 
 ALTER TABLE resources ADD COLUMN IF NOT EXISTS ip_mode text NOT NULL DEFAULT 'dynamic' CHECK (ip_mode IN ('dynamic','static'));
 
@@ -338,6 +347,10 @@ CREATE TABLE IF NOT EXISTS user_service_prices (
 
 -- Subscription inventory is isolated from registration pools and usage.
 ALTER TABLE order_proxy_sessions ADD COLUMN IF NOT EXISTS cooldown_minutes integer NOT NULL DEFAULT 0;
+ALTER TABLE order_proxy_sessions ADD COLUMN IF NOT EXISTS proxy_lease_id text NOT NULL DEFAULT '';
+ALTER TABLE order_proxy_sessions ADD COLUMN IF NOT EXISTS resource_revision text NOT NULL DEFAULT '';
+ALTER TABLE order_proxy_sessions ADD COLUMN IF NOT EXISTS health_generation integer NOT NULL DEFAULT 0;
+ALTER TABLE subscription_runs ADD COLUMN IF NOT EXISTS manual_proxy_failures text[] NOT NULL DEFAULT '{}';
 ALTER TABLE renewal_proxy_sessions ADD COLUMN IF NOT EXISTS source_mode text NOT NULL DEFAULT 'country_pool';
 ALTER TABLE renewal_proxy_sessions ADD COLUMN IF NOT EXISTS cooldown_minutes integer NOT NULL DEFAULT 0;
 CREATE TABLE IF NOT EXISTS subscription_country_entries (

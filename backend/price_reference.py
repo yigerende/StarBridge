@@ -264,7 +264,8 @@ def customer_prices(request: Request):
     cfg, cache, fx = settings(), read(PRICE_KEY), read(FX_KEY)
     moment, rows = clock(), []
     fx_stale = bool(fx.get('error')) or not fx.get('fetched_at') or moment - fx['fetched_at'] >= cfg['fx_interval_days'] * 86400
-    for region in regions.items():
+    listed = regions.items()
+    for region in listed:
         entry = cache.get('entries', {}).get(region['code'], {})
         for plan, price in entry.get('quotes', {}).items():
             rate = fx.get('rates', {}).get(price['currency'])
@@ -274,6 +275,7 @@ def customer_prices(request: Request):
                          'website_amount_cny': round(price['website_amount'] * rate, 4) if rate else None,
                          'updated_at': stamp(entry.get('fetched_at')),
                          'stale': bool(entry.get('error')) or moment - entry.get('fetched_at', 0) >= cfg['price_interval_hours'] * 3600})
-    return {'rows': rows, 'fx_updated_at': stamp(fx.get('source_updated_at')), 'fx_stale': fx_stale,
+    return {'rows': rows, 'countries': [{k:r[k] for k in ('code','name','currency')} for r in listed],
+            'fx_updated_at': stamp(fx.get('source_updated_at')), 'fx_stale': fx_stale,
             'scheduled': cfg['prices_enabled'], 'price_interval_hours': cfg['price_interval_hours']}
 

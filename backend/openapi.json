@@ -257,7 +257,7 @@
                           }
                         }
                       },
-                      "description": "可选订阅地区及对应币种；下单传 code。"
+                      "description": "当前可选的支付地区及对应币种；下单传 code。各国价格仅供比较，不代表该地区当前可办理，请以下单前取得的此列表为准。"
                     },
                     "payment_connected": {
                       "type": "boolean",

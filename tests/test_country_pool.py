@@ -49,18 +49,17 @@ class CountryPoolTests:
             self.assertEqual(self.client.put('/api/admin/country-pool',json={'token_enc':'attacker'}).status_code,400)
             self.assertEqual(self.client.put('/api/admin/country-pool',json={'lifetime_seconds':0}).status_code,400)
 
-    def test_pool_country_sync_merge_disable_deletion_and_failure(self):
+    def test_pool_country_sync_keeps_subscription_catalog_unchanged(self):
         with self.pool_fixture():
             existing=regions.items();existing[0].update(name='菲律宾自定义',currency='USD',enabled=False)
             db.execute("UPDATE settings SET value=$1 WHERE key='regions'",{'items':existing})
             response={'countries':[{'code':'ph','name':'Philippines'},{'code':'br','name':'Brazil'}]}
             with patch.object(pool,'api',return_value=response):
                 first=self.ok(self.client.post('/api/admin/country-pool/sync',json={}))
-                self.assertEqual(first['added'],1)
+                self.assertEqual(first['added'],0)
                 rows={r['code']:r for r in regions.items()}
                 self.assertEqual(rows['PH']['name'],'菲律宾自定义');self.assertEqual(rows['PH']['currency'],'USD');self.assertFalse(rows['PH']['enabled'])
-                self.assertEqual(rows['BR']['currency'],'BRL');self.assertFalse(rows['BR']['enabled'])
-                self.ok(self.client.delete('/api/admin/regions/BR'))
+                self.assertNotIn('BR',rows)
                 self.assertEqual(self.ok(self.client.post('/api/admin/country-pool/sync',json={}))['added'],0)
                 self.assertNotIn('BR',{r['code'] for r in regions.items()})
             saved=pool.settings()['countries']
@@ -72,13 +71,13 @@ class CountryPoolTests:
         with self.pool_fixture(),self.api_fixture() as (_,client,_):
             self.pool_mode()
             catalog=self.ok(client.get('/api/v1/catalog'))
-            self.assertEqual({r['code'] for r in catalog['countries']},{'PH','US'})
+            self.assertEqual({r['code'] for r in catalog['countries']},{r['code'] for r in regions.items() if r['enabled']})
             self.assertEqual(self.ok(client.get('/api/public'))['countries'],catalog['countries'])
             result=self.ok(self.client.post('/api/admin/regions/batch',json={'codes':['PH','JP'],'enabled':True}))
-            self.assertEqual(result['changed'],1);self.assertEqual(result['skipped'][0]['code'],'JP')
+            self.assertEqual(result['changed'],2);self.assertEqual(result['skipped'],[])
             row=deepcopy(regions.items()[0]);row['currency']='ZZZ'
             self.assertEqual(self.client.put('/api/admin/regions/PH',json=row).status_code,400)
-            self.assertEqual(client.post('/api/v1/orders',json=dict(self.api_payload(),country='JP'),headers={'Idempotency-Key':uid()}).status_code,400)
+            self.assertEqual(regions.selected('JP','cslive_go_direct_pay')['code'],'JP')
 
     def test_pool_same_order_concurrent_acquisition_and_retry_preserve_expiry(self):
         with self.pool_fixture(),self.api_fixture() as (_,client,_):

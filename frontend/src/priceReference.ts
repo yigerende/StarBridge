@@ -3,7 +3,7 @@ export interface PriceRow {
   website_amount:number; website_amount_cny:number|null; tax:string; website_tax:string;
   rate_to_cny:number|null; updated_at:string|null; stale:boolean; configured_currency:string; per_seat:boolean;
 }
-export interface PriceData { rows:PriceRow[]; fx_updated_at:string|null; fx_stale:boolean; scheduled:boolean; price_interval_hours:number }
+export interface PriceData { rows:PriceRow[]; countries?:{code:string;name:string;currency:string}[]; fx_updated_at:string|null; fx_stale:boolean; scheduled:boolean; price_interval_hours:number }
 export const emptyPrices=():PriceData=>({rows:[],fx_updated_at:null,fx_stale:false,scheduled:true,price_interval_hours:1})
 export const pricePlans=[{id:'plus',name:'Plus'},{id:'pro5x',name:'Pro 5x'},{id:'pro20x',name:'Pro 20x'},{id:'pro50x',name:'Pro 50x'},{id:'team',name:'Team'}]
 export const referencePlan=(id:string)=>({pro:'pro20x',promax:'pro50x',team_premium:'team'} as Record<string,string>)[id]||id

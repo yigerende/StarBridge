@@ -37,6 +37,8 @@ def save_checkout(order_id, flow, result, context=None):
                'checkout_checkpoint_enc=$4 WHERE order_id=$1',
                order_id, encrypt(result['hostedUrl']), result['checkoutSessionId'],
                encrypt(json.dumps(checkpoint)))
+    from .manual_proxies import succeeded
+    succeeded(order_id)
 
 
 def mark_payment_submission(order_id, recovery_context=None):
@@ -82,6 +84,9 @@ def handle_failure(order_id, exc):
             return False
         if row['deleted_at'] is not None or row['paid_at'] or row['status'] != 'processing':
             return True
+        from . import manual_proxies
+        manual_network = manual_proxies.network_failure(exc)
+        manual_failed = manual_network and manual_proxies.failed(q, order_id)
         if row['payment_submit_started_at'] and code != 'payment_declined':
             from . import subscription_recovery
             if subscription_recovery.queue_payment(q, order_id):
@@ -102,18 +107,19 @@ def handle_failure(order_id, exc):
         initialization_retry = (isinstance(exc, CheckoutError) and exc.code == 'device_id_missing'
                                 and not row['checkout_checkpoint_enc'])
         if (code not in NETWORK_ERRORS and not initialization_retry) or row['network_retry_count'] >= limit:
+            manual_proxies.release(q, order_id)
             return False
         # The interval is the existing admin scheduler setting, not a blocking sleep.
         delay = config('scheduler', q)['retry_delay_seconds']
         count = row['network_retry_count'] + 1
-        fresh_proxy = not initialization_retry and _restart_country_pool_attempt(q,order_id)
+        fresh_proxy = not initialization_retry and (manual_proxies.restart(q,order_id) if manual_failed else _restart_country_pool_attempt(q,order_id))
         q.execute('UPDATE subscription_runs SET network_retry_count=$2,'
                   "network_retry_at=now()+$3*interval '1 second',updated_at=now() WHERE order_id=$1",
                   order_id, count, delay)
         q.execute("UPDATE orders SET status='queued',updated_at=now() WHERE id=$1", order_id)
         resume = '复用已生成的结账链接，从付款阶段重试' if row['checkout_checkpoint_enc'] else '重新生成结账链接'
         if fresh_proxy:
-            resume = '申请新的代理会话，从生成结账链接开始重试'
+            resume = '重新分配代理，从生成结账链接开始重试'
         message = f'网络请求失败，{delay} 秒后{resume}（第 {count}/{limit} 次重试）。'
         if initialization_retry:
             message = f'未获取到设备标识，{delay} 秒后使用本单原代理会话重试初始化（第 {count}/{limit} 次重试）。'

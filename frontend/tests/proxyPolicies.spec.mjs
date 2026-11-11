@@ -76,3 +76,63 @@ test('subscription three modes, independent country inventory and import',async(
   assert.deepEqual(errors,[])
  }finally{await browser.close()}
 })
+
+test('manual vendors, primary/backup order and cooldown round-trip',async()=>{
+ const writes=[];let resource={id:'primary',name:'主用厂商',country:'PH',vendor:'711proxy',ip_mode:'static',endpoint:'http://fixture.invalid:8080',enabled:true,weight:1,capacity:5,failover_priority:0,in_use:0,last_status:'untested'}
+ const cfg={proxy:{mode:'manual',default_id:'',global_id:'',match_country:true,request_timeout_seconds:60,failure_cooldown_seconds:300},regions:{items:[{code:'PH',name:'菲律宾',currency:'PHP',enabled:true}]}}
+ const {browser,page,errors}=await browserFixture((req,p)=>{
+  if(p==='/api/admin/settings')return cfg
+  if(p==='/api/admin/resources')return {items:[resource]}
+  if(p==='/api/admin/resources/primary'){resource={...resource,...req.postDataJSON()};writes.push(resource);return {id:'primary'}}
+  if(p==='/api/admin/settings/proxy'){cfg.proxy=req.postDataJSON();writes.push(cfg.proxy);return {ok:true}}
+ })
+ try{
+  await page.goto('http://127.0.0.1:18970/#/admin/resources')
+  await page.locator('.proxy-table').getByRole('button',{name:'编辑',exact:true}).click()
+  const dialog=page.getByRole('dialog')
+  await dialog.getByLabel('代理厂商').selectOption('1024proxy')
+  await dialog.getByLabel('主备顺序',{exact:true}).selectOption('2')
+  for(const width of [1440,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await page.screenshot({path:path.join(output,`manual-edit-${width}.png`),fullPage:true})}
+  await dialog.getByRole('button',{name:'确认保存',exact:true}).click();await dialog.waitFor({state:'hidden'})
+  assert.equal(writes[0].vendor,'1024proxy');assert.equal(writes[0].failover_priority,2)
+  await page.locator('.proxy-table').getByText('备用 2',{exact:true}).waitFor()
+  await page.locator('.proxy-table').getByRole('button',{name:'编辑',exact:true}).click()
+  await dialog.getByLabel('代理厂商').selectOption('711proxy');await dialog.getByLabel('主备顺序',{exact:true}).selectOption('0')
+  await dialog.getByRole('button',{name:'确认保存',exact:true}).click();await dialog.waitFor({state:'hidden'})
+  assert.equal(writes[1].vendor,'711proxy');assert.equal(writes[1].failover_priority,0)
+  await page.getByRole('button',{name:'手动代理配置',exact:true}).click()
+  await dialog.getByLabel('网络故障冷却（秒）',{exact:false}).fill('180')
+  for(const width of [1440,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await page.screenshot({path:path.join(output,`manual-config-${width}.png`),fullPage:true})}
+  await dialog.getByRole('button',{name:'保存配置',exact:true}).click()
+  await page.waitForFunction(()=>document.querySelector('[role="dialog"] button.btn.primary')?.disabled!==true)
+  assert.equal(writes[2].failure_cooldown_seconds,180);assert.equal(writes[2].global_id,'')
+  assert.deepEqual(errors,[])
+ }finally{await browser.close()}
+})
+
+test('price catalog stays complete while payment selector follows supplied countries',async()=>{
+ const countries=Array.from({length:211},(_,i)=>({code:String.fromCharCode(65+Math.floor(i/26))+String.fromCharCode(65+i%26),name:`地区 ${i+1}`,currency:'USD'}))
+ let paymentCountries=[countries[0],countries[1]]
+ const {browser,page,errors}=await browserFixture((req,p)=>{
+  if(p==='/api/public')return {site:{name:'星桥'},features:{subscribe:true},products:[{id:'plus',name:'Plus',fee:100}],countries:paymentCountries,default_country:paymentCountries[0].code,payment_connected:true,subscription_flow:'cslive_go_direct_pay',announcements:[]}
+  if(p==='/api/me')return {id:'customer',name:'客户',role:'member',balance:1000,features:{subscribe:true},navigation:[],custom_menus:[]}
+  if(p==='/api/subscription-prices')return {countries,rows:[],fx_updated_at:null,fx_stale:false,scheduled:true,price_interval_hours:1}
+  if(p==='/api/quote')return {fee:100}
+ })
+ try{
+  for(const list of [[countries[0],countries[1]],[countries[7]]]){
+   paymentCountries=list;await page.goto('http://127.0.0.1:18970/#/subscribe');await page.reload()
+   await page.getByRole('combobox',{name:'国家 / 地区',exact:true}).click()
+   assert.equal(await page.getByRole('listbox',{name:'可选国家'}).getByRole('option').count(),list.length)
+   await page.getByRole('combobox',{name:'国家 / 地区',exact:true}).click()
+   await page.getByRole('button',{name:'各国订阅价格',exact:true}).click()
+   const dialog=page.getByRole('dialog',{name:'各国订阅价格',exact:true})
+   await dialog.getByText('Plus · 211 个地区',{exact:true}).waitFor()
+   assert.equal(await dialog.locator('tbody tr').count(),211)
+   assert.equal(await dialog.locator('tbody tr td:nth-child(2)>span').filter({hasText:'暂无参考价'}).count(),211)
+   await page.setViewportSize({width:390,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false)
+   await dialog.getByRole('button',{name:'关闭价格窗口'}).click()
+  }
+  assert.deepEqual(errors,[])
+ }finally{await browser.close()}
+})

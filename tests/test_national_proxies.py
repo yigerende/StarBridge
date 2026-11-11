@@ -72,11 +72,13 @@ class NationalProxyTests(unittest.TestCase):
         with db.transaction() as q:
             q.execute("SELECT pg_advisory_xact_lock(1886015,hashtext('retained'))")
             pool.reap();self.assertTrue(db.scalar('SELECT in_use FROM subscription_country_usage'))
-        pool.reap();self.assertFalse(db.scalar('SELECT in_use FROM subscription_country_usage'))
+        pool.reap();self.assertFalse(db.scalar('SELECT bool_or(in_use) FROM subscription_country_usage'))
 
     def test_modes_regions_and_renewal_binding(self):
         self.entry('renew','GLOBAL')
-        self.assertTrue(regions.enabled('cslive_go_direct_pay'))
+        self.assertEqual(regions.enabled('cslive_go_direct_pay'),[])
+        self.entry('country','PH')
+        self.assertEqual([r['code'] for r in regions.enabled('cslive_go_direct_pay')],['PH'])
         db.execute("INSERT INTO renewal_tasks(id,user_id,email,account_hash,credentials_enc,credentials_expires_at) VALUES('renewal','u','r@fixture.invalid','hash','fixture',now()+interval '1 hour')")
         with db.transaction() as q: first=pool.acquire_renewal(q,'renewal')
         with db.transaction() as q: self.assertEqual(pool.acquire_renewal(q,'renewal'),first)
@@ -85,7 +87,7 @@ class NationalProxyTests(unittest.TestCase):
         with db.transaction() as q:
             with self.assertRaises(BusinessError):country_pool.change_mode(q,'manual')
         db.execute("UPDATE renewal_tasks SET status='disabled' WHERE id='renewal'")
-        pool.reap();self.assertFalse(db.scalar('SELECT in_use FROM subscription_country_usage'))
+        pool.reap();self.assertFalse(db.scalar('SELECT bool_or(in_use) FROM subscription_country_usage'))
 
     def test_original_provider_service_isolated_authenticated_and_published(self):
         env={**os.environ,'XUFU_INTEGRATION':'1','REGISTRATION_GATEWAY_SECRET':'fixture-gateway-secret-longer-than-32'}

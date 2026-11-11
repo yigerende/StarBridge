@@ -13,7 +13,7 @@ from .settings import COUNTRIES
 from .egress import local_proxy, connect_via_local
 
 router=APIRouter(prefix='/api/admin',dependencies=[Depends(administrator)])
-FIELDS="""id,name,kind,country,vendor,ip_mode,enabled,weight,capacity,last_status,last_checked,last_ip,last_country,last_latency_ms,quality_result,openai_result,created_at,true AS has_credentials,
+FIELDS="""id,name,kind,country,vendor,ip_mode,enabled,weight,capacity,failover_priority,proxy_failures,cooldown_until,probe_until,last_status,last_checked,last_ip,last_country,last_latency_ms,quality_result,openai_result,created_at,true AS has_credentials,
 COALESCE(id=(SELECT value->>'global_id' FROM settings WHERE key='proxy'),false) AS is_global,
 (SELECT id FROM proxy_checks c WHERE c.resource_id=resources.id AND c.state IN ('queued','running') ORDER BY c.created_at LIMIT 1) AS active_check,
 (SELECT count(*) FROM proxy_leases l WHERE l.resource_id=resources.id AND l.expires_at>now()) AS in_use"""
@@ -76,20 +76,21 @@ def save_resource_value(v,request,id=''):
     name=name.strip();country=country.strip().upper()
     require(1<=length(name)<=80 and re.fullmatch('[A-Z]{2}',country) and type(v.get('enabled')) is bool,'资源参数无效')
     integer(v.get('weight'),1,100);integer(v.get('capacity'),1,100)
-    if 'vendor' in v: require(v['vendor'] in ('iproyal','cliproxy','other'),'请选择代理厂商')
+    if 'vendor' in v: require(v['vendor'] in ('iproyal','cliproxy','1024proxy','711proxy','other'),'请选择代理厂商')
+    if 'failover_priority' in v: integer(v['failover_priority'],0,100)
     if 'ip_mode' in v: require(v['ip_mode'] in ('dynamic','static'),'请选择动态或静态代理')
     if 'is_global' in v: require(type(v['is_global']) is bool,'全局代理必须为开关')
     endpoint=normalize_proxy(v.get('endpoint','')) if fresh or v.get('endpoint') else ''
     enc=encrypt(endpoint) if endpoint else ''
     with db.transaction() as q:
         q.execute('SELECT pg_advisory_xact_lock(1886003)')
-        previous=q.one('SELECT country,vendor,ip_mode FROM resources WHERE id=$1 FOR UPDATE',id) if not fresh else {}
+        previous=q.one('SELECT country,vendor,ip_mode,endpoint_enc,failover_priority FROM resources WHERE id=$1 FOR UPDATE',id) if not fresh else {}
         require(fresh or previous is not None,'代理不存在',404)
         from .regions import items as region_items
         require(country in {r['code'] for r in region_items(q)} or (not fresh and previous['country']==country),'请选择已配置的订阅地区')
         vendor=v.get('vendor',previous.get('vendor','iproyal' if endpoint and urlsplit(endpoint).hostname=='geo.iproyal.com' else 'other'))
         mode=v.get('ip_mode',previous.get('ip_mode','dynamic'))
-        changed=not fresh and (enc or previous['country']!=country or previous['vendor']!=vendor or previous['ip_mode']!=mode)
+        changed=not fresh and (endpoint and endpoint!=decrypt(previous['endpoint_enc']) or previous['country']!=country or previous['vendor']!=vendor or previous['ip_mode']!=mode)
         # Leases reserve capacity and can outlive the request; they are not an
         # edit lock. Running clients and order_proxy_sessions already retain
         # their endpoint snapshot. Resource edits apply to future acquisitions.
@@ -98,6 +99,9 @@ def save_resource_value(v,request,id=''):
         else:
             q.execute("UPDATE resources SET name=$2,country=$3,endpoint_enc=CASE WHEN $4='' THEN endpoint_enc ELSE $4 END,enabled=$5,weight=$6,capacity=$7,vendor=$8,ip_mode=$9 WHERE id=$1",id,name,country,enc,v['enabled'],v['weight'],v['capacity'],vendor,mode)
             if changed: q.execute("UPDATE resources SET last_status='untested',last_checked=NULL,last_ip='',last_country='',last_latency_ms=0,quality_result='{}',openai_result='{}' WHERE id=$1",id)
+        q.execute('UPDATE resources SET failover_priority=$2 WHERE id=$1',id,v.get('failover_priority',previous.get('failover_priority',0)))
+        if fresh or changed:
+            q.execute("UPDATE resources SET proxy_revision=$2,proxy_failures=0,health_generation=0,cooldown_until=NULL,probe_owner='',probe_until=NULL WHERE id=$1",id,uid())
         if v.get('is_global'):
             require(v['enabled'],'请先启用代理，再设为全局代理')
             q.execute("UPDATE settings SET value=jsonb_set(value,'{global_id}',to_jsonb($1::text)) WHERE key='proxy'",id)

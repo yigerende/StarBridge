@@ -7,7 +7,13 @@ const emit=defineEmits<{refresh:[]}>()
 const open=ref(false),plan=ref('plus'),seat=ref('standard'),search=ref(''),sort=ref('price'),dialog=ref<HTMLElement|null>(null)
 let prior:HTMLElement|null=null,priorOverflow=''
 const selectedKey=computed(()=>plan.value==='team'&&seat.value==='premium'?'team_premium':plan.value)
-const allRows=computed(()=>props.data.rows.filter(r=>r.plan===selectedKey.value))
+const allRows=computed(()=>{
+ const quotes=props.data.rows.filter(r=>r.plan===selectedKey.value)
+ return props.data.countries?.map(c=>quotes.find(r=>r.country===c.code)||{
+  country:c.code,name:c.name,currency:c.currency,plan:selectedKey.value,amount:null,amount_cny:null,
+  website_amount:null,website_amount_cny:null,tax:'',website_tax:'',rate_to_cny:null,updated_at:null,stale:false,
+ })||quotes
+})
 const rows=computed(()=>allRows.value.filter(r=>[r.name,r.country,r.currency].join(' ').toLowerCase().includes(search.value.trim().toLowerCase())).sort((a,b)=>sort.value==='country'?a.name.localeCompare(b.name,'zh-CN'):(a.amount_cny??Infinity)-(b.amount_cny??Infinity)||a.country.localeCompare(b.country)))
 const stale=computed(()=>props.data.fx_stale||rows.value.some(r=>r.stale))
 function show(){plan.value=pricePlans.some(p=>p.id===referencePlan(props.initialPlan))?referencePlan(props.initialPlan):'plus';seat.value=props.initialPlan==='team_premium'?'premium':'standard';search.value='';sort.value='price';open.value=true;emit('refresh')}
@@ -28,7 +34,7 @@ onUnmounted(()=>{if(open.value)document.body.style.overflow=priorOverflow;docume
 <p v-else-if="stale" class="price-reference-warning">部分数据尚未更新，保留最近成功的参考价和原更新时间。</p>
 <div class="price-reference-meta"><span>{{pricePlans.find(p=>p.id===plan)?.name}} · {{rows.length}} 个地区</span><span>汇率更新：{{priceTime(data.fx_updated_at)}}</span></div>
 <div class="price-reference-table-wrap"><table class="price-reference-table"><thead><tr><th>国家 / 地区</th><th>当地参考价 / {{plan==='team'?'席位 / ':''}}月</th><th>约合 R / {{plan==='team'?'席位 / ':''}}月</th><th>参考汇率</th></tr></thead><tbody>
-<tr v-for="r in rows" :key="r.country"><td><span>{{r.name}}</span><small>{{r.country}} <em v-if="r.country===selectedCountry">当前选择</em></small></td><td><span>{{priceNumber(r.amount)}} <small class="inline">{{r.currency}}</small></span><small>{{taxLabel(r.tax)}} · {{priceDate(r.updated_at)}}<template v-if="r.stale"> · 待更新</template></small><small v-if="r.website_amount!==r.amount||r.website_tax!==r.tax">{{websiteLabel(r.website_tax)}} {{priceNumber(r.website_amount)}} {{r.currency}}</small></td><td><strong class="price-reference-r">{{r.amount_cny==null?'暂无汇率':'≈ '+priceNumber(r.amount_cny)+' R'}}</strong><small v-if="r.website_amount_cny!=null&&(r.website_amount!==r.amount||r.website_tax!==r.tax)">{{websiteLabel(r.website_tax)}} ≈ {{priceNumber(r.website_amount_cny)}} R</small></td><td><small>{{r.rate_to_cny==null?'暂无汇率':'1 '+r.currency+' ≈ '+r.rate_to_cny.toLocaleString('zh-CN',{maximumSignificantDigits:6})+' R'}}</small></td></tr>
+<tr v-for="r in rows" :key="r.country"><td><span>{{r.name}}</span><small>{{r.country}} <em v-if="r.country===selectedCountry">当前选择</em></small></td><td><span>{{r.amount==null?'暂无参考价':priceNumber(r.amount)}} <small class="inline">{{r.currency}}</small></span><small v-if="r.amount!=null">{{taxLabel(r.tax)}} · {{priceDate(r.updated_at)}}<template v-if="r.stale"> · 待更新</template></small><small v-if="r.website_amount!=null && (r.website_amount!==r.amount||r.website_tax!==r.tax)">{{websiteLabel(r.website_tax)}} {{priceNumber(r.website_amount)}} {{r.currency}}</small></td><td><strong class="price-reference-r">{{r.amount==null?'—':r.amount_cny==null?'暂无汇率':'≈ '+priceNumber(r.amount_cny)+' R'}}</strong><small v-if="r.website_amount_cny!=null&&(r.website_amount!==r.amount||r.website_tax!==r.tax)">{{websiteLabel(r.website_tax)}} ≈ {{priceNumber(r.website_amount_cny)}} R</small></td><td><small>{{r.rate_to_cny==null?'暂无汇率':'1 '+r.currency+' ≈ '+r.rate_to_cny.toLocaleString('zh-CN',{maximumSignificantDigits:6})+' R'}}</small></td></tr>
 </tbody></table></div>
 <div v-if="!rows.length" class="price-reference-empty" role="status"><RefreshCw v-if="loading" :size="24" class="spinning"/><p>{{loading?'正在读取参考价格…':search?'没有匹配的地区':'当前套餐暂无地区参考价'}}</p><small v-if="!loading&&!search">数据由后台定时更新，请稍后查看。</small></div>
 </div>
