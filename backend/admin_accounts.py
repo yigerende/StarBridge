@@ -76,12 +76,14 @@ def users(q: str='', role: str='', status: str='', tier: str='', page: int=1, pa
         page=min(page,max(1,(total+page_size-1)//page_size))
         rows=tx.all(query+"SELECT f.*,(SELECT count(*) FROM orders o WHERE o.user_id=f.id AND o.deleted_at IS NULL) AS orders FROM filtered f ORDER BY created_at DESC,id DESC LIMIT $7 OFFSET $8",*args,page_size,(page-1)*page_size)
         ids=[row['id'] for row in rows]
+        used={r['user_id']:int(r['amount']) for r in tx.all("SELECT user_id,-sum(amount) AS amount FROM ledger WHERE user_id=ANY($1) AND kind IN ('charge','refund') GROUP BY user_id",ids)}
         prices={};services={}
         for row in tx.all('SELECT user_id,product_id,fee FROM user_product_prices WHERE user_id=ANY($1)',ids):
             prices.setdefault(row['user_id'],{})[row['product_id']]=row['fee']
         for row in tx.all('SELECT user_id,service,fee FROM user_service_prices WHERE user_id=ANY($1)',ids):
             services.setdefault(row['user_id'],{})[row['service']]=row['fee']
         for row in rows:
+            row['used_balance']=used.get(row['id'],0)
             row['membership']=membership_from(row,row['spent'],tiers=tiers,at=args[-1])
             row['product_prices']=prices.get(row['id'],{})
             row['service_prices']=services.get(row['id'],{})

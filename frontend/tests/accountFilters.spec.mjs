@@ -10,7 +10,7 @@ test('account search, filters, pagination, reset and supplier session settings',
  const errors=[],queries=[],writes=[];ctx.setDefaultTimeout(10000)
  const tiers=[{code:'base',name:'普通会员',threshold:0,discount:100},{code:'gold',name:'金卡',threshold:1000,discount:90}]
  const user={id:'admin',email:'admin@example.test',name:'管理员',role:'admin',status:'active',balance:0,frozen:0}
- const accounts=Array.from({length:51},(_,i)=>({id:'account-'+i,email:`member${i}@example.test`,name:`客户 ${i}`,role:i===0?'admin':'member',status:i%2?'disabled':'active',membership:{current:tiers[i%2],source:'automatic'},created_at:'2026-11-11T00:00:00Z',balance:100,frozen:0}))
+ const accounts=Array.from({length:51},(_,i)=>({id:'account-'+i,email:`member${i}@example.test`,name:`客户 ${i}`,role:i===0?'admin':'member',status:i%2?'disabled':'active',membership:{current:tiers[i%2],source:'automatic'},created_at:'2026-11-11T00:00:00Z',balance:100,frozen:0,used_balance:12345}))
  const products=[{id:'plus',name:'Plus',fee:1000}]
  const regions=[{code:'PH',name:'菲律宾',currency:'PHP'},{code:'US',name:'美国',currency:'USD'}]
  await ctx.route('**/*',async route=>{
@@ -36,6 +36,7 @@ test('account search, filters, pagination, reset and supplier session settings',
   const page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message))
   await page.goto('http://127.0.0.1:18970/#/admin/users');await page.getByText('客户 0',{exact:true}).waitFor()
   assert.equal(await page.locator('tbody tr').count(),10)
+  assert.match(await page.locator('thead').innerText(),/冻结余额[\s\S]*已用余额[\s\S]*会员等级/);assert.match(await page.locator('tbody tr').first().innerText(),/123.45 积分/)
   await page.getByLabel('选择本页',{exact:true}).check();await page.getByRole('button',{name:'下一页',exact:true}).click()
   await page.getByText('客户 10',{exact:true}).waitFor();assert.equal(await page.getByLabel('选择本页',{exact:true}).isChecked(),false)
   assert.deepEqual(await page.getByLabel('每页账户数').locator('option').allTextContents(),['10','50','100','500'])

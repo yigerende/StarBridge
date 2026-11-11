@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "星桥 API",
-    "version": "2.6.0",
+    "version": "2.6.1",
     "description": "使用同一个 API 密钥查询账户、订阅套餐、代退报价和积分钱包，提交申请并跟踪办理结果。当前可用功能见 GET /api/v1/me 的 features；重置登录密码后需重新创建 API 密钥。 请求按来源 IP 限流，同一出口的账号和密钥共用请求额度；注册、订阅和代退共用下单限额。429 按 Retry-After 等待，重试仍使用原幂等键。"
   },
   "servers": [
@@ -834,6 +834,76 @@
                       "enum": [
                         "membership_growth"
                       ]
+                    },
+                    "services": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "套餐接口标识，取自 GET /api/v1/catalog 的 items[].id。Pro 20x 使用 pro20x；新增且已开放的套餐同样传入其 id，不使用显示名称。"
+                          },
+                          "name": {
+                            "type": "string",
+                            "description": "套餐名称。"
+                          },
+                          "description": {
+                            "type": "string",
+                            "description": "套餐说明。"
+                          },
+                          "fee": {
+                            "type": "integer",
+                            "description": "标准服务费，单位：积分最小单位（展示时除以 100）。",
+                            "minimum": 0
+                          },
+                          "member_fee": {
+                            "type": "integer",
+                            "description": "当前账户服务费，单位：积分最小单位（展示时除以 100）。",
+                            "minimum": 0
+                          },
+                          "enabled": {
+                            "type": "boolean",
+                            "description": "是否在售。"
+                          },
+                          "saved": {
+                            "type": "integer",
+                            "description": "标准服务费减去当前账户服务费，积分最小单位；专属价高于标准价时可能为负数。"
+                          },
+                          "price_source": {
+                            "type": "string",
+                            "enum": [
+                              "product_override",
+                              "account_override",
+                              "membership",
+                              "standard"
+                            ],
+                            "description": "本次价格来源：product_override 为该套餐专属价，account_override 为订阅默认专属价，membership 为当前会员折扣；按此顺序优先使用。 standard 表示该服务不参与会员减免，按标准价计费。"
+                          },
+                          "membership_eligible": {
+                            "type": "boolean",
+                            "description": "该服务是否参与会员减免；false 时按标准价计费，有专属价格时仍优先使用专属价格。"
+                          },
+                          "business": {
+                            "type": "string",
+                            "enum": [
+                              "registration",
+                              "subscription",
+                              "refund"
+                            ],
+                            "description": "服务所属业务。"
+                          },
+                          "unit_label": {
+                            "type": "string",
+                            "enum": [
+                              "个",
+                              "次"
+                            ],
+                            "description": "计费单位。"
+                          }
+                        }
+                      },
+                      "description": "按注册、订阅、代退顺序返回所有已配置服务的当前账户报价，金额统一为积分最小单位。"
                     }
                   }
                 },
@@ -874,7 +944,8 @@
                   "products": [],
                   "growth": [],
                   "unit": "cent_R",
-                  "basis": "membership_growth"
+                  "basis": "membership_growth",
+                  "services": []
                 }
               }
             }

@@ -2,10 +2,9 @@
 const { fail } = require('../src/platform/security');
 const { lockMember } = require('./member-lock');
 
-// Match backend/membership.py: settled subscription spend selects the automatic
-// tier; an unexpired manual tier and the account fee override take precedence.
+// Match backend/membership.py: settled spend and active growth credit select one tier.
 async function prices(q, memberId, settings) {
-  const user = (await q.query(`SELECT u.id,u.membership_code,u.membership_until,
+  const user = (await q.query(`SELECT u.id,u.membership_code,u.membership_until,u.membership_growth_credit,
     coalesce((SELECT sum(s.spent) FROM (
       SELECT l.order_id,greatest(0,-sum(l.amount)) AS spent
       FROM ledger l JOIN orders o ON o.id=l.order_id AND o.user_id=l.user_id
@@ -21,12 +20,10 @@ async function prices(q, memberId, settings) {
   const tiers = (config?.items || [{ code: 'L1', name: '启程会员', threshold: 0, discount: 100 }])
     .slice().sort((a,b) => a.threshold-b.threshold).map((t,i) => ({...t,code:t.code || `L${i+1}`}));
   fail(tiers.length > 0, '会员价格配置不可用', 503);
-  let current = tiers[0], source = 'automatic', until = null;
-  for (const tier of tiers) if (Number(user.spent) >= tier.threshold) current = tier;
-  if (user.membership_code && (!user.membership_until || new Date(user.membership_until) > new Date())) {
-    const manual = tiers.find(t => t.code === user.membership_code);
-    if (manual) { current = manual; source = 'manual'; until = user.membership_until; }
-  }
+  const active = !!user.membership_code && (!user.membership_until || new Date(user.membership_until) > new Date());
+  const spent = Number(user.spent) + (active ? Number(user.membership_growth_credit) : 0);
+  let current = tiers[0], source = active ? 'manual' : 'automatic', until = active ? user.membership_until : null;
+  for (const tier of tiers) if (spent >= tier.threshold) current = tier;
   fail(Number.isInteger(current.discount) && current.discount >= 0 && current.discount <= 100, '会员价格配置不可用', 503);
   const membership = { current, source, until };
   const benefitRules = (await q.query("SELECT value FROM settings WHERE key='membership_pricing'")).rows[0]?.value || {};

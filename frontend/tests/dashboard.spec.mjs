@@ -62,7 +62,7 @@ test('unified dashboards: useful states, deep links, cached navigation, date sco
   await page.getByLabel('包含管理员业务').check();await page.getByText('包含管理员；待办和队列显示当前状态',{exact:false}).waitFor()
   await page.getByRole('button',{name:'自定义',exact:true}).click();await page.getByLabel('开始日期',{exact:true}).fill('2026-10-01');await page.getByLabel('结束日期',{exact:true}).fill('2026-10-03');await page.getByRole('button',{name:'应用',exact:true}).click()
   await page.getByText('2026-10-01 — 2026-10-03',{exact:false}).waitFor()
-  await page.locator('.dash-todo').filter({hasText:'已付款，后续待处理'}).click();await page.getByText('当前仅显示已付款、后续待处理的订单。',{exact:false}).waitFor()
+  await page.locator('.dash-attention-menu summary').click();await page.locator('.dash-todo').filter({hasText:'已付款，后续待处理'}).click();await page.getByText('当前仅显示已付款、后续待处理的订单。',{exact:false}).waitFor()
   assert.ok(requests.some(s=>s.includes('/api/admin/orders?')&&s.includes('attention=followup')))
   await page.evaluate(()=>location.hash='/admin');await page.getByText('净结算积分',{exact:true}).first().waitFor()
   await page.setViewportSize({width:390,height:844});await page.screenshot({path:'.local/dashboard-validation/admin-mobile.png',fullPage:true});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false)

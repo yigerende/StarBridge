@@ -58,6 +58,20 @@ class AccountFilterTests(unittest.TestCase):
         for values in ({'q':'x'*201},{'role':'owner'},{'status':'pending'},{'tier':'missing'},{'page':0},{'page_size':501}):
             with self.assertRaises(BusinessError):admin_accounts.users(**values)
 
+    def test_used_balance_counts_all_settled_services_not_growth_or_credits(self):
+        before=db.all('SELECT id,balance,frozen FROM users ORDER BY id')
+        entries=[('registration','charge',-200),('subscription','charge',-300),('refund','charge',-400),
+                 ('subscription','refund',100),('registration','refund',50),('refund','refund',25),
+                 ('subscription','redeem',10000),('subscription','adjustment',-500),
+                 ('subscription','invite_reward',20),('subscription','freeze',0),('subscription','unfreeze',0)]
+        for i,(business,kind,amount) in enumerate(entries):
+            db.execute('INSERT INTO ledger(user_id,kind,amount,balance_after,frozen_after,reference,description,business,created_at) VALUES($1,$2,$3,1000,0,$4,$4,$5,$6)',
+                       'u',kind,amount,'used-'+str(i),business,'2020-01-01')
+        with db.transaction() as q:membership.assign_membership(q,['u'],'gold',None)
+        self.assertEqual(admin_accounts.users(q='u@')['items'][0]['used_balance'],725)
+        self.assertEqual(admin_accounts.users(q='v@')['items'][0]['used_balance'],0)
+        self.assertEqual(before,db.all('SELECT id,balance,frozen FROM users ORDER BY id'))
+
     def test_http_permissions_and_concurrent_read_only_filters(self):
         from backend.main import app
         db.execute("INSERT INTO sessions(hash,user_id,expires_at) VALUES($1,'u',now()+interval '1 hour')",digest('fixture-user'))

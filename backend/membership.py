@@ -77,6 +77,28 @@ def fee_source(m,product_id):
     return 'account_override' if m['fee_override'] is not None else 'membership' if membership_eligible(m,product_id) else 'standard'
 
 
+def service_quotes(m,products,user):
+    """All customer service prices in the same unit and pricing precedence."""
+    from .features import capabilities
+    from .registration_gateway import enabled as registration_enabled
+    flags=capabilities(user)
+    result=[]
+    registration=(db.scalar('SELECT value FROM platform_settings WHERE id=1') or {}) if registration_enabled() else {}
+    def quote(id,name,business,standard,enabled,unit):
+        fee=fee_for(m,standard,id)
+        return {'id':id,'name':name,'business':business,'fee':standard,'member_fee':fee,'saved':standard-fee,
+                'price_source':fee_source(m,id),'membership_eligible':membership_eligible(m,id),'enabled':bool(enabled),'unit_label':unit}
+    if registration:
+        for service,name,key in [('registration_standard','标准账号','price_standard'),('registration_oauth','OAuth 账号','price_oauth')]:
+            result.append(quote(service,name,'registration',int(registration.get(key,0))*100,
+                flags['register'] and registration_enabled() and registration.get('orders_open') is True,'个'))
+    result.extend({**p,'id':public_id(p['id']),'business':'subscription','unit_label':'次',
+                   'enabled':bool(p['enabled'] and flags['subscribe'])} for p in products)
+    refund=db.one('SELECT service_fee,accepting FROM refund_settings WHERE id')
+    if refund:result.append(quote('refund','代退办理','refund',refund['service_fee'],flags['refund'] and refund['accepting'],'个'))
+    return result
+
+
 @router.get('/me')
 def me(request: Request):
     from .features import project_user, capabilities, navigation
@@ -97,7 +119,7 @@ def membership(request: Request):
         p['member_fee']=fee_for(m,p['fee'],p['id']);p['saved']=p['fee']-p['member_fee'];p['price_source']=fee_source(m,p['id']);p['membership_eligible']=membership_eligible(m,p['id'])
         if request.url.path.startswith('/api/v1/'):p['id']=public_id(p['id'])
     growth=db.all('SELECT o.id,o.product_name,o.updated_at,s.spent FROM ('+SPEND+') s JOIN orders o ON o.id=s.order_id WHERE s.user_id=$1 AND o.deleted_at IS NULL ORDER BY o.updated_at DESC LIMIT 100',current(request)['id'])
-    return {'membership':m,'products':products,'growth':growth,'unit':'cent_R','basis':'membership_growth'}
+    return {'membership':m,'products':products,'services':service_quotes(m,products,current(request)),'growth':growth,'unit':'cent_R','basis':'membership_growth'}
 
 
 @router.get('/quote')
