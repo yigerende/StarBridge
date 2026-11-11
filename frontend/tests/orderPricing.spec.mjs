@@ -85,7 +85,7 @@ test('account prices, custom tiers, timing, overview and disabled future menu',a
   await page.screenshot({path:path.join(output,'refund-orders.png'),fullPage:true})
   await page.evaluate(()=>location.hash='/admin');await page.locator('.dash-business-completed').first().waitFor()
   assert.equal(await page.locator('.dash-business-completed').count(),3);assert.ok(requests.some(p=>p.startsWith('/api/admin/overview?days=1')))
-  await page.evaluate(()=>location.hash='/activity');await page.getByRole('button',{name:'本周',exact:true}).click();await page.waitForTimeout(150)
+  await page.evaluate(()=>location.hash='/activity');await page.getByRole('columnheader',{name:'总耗时',exact:true}).waitFor();assert.match(await page.locator('.activity-records .order-duration').innerText(),/4分 0秒/);await page.getByRole('button',{name:'本周',exact:true}).click();await page.waitForTimeout(150)
   const range=presetRange('week');assert.ok(requests.some(p=>p.includes('/activity?')&&p.includes('start='+range.start)&&p.includes('end='+range.end)))
   const menu=page.locator('.customer-nav-row');const labels=await menu.allTextContents();assert.equal(labels.findIndex(x=>x.includes('自动办理')),labels.findIndex(x=>x.includes('代退办理'))+1)
   assert.equal(await page.getByRole('button',{name:/自动办理/}).isDisabled(),true)

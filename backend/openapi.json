@@ -7706,6 +7706,10 @@
             "type": "integer",
             "minimum": 0,
             "description": "当前冻结服务费，单位为积分最小单位。"
+          },
+          "timing": {
+            "$ref": "#/components/schemas/OrderTiming",
+            "description": "从提交到本次处理结束的总耗时，包含排队和重试；进行中返回已用时间。缺少历史结束记录时 total_seconds 为 null。"
           }
         },
         "description": "一条办理记录。独立关闭续费归入 subscription 业务，workflow=renewal，不收服务费。资金中心未开放时不返回 fee、settled、frozen。"

@@ -69,3 +69,35 @@ class OrderTimingTests(unittest.TestCase):
         self.assertFalse(rows[0]['timing']['ongoing'])
         self.assertTrue(rows[1]['timing']['ongoing'])
         self.assertEqual(order_timing.seconds(datetime(2026,1,2,tzinfo=timezone.utc),datetime(2026,1,1,tzinfo=timezone.utc)),None)
+
+    def test_activity_total_duration_is_shared_across_businesses_and_scopes(self):
+        from backend.activity import listing
+        self.sub('s',created_at='2026-01-01T00:00:00Z')
+        self.sub('foreign','v')
+        db.execute("INSERT INTO order_events(order_id,stage,message,created_at) VALUES('s','renewal_disabled','done','2026-01-01T00:01:00Z')")
+        self.reg('r',status='partial',delivered=1)
+        self.reg('running',status='running',delivered=1)
+        self.reg('missing')
+        db.execute("UPDATE platform_orders SET created_at='2026-01-01T00:00:00Z' WHERE id='r'")
+        db.execute("INSERT INTO ledger(user_id,registration_order_id,kind,amount,balance_after,frozen_after,reference,description,business,created_at) VALUES('u','r','charge',0,1000,0,'reg-first','test','registration','2026-01-01T00:01:00Z'),('u','r','unfreeze',0,1000,0,'reg-last','test','registration','2026-01-01T00:02:00Z')")
+        db.execute("INSERT INTO refunds(id,user_id,email,credentials,status,fee,fee_status,created_at) VALUES('f','u','x@test.example','unused','succeeded',0,'settled','2026-01-01T00:00:00Z')")
+        db.execute("INSERT INTO ledger(user_id,refund_order_id,kind,amount,balance_after,frozen_after,reference,description,business,created_at) VALUES('u','f','charge',0,1000,0,'refund-final','test','refund','2026-01-01T00:03:00Z')")
+        db.execute("INSERT INTO renewal_tasks(id,user_id,email,account_hash,credentials_enc,credentials_expires_at,status,created_at) VALUES('n','u','n@test.example','n','unused',now()+interval '1 hour','disabled','2026-01-01T00:00:00Z')")
+        db.execute("INSERT INTO renewal_events(task_id,status,message,created_at) VALUES('n','disabled','done','2026-01-01T00:04:00Z')")
+        for actor,is_admin in ((self.user,False),(self.admin_user,True)):
+            rows={r['id']:r for r in listing(actor,admin=is_admin)['items']}
+            for id,total in (('s',60),('r',120),('f',180),('n',240)):
+                self.assertEqual(rows[id]['timing']['total_seconds'],total)
+                self.assertFalse(rows[id]['timing']['ongoing'])
+            self.assertTrue(rows['running']['timing']['ongoing'])
+            self.assertIsNone(rows['missing']['timing']['total_seconds'])
+            if not is_admin:self.assertNotIn('foreign',rows)
+        db.execute("UPDATE platform_orders SET updated_at=now() WHERE id='r'")
+        db.execute("UPDATE renewal_tasks SET updated_at=now() WHERE id='n'")
+        rows={r['id']:r for r in listing(self.user)['items']}
+        self.assertEqual(rows['r']['timing']['total_seconds'],120)
+        self.assertEqual(rows['n']['timing']['total_seconds'],240)
+        db.execute("UPDATE renewal_tasks SET status='checking' WHERE id='n'")
+        resumed=next(r for r in listing(self.user)['items'] if r['id']=='n')
+        self.assertTrue(resumed['timing']['ongoing'])
+        self.assertIsNone(resumed['timing']['finished_at'])

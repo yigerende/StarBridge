@@ -1,7 +1,7 @@
 """Paginated registration, subscription and refund history in one snapshot."""
 from datetime import date, datetime, time, timedelta
 from fastapi import APIRouter, Depends, Query, Request
-from . import db
+from . import db, order_timing
 from .common import administrator, current, member, require
 from .dashboard import order_source, destination
 from .features import capabilities
@@ -62,6 +62,7 @@ def listing(user,admin=False,search='',business='',state='',start='',end='',page
         result=q.one(cte+"SELECT (SELECT to_jsonb(s) FROM ("+aggregate+") s) AS summary,"+
           "(SELECT coalesce(jsonb_agg(s),'[]') FROM (SELECT business,count(*) AS total,count(*) FILTER(WHERE state='active') AS active,COALESCE(sum(settled),0) AS settled FROM enriched GROUP BY business) s) AS businesses,"+
           "(SELECT coalesce(jsonb_agg(s),'[]') FROM (SELECT * FROM enriched ORDER BY created_at DESC,business,id DESC LIMIT $8 OFFSET $9) s) AS items",*args)
+        order_timing.activity(result['items'],q)
         for row in result['items']:
             row['href']=destination('/admin/orders' if admin else '/orders',row['business'],order_id=row['id']) if admin or flags['orders'] else None
             if row['workflow']=='renewal':row['href']=destination('/renewal',task_id=row['id']) if not admin and flags['renewal'] else None
