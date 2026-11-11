@@ -1676,6 +1676,21 @@
             "description": "每页数量，最多 200。 来源：由调用方选择每页条数；沿用接口默认值或在允许范围内设置，翻页时保持一致。",
             "x-input-source": "由调用方选择每页条数；沿用接口默认值或在允许范围内设置，翻页时保持一致。",
             "x-source-operations": []
+          },
+          {
+            "name": "attention",
+            "in": "query",
+            "required": false,
+            "description": "可选跟进筛选：pending 为排队、办理或付款后仍在处理；followup 为结果需核实。省略时不过滤。可与 workflow、status 一起使用。",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "",
+                "pending",
+                "followup"
+              ],
+              "default": ""
+            }
           }
         ],
         "tags": [
@@ -2997,7 +3012,8 @@
                     "docs": true,
                     "support": true,
                     "profile": true,
-                    "activity": true
+                    "activity": true,
+                    "restock": true
                   },
                   "navigation": [
                     {
@@ -6144,7 +6160,7 @@
           },
           "renewal": {
             "type": "string",
-            "description": "disabled 表示已确认关闭，kept 表示按要求保留，pending/retrying 表示继续查询原单，review 表示需联系支持。",
+            "description": "自动续费处理结果。disabled 为已关闭，kept 为按请求保留；review 为续费待核实。付款成功且 activation=active 时，即使 renewal=review，本次订阅仍已成功，不应重新付款。",
             "enum": [
               "not_started",
               "pending",
@@ -6764,7 +6780,7 @@
           },
           "features": {
             "type": "object",
-            "description": "当前可用功能。false 时对应用户接口返回 HTTP 403；keys=false 时所有 Bearer API 调用暂停。register、subscribe、links、renewal、refund 分别独立控制。",
+            "description": "当前账户的功能与菜单状态。业务功能关闭时对应接口返回 HTTP 403；keys=false 时 Bearer API 调用暂停。注册、订阅、结账链接、独立续费与代退分别控制；restock 仅表示待开放菜单是否显示。",
             "properties": {
               "home": {
                 "type": "boolean",
@@ -6829,12 +6845,16 @@
               "activity": {
                 "type": "boolean",
                 "description": "能否查询办理总览。"
+              },
+              "restock": {
+                "type": "boolean",
+                "description": "是否显示自动补货菜单；功能待开放，暂无办理接口。"
               }
             }
           },
           "navigation": {
             "type": "array",
-            "description": "当前账户可访问的页面入口。",
+            "description": "当前显示的页面菜单；disabled=true 为待开放菜单，不能进入。",
             "items": {
               "type": "object",
               "properties": {
@@ -6858,6 +6878,10 @@
                     "registration"
                   ],
                   "description": "导航分组：main 为业务与资金，tools 为工具与账户，registration 为注册办理下的我的账号。"
+                },
+                "disabled": {
+                  "type": "boolean",
+                  "description": "true 表示待开放菜单，不能进入；其他菜单可省略。"
                 }
               }
             }

@@ -5,6 +5,7 @@ import {mkdirSync} from 'node:fs'
 import {chromium} from '@playwright/test'
 import {presetRange,todayBeijing} from '../src/lib/report-period.ts'
 import {duration} from '../src/duration.ts'
+import {customerFeatures} from '../src/featureAccess.ts'
 
 test('calendar ranges and durations preserve boundaries and missing values',()=>{
  assert.deepEqual(presetRange('week','2026-11-01'),{start:'2026-10-26',end:'2026-11-01'})
@@ -17,11 +18,11 @@ test('account prices, custom tiers, timing, overview and disabled future menu',a
  const browser=await chromium.launch({headless:true,channel:'chrome'}),context=await browser.newContext({viewport:{width:1440,height:1080}})
  context.setDefaultTimeout(12000)
  const root=path.resolve('../webui'),output=path.resolve('../.local/order-pricing-ui');mkdirSync(output,{recursive:true})
- const errors=[],requests=[],writes=[];let exclusive=true,eligible=false
+ const errors=[],requests=[],writes=[];let exclusive=true,eligible=false,restockVisible=true
  let allowMembership,markMembershipRequested;const membershipLoaded=new Promise(resolve=>allowMembership=resolve),membershipRequested=new Promise(resolve=>markMembershipRequested=resolve)
  const tier={code:'L9',name:'合作会员',threshold:0,discount:20,description:'测试会员'},membership={current:tier,automatic:tier,tiers:[tier],source:'manual',product_prices:{plus:0},service_prices:{registration_standard:0,refund:0},fee_override:null}
  const products=[{id:'plus',name:'Plus',description:'月度订阅',fee:1000,tag:'PLUS',features:[],enabled:true}]
- const nav=[['home','工作台','main'],['register','注册办理','main'],['accounts','我的账号','registration'],['subscribe','订阅办理','main'],['links','结账链接','subscription'],['renewal','续费管理','subscription'],['refund','代退办理','main'],['orders','订单中心','main'],['wallet','资金中心','main'],['activity','办理总览','main'],['membership','会员中心','tools']].map(([id,label,group])=>({id,path:'/'+id,label,group}))
+ const nav=[['home','工作台','main'],['register','注册办理','main'],['accounts','我的账号','registration'],['subscribe','订阅办理','main'],['links','结账链接','subscription'],['renewal','续费管理','subscription'],['refund','代退办理','main'],['restock','自动补货','main'],['orders','订单中心','main'],['wallet','资金中心','main'],['activity','办理总览','main'],['membership','会员中心','tools']].map(([id,label,group])=>({id,path:'/'+id,label,group}))
  const user={id:'admin',name:'测试管理员',email:'admin@example.test',role:'admin',status:'active',balance:200000,frozen:0,features:{},membership,navigation:nav,custom_menus:[]}
  const account={...user,id:'member',name:'测试客户',email:'member@example.test',role:'member',membership_code:'L9',membership_until:null,service_prices:{registration_standard:0,registration_oauth:500,refund:300},product_prices:{plus:200},created_at:'2026-11-11T00:00:00Z',orders:3}
  const order={id:'subscription-paid',user_id:'member',email:'service@example.test',product_id:'plus',product_name:'Plus',workflow:'subscription',status:'succeeded',activation:'active',renewal:'review',fee:200,country:'PH',seats:1,source:'web',created_at:'2026-11-11T00:00:00Z',updated_at:'2026-11-11T00:04:00Z',payment:{state:'succeeded',fee_state:'charged',amount:2000,currency:'USD',last4:'4242'},timing:{payment_seconds:65,total_seconds:240,ongoing:false}}
@@ -32,10 +33,11 @@ test('account prices, custom tiers, timing, overview and disabled future menu',a
   const req=route.request(),url=new URL(req.url()),p=url.pathname;requests.push(p+url.search)
   if(p==='/'||p.startsWith('/assets/'))return route.fulfill({path:path.join(root,p==='/'?'index.html':p.slice(1))})
   if(!p.startsWith('/api/')&&!p.startsWith('/registration/api/'))return route.fulfill({status:404,body:''})
-  if(req.method()!=='GET'){writes.push({path:p,body:req.postDataJSON()});return route.fulfill({json:{ok:true}})}
+  if(req.method()!=='GET'){if(p==='/api/admin/settings/features')restockVisible=req.postDataJSON().restock;writes.push({path:p,body:req.postDataJSON()});return route.fulfill({json:{ok:true}})}
   let json={items:[]}
   if(p==='/api/public')json={site:{name:'星桥',english_name:'StarBridge'},features:{},announcements:[],products,countries:[{code:'PH',name:'菲律宾',currency:'PHP'}],payment_connected:true,subscription_flow:'cslive_go_direct_pay',registration_enabled:true}
-  if(p==='/api/me')json=user
+  if(p==='/api/me')json={...user,features:{restock:restockVisible},navigation:nav.filter(n=>n.id!=='restock'||restockVisible)}
+  if(p==='/api/admin/settings')json={features:Object.fromEntries(customerFeatures.map(k=>[k,k==='restock'?restockVisible:true]))}
   if(p==='/api/admin/users')json={items:[account],products,tiers:[tier]}
   if(p==='/api/admin/membership')json={items:[],config:{items:[tier]},products,discount_services:{registration_standard:true,registration_oauth:false,refund:true,subscription:{}},distribution:{L9:1},customers:1}
   if(p==='/api/admin/orders'||p==='/api/orders')json={items:[order],total:1,has_more:false,stats:{completed:1}}
@@ -81,14 +83,32 @@ test('account prices, custom tiers, timing, overview and disabled future menu',a
   await page.screenshot({path:path.join(output,'subscription-orders.png'),fullPage:true})
   await page.getByRole('button',{name:'完整流程'}).click();await page.getByRole('dialog').waitFor();await page.getByText('续费处理暂未完成，不影响本次订阅结果。',{exact:true}).first().waitFor()
   await page.screenshot({path:path.join(output,'subscription-detail.png'),fullPage:true});await page.keyboard.press('Escape')
+  await page.evaluate(()=>location.hash='/orders?business=subscription');await page.getByRole('button',{name:'查看详情',exact:false}).waitFor()
+  for(const width of [1920,1440,1024,768,390]){
+   await page.setViewportSize({width,height:1080})
+   const layout=await page.locator('.subscription-records').evaluate(panel=>{
+    const row=panel.querySelector('tbody tr'),time=row.querySelector('[data-label="更新时间"]'),action=row.querySelector('[data-label="操作"]'),scroll=panel.querySelector('.records-scroll')
+    const content=time.querySelector('.record-cell'),button=action.querySelector('button'),rect=time.getBoundingClientRect(),b=button.getBoundingClientRect()
+    return {timeWidth:rect.width,timeHeight:rect.height,contentHeight:content.getBoundingClientRect().height,rowHeight:row.getBoundingClientRect().height,buttonInside:b.left>=action.getBoundingClientRect().left&&b.right<=action.getBoundingClientRect().right,overlap:rect.right>b.left,overflow:document.documentElement.scrollWidth>innerWidth+1,scrollable:scroll.scrollWidth>scroll.clientWidth}
+   })
+   assert.equal(layout.overflow,false,JSON.stringify({width,layout}))
+   assert.ok(layout.contentHeight<65,JSON.stringify({width,layout}))
+   assert.equal(layout.buttonInside,true,JSON.stringify({width,layout}))
+   if(width>760){assert.ok(layout.timeWidth>=190);assert.ok(layout.rowHeight<220);assert.equal(layout.overlap,false);if(width<1440)assert.equal(layout.scrollable,true)}
+   await page.screenshot({path:path.join(output,`subscription-customer-${width}.png`),fullPage:true})
+  }
+  await page.setViewportSize({width:1440,height:1080})
   await page.evaluate(()=>location.hash='/admin/orders?business=refund');await page.getByText('2分 3秒',{exact:false}).waitFor()
   await page.screenshot({path:path.join(output,'refund-orders.png'),fullPage:true})
   await page.evaluate(()=>location.hash='/admin');await page.locator('.dash-business-completed').first().waitFor()
   assert.equal(await page.locator('.dash-business-completed').count(),3);assert.ok(requests.some(p=>p.startsWith('/api/admin/overview?days=1')))
   await page.evaluate(()=>location.hash='/activity');await page.getByRole('columnheader',{name:'总耗时',exact:true}).waitFor();assert.match(await page.locator('.activity-records .order-duration').innerText(),/4分 0秒/);await page.getByRole('button',{name:'本周',exact:true}).click();await page.waitForTimeout(150)
   const range=presetRange('week');assert.ok(requests.some(p=>p.includes('/activity?')&&p.includes('start='+range.start)&&p.includes('end='+range.end)))
-  const menu=page.locator('.customer-nav-row');const labels=await menu.allTextContents();assert.equal(labels.findIndex(x=>x.includes('自动办理')),labels.findIndex(x=>x.includes('代退办理'))+1)
-  assert.equal(await page.getByRole('button',{name:/自动办理/}).isDisabled(),true)
+  const menu=page.locator('.customer-nav-row');const labels=await menu.allTextContents();assert.equal(labels.findIndex(x=>x.includes('自动补货')),labels.findIndex(x=>x.includes('代退办理'))+1)
+  assert.equal(await page.getByRole('button',{name:/自动补货/}).isDisabled(),true)
+  await page.evaluate(()=>location.hash='/admin/settings');await page.getByRole('button',{name:'功能开关',exact:true}).click();await page.getByRole('checkbox',{name:'自动补货',exact:true}).uncheck();await page.getByRole('button',{name:'保存配置',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.toast')?.textContent.includes('配置已保存'))
+  assert.equal(writes.find(r=>r.path==='/api/admin/settings/features').body.restock,false)
+  await page.goto('http://127.0.0.1:18970/#/activity');await page.getByRole('button',{name:'本周',exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:/自动补货/}).count(),0)
   for(const route of ['/subscribe','/refund','/register']){
    await page.evaluate(r=>location.hash=r,route);await page.getByText('专属价格',{exact:true}).waitFor()
    assert.equal(await page.getByText('专属价格',{exact:true}).count(),1)

@@ -15,3 +15,9 @@ test('closed customer features cannot render by hash navigation',()=>{
 test('existing sites retain customer features until configured',()=>{
  for(const feature of customerFeatures)assert.equal(featureAllowed(undefined,feature),true)
 })
+
+test('restock visibility does not open a future service route',()=>{
+ assert.equal(featureAllowed({restock:true},'restock'),true)
+ assert.equal(featureAllowed({restock:false},'restock'),false)
+ assert.equal(routeAllowed({restock:true},'/restock'),false)
+})

@@ -22,7 +22,7 @@ const columns=[{key:'order',label:'订单 / 订阅账号',wide:true},{key:'produ
 </script>
 <template>
  <div class="page-heading"><div><span class="eyebrow">EVERY ORDER, IN ONE PLACE</span><h1>订单中心</h1><p>查订单、核付款、看续费，每一笔都有据可循。</p></div><a v-if="canSubscribe" href="#/subscribe" class="btn primary"><Plus :size="17"/>办理订阅</a></div>
- <p v-if="initialFilter&&(initialFilter.q||initialFilter.status||initialFilter.attention)" class="callout">已按工作台待办筛选订单{{initialFilter.q?' · '+initialFilter.q:''}}。<button class="text-btn" @click="$emit('clear-filter')">查看全部订单</button></p><section class="panel record-panel">
+ <p v-if="initialFilter&&(initialFilter.q||initialFilter.status||initialFilter.attention)" class="callout">已按工作台待办筛选订单{{initialFilter.q?' · '+initialFilter.q:''}}。<button class="text-btn" @click="$emit('clear-filter')">查看全部订单</button></p><section class="panel record-panel subscription-records">
   <div class="records-heading"><div><h2>全部订单</h2><p>付款、生效与续费分别记录，查看详情可跟进完整进度。</p></div><button class="btn secondary" :disabled="loading" @click="$emit('refresh')"><RefreshCw :size="15" :class="{'records-spin':loading}"/>刷新</button></div>
   <div class="records-filters">
    <label class="records-search"><span class="sr-only">订单号或订阅邮箱</span><Search :size="16"/><input v-model="q" type="search" placeholder="搜索订单号 / 订阅邮箱"/></label>
@@ -44,3 +44,21 @@ const columns=[{key:'order',label:'订单 / 订阅账号',wide:true},{key:'produ
   </RecordsTable>
  </section>
 </template>
+
+<style scoped>
+/* All nine columns need space; the shared seven-column percentages exceed 100%. */
+@media(min-width:761px){
+ .subscription-records :deep(.records-table){min-width:1490px}
+ .subscription-records :deep(th:nth-child(1)){width:260px}
+ .subscription-records :deep(th:nth-child(2)){width:130px}
+ .subscription-records :deep(th:nth-child(3)){width:150px}
+ .subscription-records :deep(th:nth-child(4)){width:155px}
+ .subscription-records :deep(th:nth-child(5)){width:180px}
+ .subscription-records :deep(th:nth-child(6)){width:165px}
+ .subscription-records :deep(th:nth-child(7)){width:140px}
+ .subscription-records :deep(th:nth-child(8)){width:200px}
+ .subscription-records :deep(th:nth-child(9)){width:110px}
+ .subscription-records :deep(td[data-label="更新时间"] .record-cell){white-space:nowrap}
+ .subscription-records :deep(.record-detail){white-space:nowrap}
+}
+</style>

@@ -105,7 +105,7 @@ onMounted(async()=>{try{spec.value=await api('/openapi.json');await nextTick();i
         <tr><td>链接已生成</td><td><code>order.status = awaiting_payment</code> 且 <code>checkout.ready = true</code>，读取 checkout.url。</td></tr>
         <tr><td>独立关闭续费</td><td><code>task.status = disabled</code>；<code>no_subscription</code> 表示没有可关闭的订阅。</td></tr>
         <tr><td>代退服务完成</td><td><code>order.status = succeeded</code>，<code>order.fee_status = settled</code>；服务完成不表示银行退款已到账。</td></tr>
-      </tbody></table></div><p>订阅付款为 <code>checking</code> 时继续查询原单，冻结积分保留，不要再次付款。付款成功后，生效或续费仍为 pending/retrying 时继续查询；review 时联系支持核实原订单。</p>
+      </tbody></table></div><p>订阅付款为 <code>checking</code> 时继续查询原单，冻结积分保留，不要再次付款。付款成功后，生效或续费仍为 pending/retrying 时继续查询；review 时联系支持核实原订单。付款成功且 <code>activation=active</code> 表示订阅已生效；此时 <code>renewal=review</code> 只表示续费待确认，不影响本次订阅，不要重新付款。</p>
     </section>
     <section v-for="x in operations" :key="x.id" :id="x.id" class="panel docs-section">
       <div class="endpoint"><b :class="x.method">{{x.method.toUpperCase()}}</b><code>{{x.path}}</code></div>

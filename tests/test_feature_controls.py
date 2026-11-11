@@ -27,6 +27,24 @@ class FeatureControlTests(unittest.TestCase):
     def flags(self,**values):
         db.execute("UPDATE settings SET value=$1 WHERE key='features'",{key:values.get(key,True) for key in FEATURES})
 
+    def test_restock_is_an_independent_disabled_menu_without_an_execution_api(self):
+        member,key,admin=self.clients()
+        try:
+            self.flags(refund=False,restock=True)
+            for client in (member,admin):
+                menus=client.get('/api/me').json()['navigation']
+                menu=next(row for row in menus if row['id']=='restock')
+                self.assertEqual((menu['label'],menu['group'],menu['disabled']),('自动补货','main',True))
+                self.assertNotIn('refund',{row['id'] for row in menus})
+            values=admin.get('/api/admin/settings').json()['features'];values['restock']=False
+            self.assertEqual(admin.put('/api/admin/settings/features',json=values).status_code,200)
+            self.assertNotIn('restock',{row['id'] for row in member.get('/api/me').json()['navigation']})
+            self.assertFalse(member.get('/api/public').json()['features']['restock'])
+            self.assertFalse(key.get('/api/v1/me').json()['features']['restock'])
+            self.assertEqual(key.post('/api/v1/restock',json={}).status_code,404)
+        finally:
+            for client in (member,key,admin):client.close()
+
     def test_every_menu_closes_and_management_remains_available(self):
         member,key,admin=self.clients()
         try:

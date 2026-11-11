@@ -1,15 +1,15 @@
 """Customer capabilities, enforced at the authenticated request boundary."""
 from .common import config, require
 
-FEATURES = ('home','register','accounts','subscribe','links','renewal','refund','orders','wallet','activity','keys','invites','membership','docs','support','profile')
-NAVIGATION = [('home','工作台'),('register','注册办理'),('accounts','我的账号'),('subscribe','订阅办理'),('refund','代退办理'),('orders','订单中心'),('wallet','资金账户'),
+FEATURES = ('home','register','accounts','subscribe','links','renewal','refund','restock','orders','wallet','activity','keys','invites','membership','docs','support','profile')
+NAVIGATION = [('home','工作台'),('register','注册办理'),('accounts','我的账号'),('subscribe','订阅办理'),('refund','代退办理'),('restock','自动补货'),('orders','订单中心'),('wallet','资金账户'),
               ('activity','办理总览'),('links','结账链接'),('renewal','续费管理'),('keys','开发接入'),('invites','伙伴计划'),
               ('membership','会员中心'),('docs','API 文档'),('support','联系客服'),('profile','个人设置')]
 
 
 def navigation(user=None):
     flags=capabilities(user)
-    return [{'id':key,'path':'/'+key,'label':label,'group':'registration' if key=='accounts' else 'main' if key in ('home','register','subscribe','refund','orders','wallet','activity') else 'tools'}
+    return [{'id':key,'path':'/'+key,'label':label,**({'disabled':True} if key=='restock' else {}),'group':'registration' if key=='accounts' else 'main' if key in ('home','register','subscribe','refund','restock','orders','wallet','activity') else 'tools'}
             for key,label in NAVIGATION if flags[key]]
 
 

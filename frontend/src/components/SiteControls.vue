@@ -13,6 +13,7 @@ const sections=[
  {id:'links',title:'结账链接',description:'仅生成结账链接的网页与 API；不影响订阅办理'},
  {id:'renewal',title:'续费管理',description:'独立取消自动续费；不影响订阅订单内的续费处理'},
  {id:'refund',title:'代退办理',description:'授权账号的代退服务申请与报价'},
+ {id:'restock',title:'自动补货',description:'显示自动补货菜单；功能待开放，开启后仍不可办理'},
  {id:'orders',title:'订单中心',description:'查询订单列表、详情及办理进度'},
  {id:'wallet',title:'资金账户',description:'余额、资金流水、充值和兑换'},
  {id:'activity',title:'办理总览',description:'分页查看全部业务记录与办理统计；完整订单详情仍由订单中心控制'},
