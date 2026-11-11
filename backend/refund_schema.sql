@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS refund_mothers (
  seat_type TEXT NOT NULL DEFAULT 'default' CHECK(seat_type IN ('default','prolite')),
  enabled BOOLEAN NOT NULL DEFAULT true, updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Retired proxies remain private for already assigned orders and their recovery.
+ALTER TABLE refund_proxies ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 CREATE TABLE IF NOT EXISTS refund_execution (
  refund_id TEXT PRIMARY KEY REFERENCES refunds(id), mother_id TEXT NOT NULL REFERENCES refund_mothers(id),
  step TEXT NOT NULL DEFAULT 'assigned' CHECK(step IN ('assigned','inviting','invited','login','ready','submitting','accepted','removing','completed','failed')),

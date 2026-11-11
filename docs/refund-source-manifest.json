@@ -51,7 +51,8 @@
     {
       "path": "internal/store/mother_probe.go",
       "source_sha256": "579909cb4792057322fc14f7c804e7d473bca9abc03c5b25e02123830fe47ff2",
-      "sha256": "579909cb4792057322fc14f7c804e7d473bca9abc03c5b25e02123830fe47ff2"
+      "sha256": "264e6e54010c62cc9b35340e8a9a04f831b371999517f1c2d0a4b055eb0a1a89",
+      "adaptation": "Require a current proxy for administrator mother checks; assigned execution credentials remain unchanged."
     },
     {
       "path": "internal/store/proxy_url.go",
@@ -71,8 +72,8 @@
     {
       "path": "internal/store/refund_execution.go",
       "source_sha256": "a4818dd74885d0221b42fe569249837d869df2a31fbed8191ebea69462901dcc",
-      "sha256": "004b54cd6326901e6a3bfc37b5dce7fdfeae8af8eb4ee302456754239fc09fe0",
-      "adaptation": "Match StarBridge active/deleted users and pause new claims while its updater drains ongoing work. Original execution and recovery transitions are unchanged."
+      "sha256": "462d4559e77753a32f20962c3daadaf160225795571e04f70f790237cc65769d",
+      "adaptation": "Match StarBridge active/deleted users and updater drain state. Exclude retired proxies only for new allocations; existing reservations and mother-switch child bindings retain their original proxies. Execution and recovery transitions remain unchanged."
     },
     {
       "path": "internal/store/refund_invite_recovery.go",
@@ -117,7 +118,8 @@
     {
       "path": "internal/store/refund_settings.go",
       "source_sha256": "0e510a8592ad24e48db15e9bf4ce6795d582e48a40548db2959839c66216bf26",
-      "sha256": "0e510a8592ad24e48db15e9bf4ce6795d582e48a40548db2959839c66216bf26"
+      "sha256": "50d0affaaa5ba3191917bbef5ca237697ba8e9fda421baf93c77808765a25d2b",
+      "adaptation": "Allow admin proxy deletion regardless of references, retain private records for assigned orders, clear the global selection, and reject retired resources for new configuration and readiness."
     },
     {
       "path": "internal/store/refund_timeline.go",
@@ -132,7 +134,8 @@
     {
       "path": "internal/store/resource_check.go",
       "source_sha256": "0b7a0af0f0770c91fdbba7a5d854d7d5f976d7f7f3a0af5d4492935f9f299e91",
-      "sha256": "0b7a0af0f0770c91fdbba7a5d854d7d5f976d7f7f3a0af5d4492935f9f299e91"
+      "sha256": "5b2bce5bf119fa913591664507cd5be4e62824c170305b5f8691d97a1b2d2803",
+      "adaptation": "Exclude retired proxy records from admin probes and ignore late diagnostic results after deletion."
     },
     {
       "path": "runtime/README.md",

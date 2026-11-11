@@ -42,6 +42,7 @@ async function saveSettings(){
 }
 function editMother(row?:Mother){
  mother.value=row?{...row,access_token:"",session:"",refresh_token:""}:{id:"",name:"",email:"",team_id:"",proxy_id:proxies.value.find(p=>p.enabled)?.id||"",seat_type:"default",enabled:true,has_secret:false,access_token:"",session:"",refresh_token:""};
+ if(!proxies.value.some(p=>p.id===mother.value.proxy_id))mother.value.proxy_id="";
  motherPreview.value=undefined;motherCheck.value=undefined;
  formError.value="";modal.value="mother";
 }
@@ -167,7 +168,7 @@ onMounted(load);
   <section v-show="section==='proxies'" id="refund-resource-proxies" role="tabpanel" class="panel">
    <div class="section-title"><div><h2>代退代理</h2><p>连接信息加密保管，列表只展示名称与可用状态。</p></div><button class="btn primary" :disabled="busy" @click="editProxy()">录入代理</button></div>
    <div class="table-scroll"><table><thead><tr><th>名称</th><th>状态</th><th>配置</th><th>连接测试</th><th>操作</th></tr></thead><tbody>
-    <tr v-for="p in proxies" :key="p.id"><td>{{p.name}}</td><td><span class="badge" :class="p.enabled?'green':'gray'">{{p.enabled?'启用':'停用'}}</span></td><td>{{settings.child_proxy_id===p.id?'子号全局代理':'连接信息已保存'}}</td><td><ResourceCheckSummary :check="p.check"/></td><td><div class="execution-actions"><button class="btn secondary" :disabled="busy" @click="checkProxy(p)">测试代理</button><button class="btn secondary" :disabled="busy" @click="editProxy(p)">编辑</button><button class="btn secondary danger" :disabled="busy||settings.child_proxy_id===p.id||mothers.some(m=>m.proxy_id===p.id)" @click="removing={kind:'proxies',id:p.id,name:p.name};modal='delete';formError=''">删除</button></div></td></tr>
+    <tr v-for="p in proxies" :key="p.id"><td>{{p.name}}</td><td><span class="badge" :class="p.enabled?'green':'gray'">{{p.enabled?'启用':'停用'}}</span></td><td>{{settings.child_proxy_id===p.id?'子号全局代理':'连接信息已保存'}}</td><td><ResourceCheckSummary :check="p.check"/></td><td><div class="execution-actions"><button class="btn secondary" :disabled="busy" @click="checkProxy(p)">测试代理</button><button class="btn secondary" :disabled="busy" @click="editProxy(p)">编辑</button><button class="btn secondary danger" :disabled="busy" @click="removing={kind:'proxies',id:p.id,name:p.name};modal='delete';formError=''">删除</button></div></td></tr>
     <tr v-if="!proxies.length"><td colspan="5" class="empty-state">还没有网络出口配置。</td></tr>
    </tbody></table></div>
   </section>
@@ -198,7 +199,7 @@ onMounted(load);
     <label class="checkbox-label"><input v-model="proxy.enabled" type="checkbox"/>启用代理</label>
    </template>
    <p v-else-if="removing?.kind==='mothers'">确认删除“{{removing.name}}”？删除后不再分配新申请，历史记录保留，已开始的申请继续收尾。</p>
-   <p v-else>确认删除“{{removing?.name}}”？仍被使用的代理配置不能删除。</p>
+   <p v-else>确认删除“{{removing?.name}}”？删除后不再用于新申请，已开始的申请继续收尾。</p>
    <p v-if="formError" class="form-error" role="alert">{{formError}}</p>
    <footer class="modal-actions"><button type="button" class="btn secondary" :disabled="busy||parsing" @click="close">取消</button><button class="btn primary" :disabled="busy||parsing">{{busy?'处理中…':modal==='delete'?'确认删除':'保存'}}</button></footer>
   </form>

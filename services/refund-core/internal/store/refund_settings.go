@@ -86,7 +86,7 @@ func (s *Store) ProviderReady(ctx context.Context) bool {
 		return false
 	}
 	var ready bool
-	_ = s.Pool.QueryRow(ctx, `SELECT enabled AND EXISTS(SELECT 1 FROM refund_proxies p WHERE p.id=child_proxy_id AND p.enabled) AND EXISTS(SELECT 1 FROM refund_mothers m JOIN refund_proxies p ON p.id=m.proxy_id WHERE m.deleted_at IS NULL AND m.enabled AND p.enabled AND (m.token_expires_at IS NULL OR m.token_expires_at>now()) AND (m.auth_failed_fingerprint IS NULL OR m.auth_failed_fingerprint<>md5(m.secret))) FROM refund_settings WHERE id`).Scan(&ready)
+	_ = s.Pool.QueryRow(ctx, `SELECT enabled AND EXISTS(SELECT 1 FROM refund_proxies p WHERE p.id=child_proxy_id AND p.enabled AND p.deleted_at IS NULL) AND EXISTS(SELECT 1 FROM refund_mothers m JOIN refund_proxies p ON p.id=m.proxy_id WHERE m.deleted_at IS NULL AND p.deleted_at IS NULL AND m.enabled AND p.enabled AND (m.token_expires_at IS NULL OR m.token_expires_at>now()) AND (m.auth_failed_fingerprint IS NULL OR m.auth_failed_fingerprint<>md5(m.secret))) FROM refund_settings WHERE id`).Scan(&ready)
 	return ready
 }
 func (s *Store) SetRefundRuntimeAvailable(v bool) { s.runtimeReady.Store(v) }
@@ -134,7 +134,7 @@ func (s *Store) SaveRefundSettings(ctx context.Context, actor string, v RefundSe
 	v.ChildProxyID = strings.TrimSpace(v.ChildProxyID)
 	if v.ChildProxyID != "" {
 		var available bool
-		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM refund_proxies WHERE id=$1 AND (enabled OR NOT $2))", v.ChildProxyID, v.Enabled).Scan(&available); err != nil {
+		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM refund_proxies WHERE id=$1 AND deleted_at IS NULL AND (enabled OR NOT $2))", v.ChildProxyID, v.Enabled).Scan(&available); err != nil {
 			return err
 		}
 		if !available {
@@ -146,7 +146,7 @@ func (s *Store) SaveRefundSettings(ctx context.Context, actor string, v RefundSe
 			return invalid("请先配置子号全局代理")
 		}
 		var ok bool
-		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM refund_mothers m JOIN refund_proxies p ON p.id=m.proxy_id WHERE m.deleted_at IS NULL AND m.enabled AND p.enabled)`).Scan(&ok); err != nil {
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM refund_mothers m JOIN refund_proxies p ON p.id=m.proxy_id WHERE m.deleted_at IS NULL AND p.deleted_at IS NULL AND m.enabled AND p.enabled)`).Scan(&ok); err != nil {
 			return err
 		}
 		if !ok {
@@ -163,7 +163,7 @@ func (s *Store) SaveRefundSettings(ctx context.Context, actor string, v RefundSe
 	return tx.Commit(ctx)
 }
 func (s *Store) RefundProxies(ctx context.Context) ([]RefundProxy, error) {
-	rows, err := s.Pool.Query(ctx, "SELECT id,name,enabled,check_json FROM refund_proxies ORDER BY name,id")
+	rows, err := s.Pool.Query(ctx, "SELECT id,name,enabled,check_json FROM refund_proxies WHERE deleted_at IS NULL ORDER BY name,id")
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +241,7 @@ func (s *Store) SaveRefundProxy(ctx context.Context, actor string, v RefundProxy
 		}
 	} else {
 		var exists, busy bool
-		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM refund_proxies WHERE id=$1),EXISTS(SELECT 1 FROM refund_execution e JOIN refund_mothers m ON m.id=e.mother_id WHERE (m.proxy_id=$1 OR e.child_proxy_id=$1) AND e.lease_until>now() AND NOT e.released)`, v.ID).Scan(&exists, &busy); err != nil {
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM refund_proxies WHERE id=$1 AND deleted_at IS NULL),EXISTS(SELECT 1 FROM refund_execution e JOIN refund_mothers m ON m.id=e.mother_id WHERE (m.proxy_id=$1 OR e.child_proxy_id=$1) AND e.lease_until>now() AND NOT e.released)`, v.ID).Scan(&exists, &busy); err != nil {
 			return "", err
 		}
 		if !exists {
@@ -299,6 +299,13 @@ func (s *Store) SaveRefundMother(ctx context.Context, actor string, v RefundMoth
 	}
 	if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(718374023)"); err != nil {
 		return "", err
+	}
+	var proxyExists bool
+	if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM refund_proxies WHERE id=$1 AND deleted_at IS NULL)", v.ProxyID).Scan(&proxyExists); err != nil {
+		return "", err
+	}
+	if !proxyExists {
+		return "", invalid("请选择可用的母号专属代理")
 	}
 	fresh := v.ID == ""
 	if fresh {
@@ -368,18 +375,23 @@ func (s *Store) DeleteRefundResource(ctx context.Context, actor, kind, id string
 	if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(718374023)"); err != nil {
 		return err
 	}
-	query := "DELETE FROM " + table + " WHERE id=$1"
-	if kind == "mother" {
-		// No history/reservation veto. Keep a private tombstone so an existing
-		// worker can finish; the scheduler excludes it from all new assignments.
-		query = "UPDATE refund_mothers SET deleted_at=COALESCE(deleted_at,now()),updated_at=now() WHERE id=$1"
-	}
+	// Keep private references for existing work; deletion must not veto history
+	// or interrupt recovery, but new allocations must exclude this resource.
+	query := "UPDATE " + table + " SET deleted_at=COALESCE(deleted_at,now()),updated_at=now() WHERE id=$1"
 	tag, err := tx.Exec(ctx, query, id)
 	if err != nil {
 		return settingError(err)
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound
+	}
+	if kind == "proxy" {
+		if _, err = tx.Exec(ctx, "UPDATE refund_settings SET child_proxy_id=NULL,updated_at=now() WHERE child_proxy_id=$1", id); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, "UPDATE refund_mothers SET check_json=NULL WHERE proxy_id=$1", id); err != nil {
+			return err
+		}
 	}
 	if err = audit(ctx, tx, actor, "refund."+kind+".delete", id, map[string]any{}); err != nil {
 		return err

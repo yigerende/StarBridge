@@ -153,6 +153,18 @@ class RefundTests(unittest.TestCase):
                 self.assertEqual(await recovery(),{'running':False,'needs_review':False,'can_release':True})
                 db.execute("UPDATE refund_execution SET step='accepted',accepted_at=now(),lease_until=now()+interval '1 minute' WHERE refund_id=$1",id)
                 self.assertEqual(await recovery(),{'running':True,'needs_review':False,'can_release':False})
+                # References from mothers, global configuration and live/history
+                # executions must not veto admin deletion. No usable resource runs.
+                db.execute("UPDATE refund_settings SET child_proxy_id='offline'")
+                db.execute("UPDATE refund_execution SET child_proxy_id='offline' WHERE refund_id=$1",id)
+                self.assertEqual((await c.delete('/api/admin/refund/proxies/offline',headers=session('u'))).status_code,403)
+                self.assertEqual((await c.delete('/api/admin/refund/proxies/offline',headers=session('a'))).status_code,200)
+                resources=(await c.get('/api/admin/refund/settings',headers=session('a'))).json()
+                self.assertEqual(resources['proxies'],[])
+                self.assertEqual(resources['settings']['child_proxy_id'],'')
+                self.assertEqual(db.scalar('SELECT child_proxy_id FROM refund_execution WHERE refund_id=$1',id),'offline')
+                self.assertEqual(db.scalar("SELECT proxy_id FROM refund_mothers WHERE id='offline'"),'offline')
+                self.assertEqual(await recovery(),{'running':True,'needs_review':False,'can_release':False})
                 print(json.dumps({'refund_http_seconds':round(time.monotonic()-started,3),'concurrent_creates':50,'isolated_reads':100,'concurrent_cancels':24,'http_errors':0}))
         finally:
             await refunds.stop()

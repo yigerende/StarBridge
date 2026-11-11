@@ -123,7 +123,7 @@ func (s *Store) ClaimRefund(ctx context.Context) (*RefundJob, error) {
  FROM refunds r JOIN users u ON u.id=r.user_id LEFT JOIN refund_execution e ON e.refund_id=r.id
  JOIN LATERAL (
   SELECT m.id FROM refund_mothers m JOIN refund_proxies p ON p.id=m.proxy_id
-  WHERE m.deleted_at IS NULL AND m.enabled AND p.enabled AND (m.token_expires_at IS NULL OR m.token_expires_at>now())
+  WHERE m.deleted_at IS NULL AND p.deleted_at IS NULL AND m.enabled AND p.enabled AND (m.token_expires_at IS NULL OR m.token_expires_at>now())
   AND (m.auth_failed_fingerprint IS NULL OR m.auth_failed_fingerprint<>md5(m.secret))
   AND NOT ((m.id||':'||md5(m.secret)||':'||md5(p.secret))=ANY(COALESCE(e.failed_mothers,'{}'::text[])))
   AND NOT EXISTS(SELECT 1 FROM refund_execution busy JOIN refund_mothers previous ON previous.id=busy.mother_id WHERE previous.team_id=m.team_id AND NOT busy.released AND busy.mother_released_at IS NULL)
@@ -132,7 +132,7 @@ func (s *Store) ClaimRefund(ctx context.Context) (*RefundJob, error) {
  ) m ON true
  WHERE r.status='queued' AND u.status='active' AND u.deleted_at IS NULL
  AND (e.refund_id IS NULL OR ($2 AND e.released AND e.step='assigned' AND e.recovery_mode='mother_switch' AND e.next_attempt_at<=now()))
- AND EXISTS(SELECT 1 FROM refund_proxies cp WHERE cp.id=COALESCE(e.child_proxy_id,NULLIF($3,'')) AND cp.enabled)
+ AND EXISTS(SELECT 1 FROM refund_proxies cp WHERE cp.id=COALESCE(e.child_proxy_id,NULLIF($3,'')) AND cp.enabled AND (cp.deleted_at IS NULL OR e.child_proxy_id=cp.id))
  AND NOT EXISTS(SELECT 1 FROM refund_execution other JOIN refunds old ON old.id=other.refund_id
   WHERE lower(old.email)=lower(r.email) AND (NOT other.released OR old.status='succeeded'))
  ORDER BY r.created_at,r.id LIMIT 1`, cfg.MotherIntervalSeconds, failoverEnabled, cfg.ChildProxyID).Scan(&job.ID, &job.UserID, &job.Mother.ID, &childProxyID)
