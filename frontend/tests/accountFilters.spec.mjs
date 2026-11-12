@@ -35,7 +35,13 @@ test('account search, filters, pagination, reset and supplier session settings',
  try{
   const page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message))
   await page.goto('http://127.0.0.1:18970/#/admin/users');await page.getByText('客户 0',{exact:true}).waitFor()
+  const includeAdmin=page.getByLabel('统计包含管理员',{exact:true})
+  assert.equal(await includeAdmin.isChecked(),false)
+  assert.equal(queries.at(-1).summary_include_admin,'false')
+  await includeAdmin.check();await page.waitForFunction(()=>document.querySelector('.account-panel')?.getAttribute('aria-busy')==='false')
+  assert.equal(queries.at(-1).summary_include_admin,'true')
   assert.equal(await page.locator('tbody tr').count(),10)
+  await includeAdmin.uncheck();await page.waitForFunction(()=>document.querySelector('.account-panel')?.getAttribute('aria-busy')==='false')
   assert.match(await page.locator('thead').innerText(),/冻结余额[\s\S]*已用余额[\s\S]*会员等级/);assert.match(await page.locator('tbody tr').first().innerText(),/123.45 积分/)
   await page.getByLabel('选择本页',{exact:true}).check();await page.getByRole('button',{name:'下一页',exact:true}).click()
   await page.getByText('客户 10',{exact:true}).waitFor();assert.equal(await page.getByLabel('选择本页',{exact:true}).isChecked(),false)

@@ -227,7 +227,7 @@ func main() {
 				status = 403
 			case errors.Is(e, store.ErrNotFound):
 				status = 404
-			case errors.Is(e, store.ErrConflict) || errors.Is(e, store.ErrDuplicate) || errors.Is(e, store.ErrState):
+			case errors.Is(e, store.ErrConflict) || errors.Is(e, store.ErrDuplicate) || errors.Is(e, store.ErrState) || errors.Is(e, store.ErrAccountRestricted):
 				status = 409
 			case errors.Is(e, store.ErrInvalid) || errors.Is(e, store.ErrBalance) || errors.Is(e, store.ErrSubmissionPaused):
 			default:

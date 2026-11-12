@@ -15,6 +15,7 @@ import (
 )
 
 type RefundSettings struct {
+	DeactivatedResubmitLimit          *int                      `json:"deactivated_resubmit_limit"`
 	ChildProxyRecoveryIntervalSeconds int                       `json:"child_proxy_recovery_interval_seconds"`
 	ChildProxyRecoverySuccessCount    *int                      `json:"child_proxy_recovery_success_count"`
 	QueryPersonalPlan                 *bool                     `json:"query_personal_plan"`
@@ -90,7 +91,7 @@ func (s *Store) openSecret(id string, data []byte, value any) error {
 }
 func (s *Store) RefundSettings(ctx context.Context) (RefundSettings, error) {
 	var v RefundSettings
-	err := s.Pool.QueryRow(ctx, "SELECT enabled,max_parallel,login_attempts,retry_seconds,COALESCE(child_proxy_id,''),mother_interval_seconds,recovery,mother_failover,child_proxy_backups,child_proxy_cooldown_seconds,query_personal_plan,resource_recovery,child_proxy_recovery_success_count,child_proxy_recovery_interval_seconds FROM refund_settings WHERE id").Scan(&v.Enabled, &v.MaxParallel, &v.LoginAttempts, &v.RetrySeconds, &v.ChildProxyID, &v.MotherIntervalSeconds, &v.Recovery, &v.MotherFailover, &v.ChildProxyBackups, &v.ChildProxyCooldownSeconds, &v.QueryPersonalPlan, &v.ResourceRecovery, &v.ChildProxyRecoverySuccessCount, &v.ChildProxyRecoveryIntervalSeconds)
+	err := s.Pool.QueryRow(ctx, "SELECT enabled,max_parallel,login_attempts,retry_seconds,COALESCE(child_proxy_id,''),mother_interval_seconds,recovery,mother_failover,child_proxy_backups,child_proxy_cooldown_seconds,query_personal_plan,resource_recovery,child_proxy_recovery_success_count,child_proxy_recovery_interval_seconds,deactivated_resubmit_limit FROM refund_settings WHERE id").Scan(&v.Enabled, &v.MaxParallel, &v.LoginAttempts, &v.RetrySeconds, &v.ChildProxyID, &v.MotherIntervalSeconds, &v.Recovery, &v.MotherFailover, &v.ChildProxyBackups, &v.ChildProxyCooldownSeconds, &v.QueryPersonalPlan, &v.ResourceRecovery, &v.ChildProxyRecoverySuccessCount, &v.ChildProxyRecoveryIntervalSeconds, &v.DeactivatedResubmitLimit)
 	return v, err
 }
 func (s *Store) ProviderReady(ctx context.Context) bool {
@@ -104,6 +105,9 @@ func (s *Store) ProviderReady(ctx context.Context) bool {
 func (s *Store) SetRefundRuntimeAvailable(v bool) { s.runtimeReady.Store(v) }
 func (s *Store) RefundRuntimeAvailable() bool     { return s.runtimeReady.Load() }
 func (s *Store) SaveRefundSettings(ctx context.Context, actor string, v RefundSettings) error {
+	if v.DeactivatedResubmitLimit != nil && (*v.DeactivatedResubmitLimit < 0 || *v.DeactivatedResubmitLimit > 10) {
+		return invalid("账号停用后允许再次提交次数须为 0～10")
+	}
 	if v.ResourceRecovery != nil {
 		if err := v.ResourceRecovery.Validate(); err != nil {
 			return err
@@ -206,7 +210,7 @@ func (s *Store) SaveRefundSettings(ctx context.Context, actor string, v RefundSe
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, "UPDATE refund_settings SET enabled=$1,max_parallel=$2,login_attempts=$3,retry_seconds=$4,child_proxy_id=NULLIF($5,''),mother_interval_seconds=$6,recovery=COALESCE($7::jsonb,recovery),mother_failover=COALESCE($8::jsonb,mother_failover),child_proxy_backups=$9,child_proxy_cooldown_seconds=$10,query_personal_plan=COALESCE($11,query_personal_plan),resource_recovery=COALESCE($12::jsonb,resource_recovery),child_proxy_recovery_success_count=$13,child_proxy_recovery_interval_seconds=$14,updated_at=now() WHERE id", v.Enabled, v.MaxParallel, v.LoginAttempts, v.RetrySeconds, v.ChildProxyID, v.MotherIntervalSeconds, v.Recovery, v.MotherFailover, v.ChildProxyBackups, v.ChildProxyCooldownSeconds, v.QueryPersonalPlan, v.ResourceRecovery, v.ChildProxyRecoverySuccessCount, v.ChildProxyRecoveryIntervalSeconds)
+	_, err = tx.Exec(ctx, "UPDATE refund_settings SET enabled=$1,max_parallel=$2,login_attempts=$3,retry_seconds=$4,child_proxy_id=NULLIF($5,''),mother_interval_seconds=$6,recovery=COALESCE($7::jsonb,recovery),mother_failover=COALESCE($8::jsonb,mother_failover),child_proxy_backups=$9,child_proxy_cooldown_seconds=$10,query_personal_plan=COALESCE($11,query_personal_plan),resource_recovery=COALESCE($12::jsonb,resource_recovery),child_proxy_recovery_success_count=$13,child_proxy_recovery_interval_seconds=$14,deactivated_resubmit_limit=COALESCE($15,deactivated_resubmit_limit),updated_at=now() WHERE id", v.Enabled, v.MaxParallel, v.LoginAttempts, v.RetrySeconds, v.ChildProxyID, v.MotherIntervalSeconds, v.Recovery, v.MotherFailover, v.ChildProxyBackups, v.ChildProxyCooldownSeconds, v.QueryPersonalPlan, v.ResourceRecovery, v.ChildProxyRecoverySuccessCount, v.ChildProxyRecoveryIntervalSeconds, v.DeactivatedResubmitLimit)
 	if err == nil {
 		err = audit(ctx, tx, actor, "refund.settings", "settings", v)
 	}

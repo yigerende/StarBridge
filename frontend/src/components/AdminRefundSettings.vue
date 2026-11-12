@@ -5,6 +5,7 @@ import ListPager from './ListPager.vue'
 import SortHeader from './SortHeader.vue'
 import RefundMotherTools from './RefundMotherTools.vue'
 import RefundResourceRecovery from './RefundResourceRecovery.vue'
+import RefundAccountRestrictions from './RefundAccountRestrictions.vue'
 import ProxyCooldown from "./ProxyCooldown.vue";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import {api as bridgeAPI,labels as statuses,cash} from '../lib'
@@ -18,11 +19,12 @@ type ProxyRow = { recovery_successes?:number;recovery_required?:number|null;prob
 type Mother = { auth_blocked?:boolean; check?:ResourceCheck; id:string; name:string; email:string; team_id:string; proxy_id:string; seat_type:string; enabled:boolean; has_secret:boolean; access_token?:string; session?:string; refresh_token?:string; has_refresh?:boolean; plan_type?:string; token_expires_at?:string; active_refund?:string; active_email?:string; active_status?:string };
 type CredentialPreview = {email:string;team_id:string;plan_type:string;expires_at:string|null;has_refresh:boolean};
 type Recovery={verification_http_statuses?:number[];plan_fallback?:{enabled:boolean;max_cycles:number;max_attempts:number;retry_seconds:number};enabled:boolean;max_retries:number;verify_intervals:number[];cleanup_intervals:number[];alert_seconds:number;cleanup_failed:boolean};
-type Settings = { child_proxy_recovery_interval_seconds:number; child_proxy_recovery_success_count:number|null|''; query_personal_plan:boolean;resource_recovery:{failure_limit:number;cooldown_seconds:number;watch_seconds:number;retry_seconds:number;slow_retry_seconds:number;fast_attempts:number;login_failure_limit:number;login_window_seconds:number;login_cooldown_seconds:number}; child_proxy_backups:string[];child_proxy_cooldown_seconds:number; mother_failover:{enabled:boolean;max_switches:number;retry_seconds:number}; recovery:Recovery; enabled:boolean; max_parallel:number; max_attempts:number; retry_seconds:number; child_proxy_id:string; mother_interval_seconds:number };
+type Settings = { deactivated_resubmit_limit:number; child_proxy_recovery_interval_seconds:number; child_proxy_recovery_success_count:number|null|''; query_personal_plan:boolean;resource_recovery:{failure_limit:number;cooldown_seconds:number;watch_seconds:number;retry_seconds:number;slow_retry_seconds:number;fast_attempts:number;login_failure_limit:number;login_window_seconds:number;login_cooldown_seconds:number}; child_proxy_backups:string[];child_proxy_cooldown_seconds:number; mother_failover:{enabled:boolean;max_switches:number;retry_seconds:number}; recovery:Recovery; enabled:boolean; max_parallel:number; max_attempts:number; retry_seconds:number; child_proxy_id:string; mother_interval_seconds:number };
 const section=ref('mothers'),runtimeReady=ref(false);
 const emit=defineEmits<{toast:[message:string]}>();
 const resourceDefaults={failure_limit:3,cooldown_seconds:300,watch_seconds:60,retry_seconds:30,slow_retry_seconds:300,fast_attempts:3,login_failure_limit:3,login_window_seconds:60,login_cooldown_seconds:30};
-const settings=ref<Settings>({child_proxy_recovery_interval_seconds:5,child_proxy_recovery_success_count:3,query_personal_plan:true,resource_recovery:{...resourceDefaults},child_proxy_backups:[],child_proxy_cooldown_seconds:300,mother_failover:{enabled:true,max_switches:3,retry_seconds:30},recovery:{plan_fallback:{enabled:true,max_cycles:2,max_attempts:3,retry_seconds:30},enabled:true,max_retries:3,verify_intervals:[30,60,120,300],cleanup_intervals:[15,30,60],alert_seconds:600,cleanup_failed:true},enabled:false,max_parallel:2,max_attempts:2,retry_seconds:30,child_proxy_id:"",mother_interval_seconds:0});
+const settingsRevision=ref(0);
+const settings=ref<Settings>({deactivated_resubmit_limit:0,child_proxy_recovery_interval_seconds:5,child_proxy_recovery_success_count:3,query_personal_plan:true,resource_recovery:{...resourceDefaults},child_proxy_backups:[],child_proxy_cooldown_seconds:300,mother_failover:{enabled:true,max_switches:3,retry_seconds:30},recovery:{plan_fallback:{enabled:true,max_cycles:2,max_attempts:3,retry_seconds:30},enabled:true,max_retries:3,verify_intervals:[30,60,120,300],cleanup_intervals:[15,30,60],alert_seconds:600,cleanup_failed:true},enabled:false,max_parallel:2,max_attempts:2,retry_seconds:30,child_proxy_id:"",mother_interval_seconds:0});
 const intervalText=(key:'verify_intervals'|'cleanup_intervals')=>computed({get:()=>settings.value.recovery[key].join(', '),set:(value:string)=>{settings.value.recovery[key]=value.split(/[,，\s]+/).filter(Boolean).map(Number)}});
 const verifyIntervals=intervalText('verify_intervals'),cleanupIntervals=intervalText('cleanup_intervals');
 const verificationStatuses=ref("404");
@@ -59,12 +61,12 @@ const proxyInput=()=>{const {check,...value}=proxy.value;return value};
 const displayTime=(value:string)=>new Date(value).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false});
 async function load(){
  busy.value=true;error.value="";
- try{const d=await api<{settings:Settings;mothers:Mother[];proxies:ProxyRow[];runtime_ready:boolean;resource_summary:Record<string,{total:number;enabled:number}>}>("/admin/refund/settings?summary_only=true");runtimeReady.value=d.runtime_ready;settings.value={...d.settings,child_proxy_recovery_interval_seconds:d.settings.child_proxy_recovery_interval_seconds??5,child_proxy_recovery_success_count:d.settings.child_proxy_recovery_success_count===undefined?3:d.settings.child_proxy_recovery_success_count,query_personal_plan:d.settings.query_personal_plan!==false,resource_recovery:{...resourceDefaults,...d.settings.resource_recovery},child_proxy_backups:d.settings.child_proxy_backups||[],child_proxy_cooldown_seconds:d.settings.child_proxy_cooldown_seconds||300};settings.value.recovery.plan_fallback??={enabled:true,max_cycles:2,max_attempts:3,retry_seconds:30};verificationStatuses.value=(settings.value.recovery.verification_http_statuses??[404]).join(',');resourceSummary.value=d.resource_summary;mothers.value=d.mothers;proxies.value=d.proxies;await motherList.load();await proxyList.load();await motherTools.value?.load()}
+ try{const d=await api<{settings:Settings;mothers:Mother[];proxies:ProxyRow[];runtime_ready:boolean;resource_summary:Record<string,{total:number;enabled:number}>}>("/admin/refund/settings?summary_only=true");runtimeReady.value=d.runtime_ready;settings.value={...d.settings,deactivated_resubmit_limit:d.settings.deactivated_resubmit_limit??0,child_proxy_recovery_interval_seconds:d.settings.child_proxy_recovery_interval_seconds??5,child_proxy_recovery_success_count:d.settings.child_proxy_recovery_success_count===undefined?3:d.settings.child_proxy_recovery_success_count,query_personal_plan:d.settings.query_personal_plan!==false,resource_recovery:{...resourceDefaults,...d.settings.resource_recovery},child_proxy_backups:d.settings.child_proxy_backups||[],child_proxy_cooldown_seconds:d.settings.child_proxy_cooldown_seconds||300};settings.value.recovery.plan_fallback??={enabled:true,max_cycles:2,max_attempts:3,retry_seconds:30};verificationStatuses.value=(settings.value.recovery.verification_http_statuses??[404]).join(',');resourceSummary.value=d.resource_summary;mothers.value=d.mothers;proxies.value=d.proxies;await motherList.load();await proxyList.load();await motherTools.value?.load()}
  catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
 async function saveSettings(){
  busy.value=true;error.value="";
- try{settings.value.recovery.verification_http_statuses=parseVerificationStatuses(verificationStatuses.value);await api("/admin/refund/settings",{method:"PUT",body:JSON.stringify({settings:{...settings.value,child_proxy_recovery_success_count:settings.value.child_proxy_recovery_success_count===''?null:settings.value.child_proxy_recovery_success_count}})});emit("toast","执行设置已保存");await load()}
+ try{settings.value.recovery.verification_http_statuses=parseVerificationStatuses(verificationStatuses.value);await api("/admin/refund/settings",{method:"PUT",body:JSON.stringify({settings:{...settings.value,child_proxy_recovery_success_count:settings.value.child_proxy_recovery_success_count===''?null:settings.value.child_proxy_recovery_success_count}})});emit("toast","执行设置已保存");settingsRevision.value++;await load()}
  catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
 function editMother(row?:Mother){
@@ -167,6 +169,11 @@ onUnmounted(()=>{resourcesDisposed=true;clearInterval(resourceTimer);resourceCon
      <p class="muted">满员未清理时停止分配；账号密码错误和邮箱验证不计入母号故障。订单结束后仍会检查残留，不重复收费。</p>
     </fieldset>
     <fieldset class="recovery-settings">
+     <legend>账号停用后的再次提交</legend>
+     <label>允许用户再次提交次数<input v-model.number="settings.deactivated_resubmit_limit" type="number" min="0" max="10" step="1" required/></label>
+     <p class="muted">首次确认账号被上游停用后，还允许重新提交多少笔订单。0 表示不允许再次提交；设为 2 表示再允许 2 笔，第 3 笔拒绝。原单自动重试、同一请求重复发送不计数。</p>
+    </fieldset>
+    <fieldset class="recovery-settings">
      <legend>登录服务故障保护</legend>
      <div class="form-row">
       <label>触发保护的不同账号数<input v-model.number="settings.resource_recovery.login_failure_limit" type="number" min="2" max="20" required/></label>
@@ -213,6 +220,7 @@ onUnmounted(()=>{resourcesDisposed=true;clearInterval(resourceTimer);resourceCon
     </fieldset>
     <button class="btn primary" :disabled="busy">应用调度配置</button>
    </form>
+   <RefundAccountRestrictions :active="section==='schedule'" :revision="settingsRevision"/>
    <RefundResourceRecovery :active="section==='schedule'"/>
   </section>
   <section v-show="section==='mothers'" id="refund-resource-mothers" role="tabpanel" class="panel">
