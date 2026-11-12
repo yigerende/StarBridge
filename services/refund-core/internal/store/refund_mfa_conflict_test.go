@@ -7,6 +7,15 @@ import (
 )
 
 func TestMFAConflictUsesExistingRecoveryAndWallet(t *testing.T) {
+	testLoginConflictRecoveryAndWallet(t, 409, "mfa_verify", "mfa_state_conflict")
+}
+
+func TestTeamSessionNotReadyUsesExistingRecoveryAndWallet(t *testing.T) {
+	testLoginConflictRecoveryAndWallet(t, 200, "session", "team_session_not_ready")
+}
+
+func testLoginConflictRecoveryAndWallet(t *testing.T, status int, stage, reason string) {
+	t.Helper()
 	for _, succeeds := range []bool{true, false} {
 		name := "budget_exhausted"
 		if succeeds {
@@ -28,8 +37,8 @@ func TestMFAConflictUsesExistingRecoveryAndWallet(t *testing.T) {
 			for _, step := range []string{"inviting", "invited", "login"} {
 				checkpoint(t, s, job, step)
 			}
-			diagnostic := RefundDiagnostic{Code: "login_failed", HTTPStatus: 409, Retryable: true,
-				Evidence: &RefundEvidence{Side: "child", Stage: "mfa_verify", Reason: "mfa_state_conflict", Exception: "LoginFlowError"}}
+			diagnostic := RefundDiagnostic{Code: "login_failed", HTTPStatus: status, Retryable: true,
+				Evidence: &RefundEvidence{Side: "child", Stage: stage, Reason: reason, Exception: "LoginFlowError"}}
 			// A repeated completion report must not schedule or settle twice.
 			for i := 0; i < 2; i++ {
 				if err := s.FinishRefundAttempt(testctx, job, diagnostic); err != nil {
@@ -51,7 +60,7 @@ func TestMFAConflictUsesExistingRecoveryAndWallet(t *testing.T) {
 			if err := json.Unmarshal(raw, &saved); err != nil {
 				t.Fatal(err)
 			}
-			if saved.Code != "login_failed" || !saved.Retryable || saved.HTTPStatus != 409 || saved.Evidence == nil || saved.Evidence.Reason != "mfa_state_conflict" {
+			if saved.Code != "login_failed" || !saved.Retryable || saved.HTTPStatus != status || saved.Evidence == nil || saved.Evidence.Reason != reason || saved.Evidence.Stage != stage {
 				t.Fatal("retry evidence lost", saved)
 			}
 			if early, err := s.ClaimRefund(testctx); err != nil || early != nil {
@@ -76,7 +85,7 @@ func TestMFAConflictUsesExistingRecoveryAndWallet(t *testing.T) {
 				t.Fatal(err)
 			}
 			if cooled != 0 || healthFaults != 0 || switches != 0 {
-				t.Fatal("MFA conflict incorrectly treated as a network outage", cooled, healthFaults, switches)
+				t.Fatal("login conflict incorrectly treated as a network outage", cooled, healthFaults, switches)
 			}
 			finished, completed := retry, "completed"
 			if succeeds {

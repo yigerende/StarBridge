@@ -85,7 +85,7 @@ func (v RefundEvidence) Sanitized() *RefundEvidence {
 		v.Membership = nil
 	}
 	v.Event = evidenceEnum(v.Event, "start response error failure truncated")
-	v.Reason = evidenceEnum(v.Reason, evidenceReasons+" extra_verification login_response_incomplete login_step_unsupported team_session_expired personal_session_conflict login_upstream_unavailable member_identity_missing team_selection_conflict")
+	v.Reason = evidenceEnum(v.Reason, evidenceReasons+" extra_verification login_response_incomplete login_step_unsupported team_session_expired personal_session_conflict login_upstream_unavailable member_identity_missing team_selection_conflict team_session_not_ready")
 	v.UpstreamCode = evidenceEnum(v.UpstreamCode, evidenceReasons)
 	v.Exception = evidenceEnum(v.Exception, "RuntimeError ValueError KeyError TypeError AttributeError ImportError ModuleNotFoundError TimeoutError OSError ConnectionError LoginFlowError DeadAccountError NeedsVerification UpstreamFailure VerificationUnavailable RequestsError ProxyError SSLError DNSError ConnectTimeout ReadTimeout ConnectionResetError JSONDecodeError other")
 	v.BodyKind = evidenceEnum(v.BodyKind, "json html text")

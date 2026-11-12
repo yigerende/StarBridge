@@ -124,6 +124,9 @@ ALTER TABLE refund_execution ADD COLUMN IF NOT EXISTS child_proxy_switches INTEG
 -- Resource recovery survives order settlement; it never writes wallet entries.
 ALTER TABLE refund_settings ADD COLUMN IF NOT EXISTS query_personal_plan BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE refund_settings ADD COLUMN IF NOT EXISTS resource_recovery JSONB NOT NULL DEFAULT '{"failure_limit":3,"cooldown_seconds":300,"watch_seconds":60,"retry_seconds":30,"slow_retry_seconds":300,"fast_attempts":3,"login_failure_limit":3,"login_window_seconds":60,"login_cooldown_seconds":30}';
+-- Add only the new wait setting; preserve existing resource/retry policy.
+UPDATE refund_settings SET resource_recovery=resource_recovery||'{"post_login_wait_seconds":5}'::jsonb
+ WHERE NOT (resource_recovery ? 'post_login_wait_seconds');
 CREATE TABLE IF NOT EXISTS refund_resource_health (
  scope TEXT PRIMARY KEY, failures INTEGER NOT NULL DEFAULT 0,
  blocked BOOLEAN NOT NULL DEFAULT false, next_at TIMESTAMPTZ,

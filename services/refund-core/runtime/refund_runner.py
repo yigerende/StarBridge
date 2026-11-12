@@ -45,6 +45,30 @@ def rpc(method, params=None, **kwargs):
 
 
 class CustomerLogin(WorkspaceObservationMixin, TeamProtocolLogin):
+    def validate_team(self, session):
+        # A callback can return this customer's session before the invited team
+        # is selected. Retry a fresh login, never submit with that credential.
+        # Only classify known, consistent child identity; all other validation
+        # failures continue through the original guard unchanged.
+        token = session.get("access_token") or session.get("accessToken") or ""
+        claims = upstream.jwt_payload(token)
+        auth = claims.get("https://api.openai.com/auth") or {}
+        profile = claims.get("https://api.openai.com/profile") or {}
+        user = session.get("user") or {}
+        account = session.get("account") or {}
+        if all(isinstance(value, dict) for value in (auth, profile, user, account)):
+            emails = [email for email in (user.get("email"), profile.get("email"), claims.get("email")) if email is not None]
+            expected = str(self.payload.get("email") or "").casefold()
+            user_id = auth.get("chatgpt_user_id") or user.get("id")
+            same_child = (bool(expected) and bool(claims) and bool(emails)
+                          and all(isinstance(email, str) and email.casefold() == expected for email in emails)
+                          and isinstance(user_id, str) and bool(user_id))
+            wrong_team = auth.get("chatgpt_account_id") != self.target_team or (account.get("id") and account["id"] != self.target_team)
+            if same_child and wrong_team:
+                raise upstream.LoginFlowError("Target team session is not ready",
+                                              code="team_session_not_ready", retryable=True)
+        return super().validate_team(session)
+
     def request(self, url, **kwargs):
         # Classify the current login response, never an old last_status or prose.
         # Submission uses its own transport/checkpoints and is not handled here.
@@ -80,6 +104,12 @@ class CustomerLogin(WorkspaceObservationMixin, TeamProtocolLogin):
         return response
 
     def _finish_chatgpt_login(self, continue_url):
+        # Credentials/MFA have completed. Wait before following the callback
+        # or selecting a workspace; every fresh login uses the configured delay.
+        wait = self.payload.get("_post_login_wait_seconds", 5)
+        wait = wait if type(wait) is int and 0 <= wait <= 60 else 5
+        if wait:
+            time.sleep(wait)
         if self.payload.get("_skip_personal_plan_observation"):
             return super()._finish_chatgpt_login(continue_url)
         from personal_plan_observation import finish_personal_then_team
@@ -364,6 +394,7 @@ def _execute(job, checkpoint, mother_factory, login_factory, sleep):
                 "credential_mode": "chatgpt_at", "configured_login_mode": "password_totp",
                 "selected_login_mode": "password_totp", "allow_sms": False,
                 "_skip_personal_plan_observation": job["settings"].get("query_personal_plan", True) is False,
+                "_post_login_wait_seconds": (job["settings"].get("resource_recovery") or {}).get("post_login_wait_seconds", 5),
                 "_transport_attempts": 1 if recovery else 3,
                 "skip_phone_verification": True, "merge_v2": {"team_id": job["mother"]["team_id"],
                     "verification_http_statuses": (job["settings"].get("recovery") or {}).get("verification_http_statuses", [404])},
