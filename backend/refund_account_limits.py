@@ -44,6 +44,9 @@ def clear(email: str, request: Request):
     with db.transaction() as q:
         # Serialize with new submissions; do not alter running orders or fees.
         q.execute('SELECT pg_advisory_xact_lock(718374024)')
+        # Match the wallet/execution lock order before taking a restriction row.
+        # The audit FK also touches this administrator when they own an order.
+        q.execute('SELECT id FROM users WHERE id=$1 FOR UPDATE', request.state.user['id'])
         row = q.one('SELECT * FROM refund_account_restrictions WHERE email=$1 FOR UPDATE', email.strip().lower())
         require(row, '记录不存在', 404)
         if row['cleared_at'] is None:
