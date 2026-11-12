@@ -46,7 +46,7 @@ def delete_user(id:str,request:Request):
 
 
 @router.get('/users')
-def users(q: str='', role: str='', status: str='', tier: str='', page: int=1, page_size: int=10, sort_by: str='created_at', sort_dir: str='desc'):
+def users(q: str='', role: str='', status: str='', tier: str='', page: int=1, page_size: int=10, sort_by: str='created_at', sort_dir: str='desc', summary_include_admin: bool=False):
     q=q.strip()
     require(len(q)<=200,'搜索内容不能超过 200 个字符')
     require(role in ('','member','admin') and status in ('','active','disabled'),'账户筛选条件无效')
@@ -73,7 +73,8 @@ def users(q: str='', role: str='', status: str='', tier: str='', page: int=1, pa
             WHERE $4='' OR effective.code=$4
         ) """
         args=(q,role,status,tier,tier_rows,now())
-        summary=tx.one(query+"""SELECT count(*) AS total,
+        summary=tx.one(query+""", summary_accounts AS (SELECT * FROM filtered WHERE $7 OR role<>'admin')
+          SELECT count(*) AS total,(SELECT count(*) FROM filtered) AS list_total,
           count(*) FILTER(WHERE status='active') AS active,
           count(*) FILTER(WHERE status='disabled') AS disabled,
           count(*) FILTER(WHERE role='admin') AS administrators,
@@ -81,9 +82,9 @@ def users(q: str='', role: str='', status: str='', tier: str='', page: int=1, pa
           count(*) FILTER(WHERE frozen>0) AS frozen_accounts,
           COALESCE(sum(balance),0) AS balance,COALESCE(sum(frozen),0) AS frozen,
           COALESCE(sum(balance-frozen),0) AS available,
-          (SELECT COALESCE(-sum(l.amount),0) FROM ledger l WHERE l.user_id IN (SELECT id FROM filtered)
-             AND l.kind IN ('charge','refund')) AS used_balance FROM filtered""",*args)
-        total=summary['total']
+          (SELECT COALESCE(-sum(l.amount),0) FROM ledger l WHERE l.user_id IN (SELECT id FROM summary_accounts)
+             AND l.kind IN ('charge','refund')) AS used_balance FROM summary_accounts""",*args,summary_include_admin)
+        total=summary.pop('list_total')
         page=min(page,max(1,(total+page_size-1)//page_size))
         ordering=order_by(sort_by,sort_dir,{'account':'f.email','email':'f.email','created_at':'f.created_at','role':'f.role','status':'f.status','balance':'(f.balance-f.frozen)','frozen':'f.frozen','used_balance':"(SELECT coalesce(-sum(amount),0) FROM ledger WHERE user_id=f.id AND kind IN ('charge','refund'))",'membership':"(f.spent+CASE WHEN f.membership_code<>'' AND (f.membership_until IS NULL OR f.membership_until>now()) THEN f.membership_growth_credit ELSE 0 END)",'orders':'orders','fee_override':'f.fee_override','membership_until':'f.membership_until'},'created_at','f.id')
         rows=tx.all(query+"SELECT f.*,(SELECT count(*) FROM orders o WHERE o.user_id=f.id AND o.deleted_at IS NULL) AS orders FROM filtered f ORDER BY "+ordering+" LIMIT $7 OFFSET $8",*args,page_size,(page-1)*page_size)
