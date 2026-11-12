@@ -119,14 +119,14 @@
     {
       "path": "internal/store/refund_recovery.go",
       "source_sha256": "a726c1f1912a79d0adc885df45c52d10990acea87d07b27e8da95be1b9422963",
-      "sha256": "73ddb31201d9c3e22f71b43df317eec5b2dc7f451903721c287780d1835170c4",
-      "adaptation": "After original lease fencing, mark explicitly attributed child transport failures for cooldown and next-attempt proxy selection; existing phase, retry budgets and unknown-submission verification remain authoritative. Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
+      "sha256": "07d16ea95b6a9664af132aca47ac2a2cf3491f4d41a326371129d7c1fe65af83",
+      "adaptation": "After original lease fencing, mark explicitly attributed child transport failures for cooldown and next-attempt proxy selection; existing phase, retry budgets and unknown-submission verification remain authoritative. Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-12 authorized account termination admission limit/settings; execution and retry behavior preserved."
     },
     {
       "path": "internal/store/refund_settings.go",
       "source_sha256": "0e510a8592ad24e48db15e9bf4ce6795d582e48a40548db2959839c66216bf26",
-      "sha256": "5c15bb4fbcd78fa04605c817452320ae110654100e355cdb54f7f7576bb8b3f0",
-      "adaptation": "Unified administrator resource deletion, mother/child eligibility, ordered child backup configuration, and readiness. Retain private assigned resource rows. Block conflicting credential/identity edits and mother deletion during management; clear credential refresh metadata on replacement. Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
+      "sha256": "8987e08c4912968e7449938be7f29df44474cc9568d9020e4a896eadefadd17b",
+      "adaptation": "Unified administrator resource deletion, mother/child eligibility, ordered child backup configuration, and readiness. Retain private assigned resource rows. Block conflicting credential/identity edits and mother deletion during management; clear credential refresh metadata on replacement. Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-12 authorized account termination admission limit/settings; execution and retry behavior preserved."
     },
     {
       "path": "internal/store/refund_timeline.go",
@@ -330,8 +330,8 @@
       "path": "internal/store/store.go",
       "source_path": "internal/store/store.go",
       "source_sha256": "103b019b0310cbeca74a06d30ba9d0f30a2d6c53c85ad178d9011b8944b5831f",
-      "sha256": "97b4df3b97b598e522b9d628a164502b410efa88e8ed37ee9950b5cb6ddc875b",
-      "adaptation": "Extract refund admission/read/transaction primitives; use shared StarBridge user status, balance, ledger deltas, audit and refund idempotency table. No legacy users, wallets or notification center. Customer paginated refund reads with owner scope, stable whitelisted ordering and 500-row limit."
+      "sha256": "74c21f841db112b41e93479ce2c5f2b912c77a596c86c3d3ad23326cd282f988",
+      "adaptation": "Extract refund admission/read/transaction primitives; use shared StarBridge user status, balance, ledger deltas, audit and refund idempotency table. No legacy users, wallets or notification center. Customer paginated refund reads with owner scope, stable whitelisted ordering and 500-row limit.; 2026-11-12 authorized account termination admission limit/settings; execution and retry behavior preserved."
     },
     {
       "path": "internal/refundprovider/account.go",

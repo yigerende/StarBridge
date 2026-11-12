@@ -145,3 +145,35 @@ CREATE INDEX IF NOT EXISTS refund_resource_team ON refund_resource_tasks(team_id
 CREATE INDEX IF NOT EXISTS refund_resource_child ON refund_resource_tasks(email,state);
 ALTER TABLE refund_resource_health ADD COLUMN IF NOT EXISTS attempt_key TEXT NOT NULL DEFAULT '';
 ALTER TABLE refund_resource_health ADD COLUMN IF NOT EXISTS probe_id TEXT NOT NULL DEFAULT '';
+
+-- Limit new customer submissions after an explicit upstream account termination.
+ALTER TABLE refund_settings ADD COLUMN IF NOT EXISTS deactivated_resubmit_limit INTEGER NOT NULL DEFAULT 0 CHECK(deactivated_resubmit_limit BETWEEN 0 AND 10);
+DO $account_limits$
+BEGIN
+IF to_regclass('refund_account_restrictions') IS NULL THEN
+CREATE TABLE refund_account_restrictions (
+ email TEXT PRIMARY KEY CHECK(email=lower(email)), reason TEXT NOT NULL,
+ first_seen_at TIMESTAMPTZ NOT NULL, last_seen_at TIMESTAMPTZ NOT NULL,
+ refund_id TEXT NOT NULL REFERENCES refunds(id), resubmissions INTEGER NOT NULL DEFAULT 0 CHECK(resubmissions>=0),
+ cleared_at TIMESTAMPTZ, cleared_by TEXT REFERENCES users(id)
+);
+CREATE INDEX IF NOT EXISTS refund_account_restrictions_time ON refund_account_restrictions(first_seen_at DESC,email);
+-- Existing definitive evidence becomes an admission restriction once. Cleared
+-- rows stay present, so startup never reinstates a restriction an admin cleared.
+WITH evidence AS (
+ SELECT lower(r.email) email,r.id refund_id,d.created_at,
+ COALESCE(NULLIF(d.diagnostic->'evidence'->>'upstream_code',''),d.diagnostic->'evidence'->>'reason') reason
+ FROM refund_execution_diagnostics d JOIN refunds r ON r.id=d.refund_id
+ WHERE d.diagnostic->>'code'='account_unavailable' AND d.diagnostic->'evidence'->>'side'='child'
+ AND d.diagnostic->>'http_status' ~ '^[45][0-9]{2}$'
+), first_failure AS (
+ SELECT DISTINCT ON(email) * FROM evidence
+ WHERE reason IN ('account_deactivated','account_deleted','account_banned','account_disabled','account_suspended')
+ ORDER BY email,created_at,refund_id
+)
+INSERT INTO refund_account_restrictions(email,reason,first_seen_at,last_seen_at,refund_id,resubmissions)
+SELECT e.email,e.reason,e.created_at,(SELECT max(created_at) FROM evidence x WHERE x.email=e.email),e.refund_id,
+ (SELECT count(*) FROM refunds r WHERE lower(r.email)=e.email AND r.created_at>e.created_at)
+FROM first_failure e ON CONFLICT(email) DO NOTHING;
+END IF;
+END $account_limits$;

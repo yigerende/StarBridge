@@ -161,6 +161,9 @@ func recordDiagnostic(ctx context.Context, tx pgx.Tx, id string, d RefundDiagnos
 		return err
 	}
 	_, err := tx.Exec(ctx, "UPDATE refund_execution SET last_diagnostic=$2 WHERE refund_id=$1", id, d)
+	if err == nil {
+		err = recordAccountRestriction(ctx, tx, id, d)
+	}
 	return err
 }
 

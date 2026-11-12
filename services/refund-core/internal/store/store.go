@@ -325,6 +325,9 @@ func (s *Store) CreateRefunds(ctx context.Context, uid, key string, accounts []r
 		if exists {
 			return nil, false, ErrDuplicate
 		}
+		if err = reserveAccountResubmission(ctx, tx, a.Email); err != nil {
+			return nil, false, err
+		}
 		id := ID()
 		encrypted, e := s.Encrypt(id, a)
 		if e != nil {
