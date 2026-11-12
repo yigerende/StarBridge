@@ -41,8 +41,8 @@ async function submit(){
 <template>
  <form class="login-form" @submit.prevent="submit">
   <div class="eyebrow">WELCOME TO {{pub.site.english_name}}</div>
-  <h2>{{mode==='register'?'建立你的专属空间':mode==='reset'?'找回你的账户':'欢迎回来'}}</h2>
-  <p class="muted">{{mode==='register'?'用一个账户，管理每一次订阅。':mode==='reset'?'验证注册邮箱，设置新的登录密码。':'登录后继续管理你的服务与资金。'}}</p>
+  <h2>{{mode==='register'?'在星桥，开启下一步':mode==='reset'?'找回你的账户':'欢迎回来'}}</h2>
+  <p class="muted">{{mode==='register'?'创建账户，办理注册、订阅与代退。':mode==='reset'?'验证注册邮箱，设置新的登录密码。':'登录你的账户，继续办理服务。'}}</p>
   <div v-if="mode!=='reset'" class="segmented"><button type="button" :class="{active:mode==='login'}" :disabled="busy||sending" @click="mode='login'">登录账户</button><button v-if="policy.registration_open" type="button" :class="{active:mode==='register'}" :disabled="busy||sending" @click="mode='register'">注册账户</button></div>
   <button v-else type="button" class="text-btn auth-back" :disabled="busy||sending" @click="mode='login'"><ArrowLeft :size="15"/>返回登录</button>
   <div v-if="error" class="alert danger" role="alert">{{error}}</div><div v-if="message" class="callout" role="status">{{message}}</div>

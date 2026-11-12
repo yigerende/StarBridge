@@ -1,0 +1,17 @@
+<script setup lang="ts">
+import {Users,UserCheck,ShieldCheck,Wallet,LockKeyhole,ReceiptText} from 'lucide-vue-next'
+import {cash,type Row} from '../lib'
+defineProps<{summary?:Row;loading:boolean;filtered:boolean}>()
+const count=(value:number|undefined)=>Number(value||0).toLocaleString('zh-CN')
+</script>
+<template><div class="account-stats-wrap"><div class="account-stats-caption"><span>{{filtered?'当前筛选账户':'全部账户'}}<small>覆盖全部分页</small></span><small v-if="loading" role="status">正在更新…</small></div><section class="account-stats" aria-label="账户管理统计" :aria-busy="loading">
+ <article><div><span>账户总数</span><Users :size="17"/></div><strong>{{summary?count(summary.total):'—'}}<small>个</small></strong><p>管理员 {{count(summary?.administrators)}} 个</p></article>
+ <article><div><span>正常账户</span><UserCheck :size="17"/></div><strong>{{summary?count(summary.active):'—'}}<small>个</small></strong><p>停用 {{count(summary?.disabled)}} 个</p></article>
+ <article><div><span>已升级会员</span><ShieldCheck :size="17"/></div><strong>{{summary?count(summary.upgraded):'—'}}<small>个</small></strong><p>基础等级 {{count(Number(summary?.total||0)-Number(summary?.upgraded||0))}} 个</p></article>
+ <article class="account-stat-funds"><div><span>可用余额</span><Wallet :size="17"/></div><strong>{{summary?cash(summary.available):'—'}}<small>积分</small></strong><p>账户总余额 {{cash(summary?.balance)}}</p></article>
+ <article><div><span>冻结余额</span><LockKeyhole :size="17"/></div><strong>{{summary?cash(summary.frozen):'—'}}<small>积分</small></strong><p>涉及 {{count(summary?.frozen_accounts)}} 个账户</p></article>
+ <article><div><span>已用余额</span><ReceiptText :size="17"/></div><strong>{{summary?cash(summary.used_balance):'—'}}<small>积分</small></strong><p>历史实际扣费 − 退费</p></article>
+ </section></div></template>
+<style scoped>
+.account-stats-wrap{margin:0 0 24px}.account-stats-caption{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;font-size:12px;color:#557164}.account-stats-caption span small{margin-left:10px}.account-stats-caption small{font-size:10px;color:#8ca096}.account-stats{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}.account-stats article{padding:20px 18px 17px;border:1px solid #e3eae5;background:#fff;border-radius:12px;min-width:0;box-shadow:0 2px 5px #123d2203}.account-stats article>div{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#789087;font-size:11px}.account-stats article>div svg{opacity:.65;flex-shrink:0}.account-stats strong{display:block;line-height:1.4;color:#244d3e;font-size:clamp(20px,1.7vw,29px);font-weight:600;letter-spacing:-.6px;font-variant-numeric:tabular-nums;margin:14px 0 10px;overflow-wrap:anywhere}.account-stats strong small{font-size:9px;color:#8aa092;font-weight:400;letter-spacing:0;margin-left:6px;white-space:nowrap}.account-stats p{color:#94a59c;font-size:10px;line-height:1.6}.account-stats .account-stat-funds{background:#edf6f0;border-color:#d6e7dc}.account-stat-funds strong{color:#246040}@media(max-width:1350px){.account-stats{grid-template-columns:repeat(3,minmax(0,1fr))}.account-stats strong{font-size:26px}}@media(max-width:600px){.account-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.account-stats article{padding:16px}.account-stats strong{font-size:23px}.account-stats article>div{font-size:10px}.account-stats p{font-size:9px}}
+</style>

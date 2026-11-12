@@ -10,7 +10,7 @@ const props=defineProps<{rows:Row[];loading:boolean;revision?:number;busy:boolea
 const query=ref(''),source=ref('')
 const {page,size,sortBy,sortDir,data,rows,loading,error,load,sort}=useRemoteList('customer-recharges',()=>'/wallet/recharges',{q:query,source})
 const filtered=rows
-watch(()=>props.revision,()=>void load())
+watch(()=>props.revision,()=>{if(!loading.value)void load()})
 const columns=[{key:'type',sortKey:'status',label:'类型'},{key:'source',label:'充值来源'},{key:'fees',sortKey:'amount',label:'支付费用'},{key:'available',sortKey:'available_delta',label:'可用变动'},{key:'frozen',sortKey:'frozen_delta',label:'冻结变动'},{key:'balance',sortKey:'balance_after',label:'变动后余额'},{key:'related',sortKey:false as const,label:'关联记录',wide:true},{key:'description',sortKey:false as const,label:'说明',wide:true},{key:'time',sortKey:'created_at',label:'时间'},{key:'action',label:'操作'}]
 function reset(){query.value='';source.value=''}
 </script>

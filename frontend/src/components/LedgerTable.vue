@@ -17,7 +17,7 @@ const hasFilters=computed(()=>!!(q.value||kind.value||start.value||end.value))
 const {page,size,sortBy,sortDir,data,rows,loading,error,load,sort}=useRemoteList('ledger-'+props.business,()=>'/wallet/ledger',{q,kind,start,end},{extra:()=>({business:props.business})})
 const filtered=rows
 const totals=computed(()=>data.value.summary||{credit:0,spent:0,held:0,returned:0,adjusted:0,reward:0,net:0})
-watch(()=>props.revision,()=>void load())
+watch(()=>props.revision,()=>{if(!loading.value)void load()})
 function ledgerDescription(row:Row){
  const fee=Math.abs(Number(row.frozen_delta||row.amount||0))
  if(row.kind==='freeze')return `${row.related_order?.product_name||(row.business==='registration'?'注册订单':'订单')}冻结 ${cash(fee)} 积分，等待办理结算`

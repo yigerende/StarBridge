@@ -68,12 +68,22 @@ def users(q: str='', role: str='', status: str='', tier: str='', page: int=1, pa
               AND ($1='' OR strpos(lower(u.email),lower($1))>0 OR strpos(lower(u.name),lower($1))>0 OR strpos(lower(u.id),lower($1))>0)
               AND ($2='' OR u.role=$2) AND ($3='' OR u.status=$3)
         ), filtered AS (
-            SELECT a.* FROM accounts a
-            LEFT JOIN LATERAL (SELECT code FROM tiers WHERE threshold<=a.spent+CASE WHEN a.membership_code<>'' AND (a.membership_until IS NULL OR a.membership_until>$6) THEN a.membership_growth_credit ELSE 0 END OR position=0 ORDER BY threshold DESC,position DESC LIMIT 1) effective ON true
+            SELECT a.*,effective.position AS tier_position FROM accounts a
+            LEFT JOIN LATERAL (SELECT code,position FROM tiers WHERE threshold<=a.spent+CASE WHEN a.membership_code<>'' AND (a.membership_until IS NULL OR a.membership_until>$6) THEN a.membership_growth_credit ELSE 0 END OR position=0 ORDER BY threshold DESC,position DESC LIMIT 1) effective ON true
             WHERE $4='' OR effective.code=$4
         ) """
         args=(q,role,status,tier,tier_rows,now())
-        total=tx.scalar(query+'SELECT count(*) FROM filtered',*args)
+        summary=tx.one(query+"""SELECT count(*) AS total,
+          count(*) FILTER(WHERE status='active') AS active,
+          count(*) FILTER(WHERE status='disabled') AS disabled,
+          count(*) FILTER(WHERE role='admin') AS administrators,
+          count(*) FILTER(WHERE tier_position>0) AS upgraded,
+          count(*) FILTER(WHERE frozen>0) AS frozen_accounts,
+          COALESCE(sum(balance),0) AS balance,COALESCE(sum(frozen),0) AS frozen,
+          COALESCE(sum(balance-frozen),0) AS available,
+          (SELECT COALESCE(-sum(l.amount),0) FROM ledger l WHERE l.user_id IN (SELECT id FROM filtered)
+             AND l.kind IN ('charge','refund')) AS used_balance FROM filtered""",*args)
+        total=summary['total']
         page=min(page,max(1,(total+page_size-1)//page_size))
         ordering=order_by(sort_by,sort_dir,{'account':'f.email','email':'f.email','created_at':'f.created_at','role':'f.role','status':'f.status','balance':'(f.balance-f.frozen)','frozen':'f.frozen','used_balance':"(SELECT coalesce(-sum(amount),0) FROM ledger WHERE user_id=f.id AND kind IN ('charge','refund'))",'membership':"(f.spent+CASE WHEN f.membership_code<>'' AND (f.membership_until IS NULL OR f.membership_until>now()) THEN f.membership_growth_credit ELSE 0 END)",'orders':'orders','fee_override':'f.fee_override','membership_until':'f.membership_until'},'created_at','f.id')
         rows=tx.all(query+"SELECT f.*,(SELECT count(*) FROM orders o WHERE o.user_id=f.id AND o.deleted_at IS NULL) AS orders FROM filtered f ORDER BY "+ordering+" LIMIT $7 OFFSET $8",*args,page_size,(page-1)*page_size)
@@ -90,7 +100,7 @@ def users(q: str='', role: str='', status: str='', tier: str='', page: int=1, pa
             row['product_prices']=prices.get(row['id'],{})
             row['service_prices']=services.get(row['id'],{})
         products=visible_products(tx.all('SELECT id,name,fee FROM products WHERE enabled ORDER BY sort,id'),config('payment',tx).get('subscription_flow'))
-    return {'items':rows,'tiers':tiers,'products':products,'total':total,'page':page,'page_size':page_size,'has_more':page*page_size<total}
+    return {'items':rows,'tiers':tiers,'products':products,'total':total,'page':page,'page_size':page_size,'has_more':page*page_size<total,'summary':summary}
 
 
 @router.post('/users/batch-settings')

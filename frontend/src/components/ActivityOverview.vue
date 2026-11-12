@@ -7,13 +7,14 @@ import DataTable from './DataTable.vue'
 import ListPager from './ListPager.vue'
 import {rememberList,toggleSort} from '../listState'
 import Modal from './Modal.vue'
+import AutoRefresh from './AutoRefresh.vue'
 import SubscriptionRenewal from './SubscriptionRenewal.vue'
 import OrderDuration from './OrderDuration.vue'
 const AdminActivityRecord=defineAsyncComponent(()=>import('./AdminActivityRecord.vue'))
 const props=defineProps<{admin?:boolean;user?:Row;pub?:Row}>()
 const record=ref<Row|null>(null)
 function openRecord(row:Row){if(props.admin)record.value=row;else detail.value=row}
-const data=ref<Row>({items:[],summary:{},businesses:[],total:0,show_fees:false}),loading=ref(false),error=ref(''),detail=ref<Row|null>(null)
+const data=ref<Row>({items:[],summary:{},businesses:[],total:0,show_fees:false}),loading=ref(false),fetching=ref(false),error=ref(''),detail=ref<Row|null>(null)
 const period=ref('today'),initialRange=presetRange('today')
 function selectPeriod(id:string){period.value=id;if(id!=='custom'){const range=presetRange(id);start.value=range.start;end.value=range.end;apply()}}
 const search=ref(''),business=ref(''),state=ref(''),start=ref(initialRange.start),end=ref(initialRange.end),includeAdmin=ref(true),page=ref(1),size=ref(10),sortBy=ref('created_at'),sortDir=ref('desc')
@@ -24,24 +25,24 @@ const states:Row={active:'进行中',completed:'已完成',partial:'部分完成
 const businesses=computed(()=>['registration','subscription','refund'].map(id=>({id,...(data.value.businesses.find((r:Row)=>r.business===id)||{total:0,active:0,settled:0})})))
 const pages=computed(()=>Math.max(1,Math.ceil(data.value.total/size.value)))
 const columns=computed(()=>[{key:'record',sortKey:'title',label:'办理项目'},...(props.admin?[{key:'owner',label:'客户'}]:[]),{key:'progress',sortKey:'state',label:'当前状态'},...(data.value.show_fees?[{key:'fees',sortKey:'settled',label:'服务费'}]:[]),{key:'duration',sortKey:false as const,label:'总耗时'},{key:'time',sortKey:'created_at',label:'办理时间'},{key:'action',label:'详情'}])
-let controller:AbortController|undefined,timer:ReturnType<typeof setInterval>|undefined
+let controller:AbortController|undefined
 function status(row:Row){if(row.workflow==='renewal')return ({disabled:'已关闭自动续费',no_subscription:'无可关闭订阅',checking:'核实中'} as Row)[row.status]||states[row.state];return row.business==='subscription'?orderLabel(row):row.state==='active'?({queued:'排队中',running:'办理中',processing:'办理中',verifying:'核实中'} as Row)[row.status]||states.active:states[row.state]}
 function tone(row:Row){return row.business==='subscription'&&row.workflow!=='renewal'?orderTone(row):({completed:'succeeded',partial:'review',attention:'review',failed:'failed',cancelled:'cancelled',active:'processing'} as Row)[row.state]}
 async function load(quiet=false){
- controller?.abort();const request=new AbortController();controller=request;if(!quiet)loading.value=true;error.value=''
+ controller?.abort();const request=new AbortController();controller=request;fetching.value=true;if(!quiet)loading.value=true;error.value=''
  try{const query=new URLSearchParams({...applied.value,page:String(page.value),page_size:String(size.value),sort_by:sortBy.value,sort_dir:sortDir.value});const result=await api((props.admin?'/admin':'')+'/activity?'+query,'GET',undefined,{},request.signal);if(controller===request){data.value=result;if(page.value>pages.value){page.value=pages.value;void load()}}}
  catch(e){if((e as Error).name!=='AbortError'&&controller===request)error.value=(e as Error).message}
- finally{if(controller===request)loading.value=false}
+ finally{if(controller===request){loading.value=false;fetching.value=false}}
 }
 function apply(){applied.value={q:search.value,business:business.value,state:state.value,start:start.value,end:end.value,...(props.admin?{include_admin:String(includeAdmin.value)}:{})};page.value=1;void load()}
 function reset(){period.value='today';const range=presetRange('today');search.value='';business.value='';state.value='';start.value=range.start;end.value=range.end;includeAdmin.value=true;apply()}
 function selectState(value:string){state.value=value;apply()}
-onMounted(()=>{applied.value={q:search.value,business:business.value,state:state.value,start:start.value,end:end.value,...(props.admin?{include_admin:String(includeAdmin.value)}:{})};void load();timer=setInterval(()=>{if(document.visibilityState==='visible'&&!loading.value)void load(true)},30000)})
-onUnmounted(()=>{controller?.abort();clearInterval(timer)})
+onMounted(()=>{applied.value={q:search.value,business:business.value,state:state.value,start:start.value,end:end.value,...(props.admin?{include_admin:String(includeAdmin.value)}:{})};void load()})
+onUnmounted(()=>{controller?.abort()})
 </script>
 <template>
  <section class="activity-overview" :class="{'is-admin':admin}">
-  <div class="page-heading"><div><h1>办理总览</h1><p>{{admin?'查看全站办理记录、客户进度和服务费结算。':'注册、订阅和代退的全部办理记录。'}}</p></div><button class="btn secondary" :disabled="loading" @click="load()"><RefreshCw :size="16"/>刷新</button></div>
+  <div class="page-heading"><div><h1>办理总览</h1><p>{{admin?'查看全站办理记录、客户进度和服务费结算。':'注册、订阅和代退的全部办理记录。'}}</p></div><AutoRefresh :storage-key="admin?'admin-activity':'customer-activity'" :busy="fetching" :paused="!!record||!!detail" @refresh="load"/></div>
   <div v-if="error" class="alert danger" role="alert">{{error}} <button class="text-btn" @click="load()">重试</button></div>
   <div class="activity-period" aria-label="统计日期"><button v-for="item in rangePresets" :key="item.id" :class="{active:period===item.id}" :aria-pressed="period===item.id" @click="selectPeriod(item.id)">{{item.label}}</button><span>北京时间 · 按提交日期</span></div>
   <div class="activity-stats" :aria-busy="loading">
@@ -86,3 +87,5 @@ onUnmounted(()=>{controller?.abort();clearInterval(timer)})
 </style>
 
 <style scoped>.activity-period{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.activity-period button{padding:9px 15px;border-radius:7px;border:1px solid var(--line);background:white;color:var(--muted);cursor:pointer}.activity-period button.active{color:var(--green);background:#edf5f2;border-color:var(--green)}.activity-period span{font-size:11px;color:var(--muted);margin-left:8px}</style>
+
+<style scoped>@media(max-width:850px){.activity-overview>.page-heading{flex-wrap:wrap;align-items:center}}</style>

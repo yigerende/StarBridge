@@ -18,7 +18,7 @@ from .runtime import worker_mode
 from . import login_slider, customer_api, admin_orders, order_updates, invitations, email_auth, features, custom_menus, branding, regions, country_pool, price_reference
 from . import deployment
 from . import subscription_recovery
-from . import refunds, support, activity, refund_mothers, refund_resource_recovery
+from . import refunds, support, activity, refund_mothers, refund_resource_recovery, finance_reports, public_metrics
 from .request_origin import configured_origin, origin_allowed
 from .auth_runtime import bounded_call
 from . import registration_gateway, registration_sessions
@@ -182,6 +182,8 @@ app.include_router(support.customer_router)
 app.include_router(activity.router)
 app.include_router(activity.admin_router)
 app.include_router(customer_finance.router)
+app.include_router(finance_reports.router)
+app.include_router(public_metrics.router)
 
 
 @app.get('/health/live')
