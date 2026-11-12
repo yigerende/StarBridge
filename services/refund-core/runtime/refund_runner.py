@@ -60,12 +60,18 @@ class CustomerLogin(WorkspaceObservationMixin, TeamProtocolLogin):
                 # Stop this session; the durable scheduler applies the delay.
                 exc.retryable = True
             raise
-        if login_request and response.status in {408, 500, 502, 503, 504}:
+        mfa_conflict = (login_request and url == "https://auth.openai.com/api/accounts/mfa/verify"
+                        and kwargs.get("method", "GET") == "POST" and response.status == 409)
+        if login_request and (response.status in {408, 500, 502, 503, 504} or mfa_conflict):
             text = str(response.text or "")[:32768].lower()
             challenge = any(marker in text for marker in ("cf-chl-", "challenge-platform", "just a moment"))
             challenge = challenge or any(str(k).lower() == "cf-mitigated" and str(v).lower() == "challenge" for k, v in response.headers.items())
             if not challenge:
-                error = upstream.LoginFlowError("Login service temporarily unavailable", code="login_upstream_unavailable", status=response.status, retryable=True)
+                # End this login session; use the existing retry path to obtain
+                # a fresh challenge/code. Never replay this POST in place.
+                error = upstream.LoginFlowError("MFA verification conflict" if mfa_conflict else "Login service temporarily unavailable",
+                                                code="mfa_state_conflict" if mfa_conflict else "login_upstream_unavailable",
+                                                status=response.status, retryable=True)
                 error.retry_after_seconds = parse_retry_after(response.headers)
                 raise error
         if (parsed.path == "/api/accounts/workspace/select" and response.status == 409

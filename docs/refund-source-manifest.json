@@ -68,8 +68,8 @@
     {
       "path": "internal/store/refund_diagnostics.go",
       "source_sha256": "892271dab4e19d636413203cf97bb2b17c143abd0292905ca83123c3b44558a9",
-      "sha256": "dcd526701186deec99c8fb9124ea8176549bb54de5ee8e25430c3467616c315e",
-      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
+      "sha256": "aa99c2a3d9e73e933f973935d06f91e01e55d438e69da8279155abdafbaff61f",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md. 2026-11-12 retain mfa_state_conflict in sanitized diagnostic evidence; scheduler and wallet behavior unchanged. See docs/refund-mfa-conflict.md."
     },
     {
       "path": "internal/store/refund_execution.go",
@@ -153,8 +153,8 @@
     {
       "path": "runtime/diagnostics.py",
       "source_sha256": "da898b3792390743d86fecf84ca3eefcf977251398329f33a397edc328e26e0c",
-      "sha256": "ef49e1ca6ed0fdfbe40a22af2cee186c9c59f7b4f00239db0d2a43898096bc83",
-      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
+      "sha256": "bec57697e430e0c4da3af989bf6cc5bb78a12ce3ff31748614b54d0c02699647",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md. 2026-11-12 preserve bounded mfa_state_conflict evidence for the existing login retry path. See docs/refund-mfa-conflict.md."
     },
     {
       "path": "runtime/manager_oauth/PORT.md",
@@ -235,8 +235,8 @@
     {
       "path": "runtime/refund_runner.py",
       "source_sha256": "3319f0b871c973a13f140bbb07bdcf6d1a07752b4d7d6aa3edb11f6c33e9a947",
-      "sha256": "972af69b20783766b424ed588bf80d41fb2693f8e9db39c2634d2ea4ec8b9bf5",
-      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
+      "sha256": "571ecdbc31b449f0f84321f8915e9685373751c55e8e37f4788d5d6f3fe81a0f",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md. 2026-11-12 authorized MFA verification POST 409 classification: reuse existing login retry/recovery only; no retry budgets, delay settings or network failover changes. See docs/refund-mfa-conflict.md."
     },
     {
       "path": "runtime/requirements.txt",
