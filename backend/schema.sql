@@ -410,3 +410,6 @@ BEGIN
   ) UPDATE users u SET membership_growth_credit=g.credit FROM grants g WHERE u.id=g.id;
  END IF;
 END $$;
+-- Consecutive independent connection checks before a cooled manual proxy recovers.
+ALTER TABLE resources ADD COLUMN IF NOT EXISTS recovery_successes integer NOT NULL DEFAULT 0;
+ALTER TABLE resources ADD COLUMN IF NOT EXISTS recovery_checked_at timestamptz;

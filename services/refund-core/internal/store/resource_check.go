@@ -89,7 +89,7 @@ func (s *Store) SaveResourceCheck(ctx context.Context, actor, kind, id string, s
 		return err
 	}
 	if kind == "proxy" && result.Valid {
-		_, err = tx.Exec(ctx, "UPDATE refund_proxies SET failure_at=NULL,failure_until=NULL,failure_code='',probe_until=NULL WHERE id=$1 AND deleted_at IS NULL AND updated_at<=$2 AND (failure_at IS NULL OR failure_at<=$2)", id, started)
+		_, err = tx.Exec(ctx, "UPDATE refund_proxies SET failure_at=NULL,failure_until=NULL,failure_code='',probe_until=NULL WHERE id=$1 AND deleted_at IS NULL AND updated_at<=$2 AND failure_at IS NULL", id, started)
 		if err != nil {
 			return err
 		}

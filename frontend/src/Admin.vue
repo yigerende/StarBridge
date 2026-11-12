@@ -71,7 +71,7 @@ if(routeParams.has('status'))status.value=routeParams.get('status')||''
 if(routeParams.has('order_id'))orderSearch.value=routeParams.get('order_id')||''
 if(routeParams.has('attention'))orderAttention.value=routeParams.get('attention')||''
 const topupPending=computed(()=>data.value.summary?.pending||0)
-const orderCols=[{key:'order',label:'订单 / 订阅账号',sortKey:'email'},{key:'owner',label:'所属客户'},{key:'product_name',label:'套餐'},{key:'fee',label:'服务费报价'},{key:'status',label:'处理状态'},{key:'duration',label:'耗时',sortKey:false as const},{key:'source',label:'来源'},{key:'created_at',label:'创建时间'},{key:'action',label:'操作'}]
+const orderCols=[{key:'order',label:'订单 / 订阅账号',sortKey:'email'},{key:'owner',label:'所属客户'},{key:'product_name',label:'套餐'},{key:'fee',label:'服务费报价'},{key:'status',label:'处理状态'},{key:'current_stage',label:'当前阶段',sortKey:false as const},{key:'duration',label:'耗时',sortKey:false as const},{key:'source',label:'来源'},{key:'created_at',label:'创建时间'},{key:'action',label:'操作'}]
 let loadRevision=0
 async function load(){
  if(props.detailOnly)return

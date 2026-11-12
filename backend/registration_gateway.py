@@ -135,6 +135,19 @@ async def registration(request: Request, path: str):
             return outgoing_response
         finally:
             await upstream.aclose()
+    if upstream.status_code==200 and request.method=='GET' and unquote(path)=='api/admin/v1/orders':
+        try:
+            from .order_stage import attach
+            raw=bytearray()
+            async for part in upstream.aiter_bytes():
+                raw.extend(part)
+                require(len(raw)<=8*1024*1024,'订单列表过大，请减少分页数量',413)
+            result=json.loads(raw)
+            await run_in_threadpool(attach,result['items'],'registration')
+            outgoing_response=response(result)
+            outgoing_response.headers['Cache-Control']='no-store'
+            return outgoing_response
+        finally:await upstream.aclose()
     outgoing = {k: v for k, v in upstream.headers.items() if k.lower() in RESPONSE_HEADERS}
     location = upstream.headers.get('location')
     if location:

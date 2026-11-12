@@ -246,7 +246,8 @@ func configure(t *testing.T, s *Store, a string, n int) {
 			t.Fatal(err)
 		}
 	}
-	if err = s.SaveRefundSettings(testctx, a, RefundSettings{Enabled: true, MaxParallel: 2, LoginAttempts: 2, RetrySeconds: 5, ChildProxyID: p}); err != nil {
+	required := 3
+	if err = s.SaveRefundSettings(testctx, a, RefundSettings{ChildProxyRecoveryIntervalSeconds: 5, ChildProxyRecoverySuccessCount: &required, Enabled: true, MaxParallel: 2, LoginAttempts: 2, RetrySeconds: 5, ChildProxyID: p}); err != nil {
 		t.Fatal(err)
 	}
 }

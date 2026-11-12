@@ -91,9 +91,13 @@ func TestChildProxyFailureSwitchesRetryAndNewOrdersAvoidCooling(t *testing.T) {
 		checkpoint(t, s, restarted, step)
 	}
 	balance(t, s, u, 9000, 1000)
-	// An explicit successful check re-enables the primary for the next new order.
+	// A manual check cannot bypass automatic recovery or its cooldown.
 	if e = s.SaveResourceCheck(testctx, a, "proxy", cfg.ChildProxyID, time.Now().Add(time.Second), ResourceCheck{Valid: true, CheckedAt: time.Now()}); e != nil {
 		t.Fatal(e)
+	}
+	s.Pool.Exec(testctx, "UPDATE refund_proxies SET failure_until=now()-interval '1 second' WHERE id=$1", cfg.ChildProxyID)
+	for i := 0; i < 3; i++ {
+		recoverChildSample(t, s, true)
 	}
 	if _, _, e = s.CreateRefunds(testctx, u, "child-third", []refundprovider.Account{account("three@fixture.invalid")}, 1000); e != nil {
 		t.Fatal(e)
@@ -155,25 +159,135 @@ func TestChildFailureClassifierExcludesAccountAndMotherFailures(t *testing.T) {
 	}
 }
 
-func TestAllChildProxiesCoolingWaitAndOneProbeAfterCooldown(t *testing.T) {
+func recoverChildSample(t *testing.T, s *Store, passed bool) *ChildProxyRecovery {
+	t.Helper()
+	s.Pool.Exec(testctx, "UPDATE refund_proxies SET recovery_checked_at=NULL")
+	j, err := s.ClaimChildProxyRecovery(testctx)
+	if err != nil || j == nil {
+		t.Fatal("probe", err)
+	}
+	if err = s.FinishChildProxyRecovery(testctx, j, passed); err != nil {
+		t.Fatal(err)
+	}
+	return j
+}
+
+func TestAllChildProxiesCoolingWaitForThreeIndependentChecks(t *testing.T) {
 	s, a, u := fixture(t)
 	configure(t, s, a, 2)
 	cfg, backup := backupFixture(t, s, a)
 	s.CreateRefunds(testctx, u, "cooldown", []refundprovider.Account{account("cool1@fixture.invalid"), account("cool2@fixture.invalid")}, 1000)
 	s.Pool.Exec(testctx, "UPDATE refund_proxies SET failure_at=now(),failure_until=now()+interval '5 minutes' WHERE id=ANY($1)", []string{cfg.ChildProxyID, backup})
-	j, e := s.ClaimRefund(testctx)
-	if e != nil || j != nil {
-		t.Fatal("cooling allocation", e)
+	if j, err := s.ClaimChildProxyRecovery(testctx); err != nil || j != nil {
+		t.Fatal("probed before cooldown", err)
+	}
+	s.Pool.Exec(testctx, "UPDATE refund_proxies SET failure_until=now()-interval '1 second' WHERE id=$1", cfg.ChildProxyID)
+	for i := 0; i < 3; i++ {
+		if j, err := s.ClaimRefund(testctx); err != nil || j != nil {
+			t.Fatal("order used unverified exit", err)
+		}
+		sample := recoverChildSample(t, s, true)
+		if err := s.FinishChildProxyRecovery(testctx, sample, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 2; i++ {
+		if j, err := s.ClaimRefund(testctx); err != nil || j == nil || j.DiagnosticContext.ChildProxyID != cfg.ChildProxyID {
+			t.Fatal("recovered primary unavailable", err)
+		}
 	}
 	balance(t, s, u, 10000, 2000)
-	s.Pool.Exec(testctx, "UPDATE refund_proxies SET failure_until=now()-interval '1 second' WHERE id=$1", cfg.ChildProxyID)
-	first, e := s.ClaimRefund(testctx)
-	if e != nil || first == nil || first.DiagnosticContext.ChildProxyID != cfg.ChildProxyID {
-		t.Fatal("no probe", e)
+}
+
+func TestChildRecoveryFailureBlankAndStaleResults(t *testing.T) {
+	s, a, u := fixture(t)
+	configure(t, s, a, 2)
+	cfg, _ := backupFixture(t, s, a)
+	s.Pool.Exec(testctx, "UPDATE refund_proxies SET failure_at=now(),failure_until=now()-interval '1 second' WHERE id=$1", cfg.ChildProxyID)
+	recoverChildSample(t, s, true)
+	recoverChildSample(t, s, false)
+	var n int
+	var cooling bool
+	s.Pool.QueryRow(testctx, "SELECT recovery_successes,failure_until>now()+interval '290 seconds' FROM refund_proxies WHERE id=$1", cfg.ChildProxyID).Scan(&n, &cooling)
+	if n != 0 || !cooling {
+		t.Fatal("failure did not reset and cool")
 	}
-	second, e := s.ClaimRefund(testctx)
-	if e != nil || second != nil {
-		t.Fatal("parallel probes hammered failed exit", e)
+	s.Pool.Exec(testctx, "UPDATE refund_proxies SET failure_until=now()-interval '1 second',recovery_checked_at=NULL WHERE id=$1", cfg.ChildProxyID)
+	job, err := s.ClaimChildProxyRecovery(testctx)
+	if err != nil || job == nil {
+		t.Fatal(err)
+	}
+	s.Pool.Exec(testctx, "UPDATE refund_proxies SET failure_at=now(),failure_until=now()+interval '5 minutes' WHERE id=$1", cfg.ChildProxyID)
+	if err = s.FinishChildProxyRecovery(testctx, job, true); err != nil {
+		t.Fatal(err)
+	}
+	s.Pool.QueryRow(testctx, "SELECT recovery_successes FROM refund_proxies WHERE id=$1", cfg.ChildProxyID).Scan(&n)
+	if n != 0 {
+		t.Fatal("old success erased newer failure")
+	}
+	cfg.ChildProxyRecoverySuccessCount = nil
+	if err = s.SaveRefundSettings(testctx, a, cfg); err != nil {
+		t.Fatal(err)
+	}
+	s.Pool.Exec(testctx, "UPDATE refund_proxies SET failure_until=now()-interval '1 second' WHERE id=$1", cfg.ChildProxyID)
+	if j, err := s.ClaimChildProxyRecovery(testctx); err != nil || j != nil {
+		t.Fatal("blank still tested", err)
+	}
+	var failed bool
+	s.Pool.QueryRow(testctx, "SELECT failure_at IS NOT NULL FROM refund_proxies WHERE id=$1", cfg.ChildProxyID).Scan(&failed)
+	if failed {
+		t.Fatal("blank did not restore")
+	}
+	balance(t, s, u, 10000, 0)
+}
+
+func TestChildRecoveryClaimConcurrentAndConfigFenced(t *testing.T) {
+	s, a, _ := fixture(t)
+	configure(t, s, a, 1)
+	cfg, _ := backupFixture(t, s, a)
+	if cfg.ChildProxyRecoverySuccessCount == nil || *cfg.ChildProxyRecoverySuccessCount != 3 {
+		t.Fatal("default must be three")
+	}
+	s.Pool.Exec(testctx, "UPDATE refund_proxies SET failure_at=now(),failure_until=now()-interval '1 second' WHERE id=$1", cfg.ChildProxyID)
+	jobs := make(chan *ChildProxyRecovery, 20)
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			j, err := s.ClaimChildProxyRecovery(testctx)
+			if err != nil {
+				t.Error(err)
+			}
+			if j != nil {
+				jobs <- j
+			}
+		}()
+	}
+	wg.Wait()
+	close(jobs)
+	if len(jobs) != 1 {
+		t.Fatal("concurrent probes", len(jobs))
+	}
+	job := <-jobs
+	required := 5
+	cfg.ChildProxyRecoverySuccessCount = &required
+	if err := s.SaveRefundSettings(testctx, a, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishChildProxyRecovery(testctx, job, true); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	s.Pool.QueryRow(testctx, "SELECT recovery_successes FROM refund_proxies WHERE id=$1", cfg.ChildProxyID).Scan(&n)
+	if n != 0 {
+		t.Fatal("changed configuration accepted stale probe")
+	}
+	for _, required = range []int{0, 21} {
+		cfg.ChildProxyRecoverySuccessCount = &required
+		if err := s.SaveRefundSettings(testctx, a, cfg); err == nil {
+			t.Fatal("invalid threshold")
+		}
 	}
 }
 
@@ -239,4 +353,27 @@ func TestCoolingChildDoesNotBlockMotherOnlyCompletion(t *testing.T) {
 	checkpoint(t, s, finishing, "removing")
 	checkpoint(t, s, finishing, "completed")
 	balance(t, s, u, 9000, 1000)
+}
+
+func TestChildRecoveryIntervalStartsAfterFinishedCheck(t *testing.T) {
+	s, a, _ := fixture(t)
+	configure(t, s, a, 1)
+	cfg, _ := backupFixture(t, s, a)
+	cfg.ChildProxyRecoveryIntervalSeconds = 12
+	if err := s.SaveRefundSettings(testctx, a, cfg); err != nil {
+		t.Fatal(err)
+	}
+	s.Pool.Exec(testctx, "UPDATE refund_proxies SET failure_at=now(),failure_until=now()-interval '1 second' WHERE id=$1", cfg.ChildProxyID)
+	recoverChildSample(t, s, true)
+	if j, err := s.ClaimChildProxyRecovery(testctx); err != nil || j != nil {
+		t.Fatal("no interval after result", err)
+	}
+	s.Pool.Exec(testctx, "UPDATE refund_proxies SET recovery_checked_at=now()-interval '11 seconds' WHERE id=$1", cfg.ChildProxyID)
+	if j, err := s.ClaimChildProxyRecovery(testctx); err != nil || j != nil {
+		t.Fatal("configured interval ignored", err)
+	}
+	s.Pool.Exec(testctx, "UPDATE refund_proxies SET recovery_checked_at=now()-interval '13 seconds' WHERE id=$1", cfg.ChildProxyID)
+	if j, err := s.ClaimChildProxyRecovery(testctx); err != nil || j == nil {
+		t.Fatal("probe not due", err)
+	}
 }

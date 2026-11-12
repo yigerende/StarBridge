@@ -18,7 +18,7 @@ from .runtime import worker_mode
 from . import login_slider, customer_api, admin_orders, order_updates, invitations, email_auth, features, custom_menus, branding, regions, country_pool, price_reference
 from . import deployment
 from . import subscription_recovery
-from . import refunds, support, activity, refund_mothers, refund_resource_recovery, finance_reports, public_metrics
+from . import refunds, support, activity, refund_mothers, refund_resource_recovery, finance_reports, public_metrics, proxy_recovery
 from .request_origin import configured_origin, origin_allowed
 from .auth_runtime import bounded_call
 from . import registration_gateway, registration_sessions
@@ -51,10 +51,10 @@ def maintenance():
 
 def worker_loop(stop):
     executor=ThreadPoolExecutor(max_workers=30,thread_name_prefix='starbridge-worker')
-    sync_jobs=set();price_jobs=set();proxy_jobs=set();renewal_jobs=set();subscription_jobs=set();cslive_go_jobs=set();cslive_full_jobs=set();recovery_jobs=set();mother_jobs=set();resource_jobs=set();last_maintenance=0;last_price_tick=0
+    sync_jobs=set();price_jobs=set();proxy_jobs=set();renewal_jobs=set();subscription_jobs=set();cslive_go_jobs=set();cslive_full_jobs=set();recovery_jobs=set();mother_jobs=set();resource_jobs=set();proxy_recovery_jobs=set();last_maintenance=0;last_price_tick=0
     try:
         while not stop.wait(1):
-            for group in (sync_jobs,price_jobs,proxy_jobs,renewal_jobs,subscription_jobs,cslive_go_jobs,cslive_full_jobs,recovery_jobs,mother_jobs,resource_jobs):
+            for group in (sync_jobs,price_jobs,proxy_jobs,renewal_jobs,subscription_jobs,cslive_go_jobs,cslive_full_jobs,recovery_jobs,mother_jobs,resource_jobs,proxy_recovery_jobs):
                 for future in list(group):
                     if future.done():
                         try:future.result()
@@ -69,6 +69,7 @@ def worker_loop(stop):
                     maintenance();last_maintenance=time.monotonic()
                     if not sync_jobs:sync_jobs.add(executor.submit(country_pool.auto_sync))
                     if not mother_jobs and not deployment.maintenance_active():mother_jobs.add(executor.submit(refund_mothers.refresh_due))
+                if len(proxy_recovery_jobs)<2:proxy_recovery_jobs.add(executor.submit(proxy_recovery.tick))
                 if len(proxy_jobs)<2:proxy_jobs.add(executor.submit(proxies.run_check))
                 if not resource_jobs:resource_jobs.add(executor.submit(refund_resource_recovery.tick))
                 if worker_mode()=='all':

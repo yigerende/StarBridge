@@ -14,7 +14,7 @@ from .settings import COUNTRIES
 from .egress import local_proxy, connect_via_local
 
 router=APIRouter(prefix='/api/admin',dependencies=[Depends(administrator)])
-FIELDS="""id,name,kind,country,vendor,ip_mode,session_minutes,enabled,weight,capacity,failover_priority,proxy_failures,cooldown_until,probe_until,last_status,last_checked,last_ip,last_country,last_latency_ms,quality_result,openai_result,created_at,true AS has_credentials,
+FIELDS="""id,name,kind,country,vendor,ip_mode,session_minutes,enabled,weight,capacity,failover_priority,proxy_failures,cooldown_until,probe_until,recovery_successes,(SELECT COALESCE(value->'recovery_success_count','3'::jsonb) FROM settings WHERE key='proxy') AS recovery_required,last_status,last_checked,last_ip,last_country,last_latency_ms,quality_result,openai_result,created_at,true AS has_credentials,
 COALESCE(id=(SELECT value->>'global_id' FROM settings WHERE key='proxy'),false) AS is_global,
 (SELECT id FROM proxy_checks c WHERE c.resource_id=resources.id AND c.state IN ('queued','running') ORDER BY c.created_at LIMIT 1) AS active_check,
 (SELECT count(*) FROM proxy_leases l WHERE l.resource_id=resources.id AND l.expires_at>now()) AS in_use"""
@@ -74,7 +74,8 @@ def resources(q:str='',status:str='',vendor:str='',page:int=1,page_size:int|None
 def resource_status(ids:str=''):
     selected=ids.split(',') if ids else []
     require(len(selected)<=500 and all(1<=len(v)<=80 for v in selected),'资源列表无效')
-    return {'items':db.all('SELECT id,cooldown_until,proxy_failures,probe_until FROM resources WHERE id=ANY($1)',selected)}
+    required=config('proxy').get('recovery_success_count',3)
+    return {'items':[dict(r,recovery_required=required) for r in db.all('SELECT id,cooldown_until,proxy_failures,probe_until,recovery_successes FROM resources WHERE id=ANY($1)',selected)]}
 
 
 @router.post('/resources')
@@ -119,7 +120,7 @@ def save_resource_value(v,request,id=''):
         q.execute('UPDATE resources SET failover_priority=$2 WHERE id=$1',id,v.get('failover_priority',previous.get('failover_priority',0)))
         q.execute('UPDATE resources SET session_minutes=$2 WHERE id=$1',id,minutes)
         if fresh or changed:
-            q.execute("UPDATE resources SET proxy_revision=$2,proxy_failures=0,health_generation=0,cooldown_until=NULL,probe_owner='',probe_until=NULL WHERE id=$1",id,uid())
+            q.execute("UPDATE resources SET proxy_revision=$2,proxy_failures=0,health_generation=0,recovery_successes=0,recovery_checked_at=NULL,cooldown_until=NULL,probe_owner='',probe_until=NULL WHERE id=$1",id,uid())
         if v.get('is_global'):
             require(v['enabled'],'请先启用代理，再设为全局代理')
             q.execute("UPDATE settings SET value=jsonb_set(value,'{global_id}',to_jsonb($1::text)) WHERE key='proxy'",id)

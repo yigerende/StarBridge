@@ -47,7 +47,7 @@ func (s *Store) ClaimRefund(ctx context.Context) (*RefundJob, error) {
 		return nil, err
 	}
 	var cfg RefundSettings
-	if err = tx.QueryRow(ctx, "SELECT enabled,max_parallel,login_attempts,retry_seconds,COALESCE(child_proxy_id,''),mother_interval_seconds,recovery,mother_failover,child_proxy_backups,child_proxy_cooldown_seconds,query_personal_plan,resource_recovery FROM refund_settings WHERE id").Scan(&cfg.Enabled, &cfg.MaxParallel, &cfg.LoginAttempts, &cfg.RetrySeconds, &cfg.ChildProxyID, &cfg.MotherIntervalSeconds, &cfg.Recovery, &cfg.MotherFailover, &cfg.ChildProxyBackups, &cfg.ChildProxyCooldownSeconds, &cfg.QueryPersonalPlan, &cfg.ResourceRecovery); err != nil {
+	if err = tx.QueryRow(ctx, "SELECT enabled,max_parallel,login_attempts,retry_seconds,COALESCE(child_proxy_id,''),mother_interval_seconds,recovery,mother_failover,child_proxy_backups,child_proxy_cooldown_seconds,query_personal_plan,resource_recovery,child_proxy_recovery_success_count,child_proxy_recovery_interval_seconds FROM refund_settings WHERE id").Scan(&cfg.Enabled, &cfg.MaxParallel, &cfg.LoginAttempts, &cfg.RetrySeconds, &cfg.ChildProxyID, &cfg.MotherIntervalSeconds, &cfg.Recovery, &cfg.MotherFailover, &cfg.ChildProxyBackups, &cfg.ChildProxyCooldownSeconds, &cfg.QueryPersonalPlan, &cfg.ResourceRecovery, &cfg.ChildProxyRecoverySuccessCount, &cfg.ChildProxyRecoveryIntervalSeconds); err != nil {
 		return nil, err
 	}
 	recoveryEnabled := cfg.Recovery != nil && cfg.Recovery.Enabled
@@ -73,8 +73,8 @@ func (s *Store) ClaimRefund(ctx context.Context) (*RefundJob, error) {
  AND (e.step IN ('accepted','removing') OR e.recovery_mode='cleanup' OR e.child_proxy_switch_pending OR EXISTS(SELECT 1 FROM refund_proxies cp WHERE cp.id=COALESCE(e.child_proxy_id,NULLIF($1,'')) AND cp.enabled))
  AND (NOT e.child_proxy_switch_pending OR e.step IN ('accepted','removing') OR e.recovery_mode='cleanup'
    OR EXISTS(SELECT 1 FROM refund_proxies cp WHERE cp.id=ANY($4::text[]) AND cp.enabled AND cp.deleted_at IS NULL
-     AND cp.target IN ('both','child') AND (cp.failure_until IS NULL OR cp.failure_until<=now()) AND (cp.probe_until IS NULL OR cp.probe_until<=now())))
- ORDER BY COALESCE(e.next_attempt_at,e.updated_at),e.refund_id LIMIT 1`, cfg.ChildProxyID, recoveryEnabled, fallbackEnabled, childCandidates(cfg)).Scan(&job.ID, &job.UserID, &job.Mother.ID, &job.Step, &job.ChildUserID, &oldToken, &childProxyID, &job.RecoveryMode, &job.PersonalBaseline, &previousStatus, &job.FallbackPhase, &job.TerminalCode, &job.VerificationOnly)
+     AND cp.target IN ('both','child') AND (cp.failure_until IS NULL OR cp.failure_until<=now()) AND (cp.failure_at IS NULL OR $5::bool)))
+ ORDER BY COALESCE(e.next_attempt_at,e.updated_at),e.refund_id LIMIT 1`, cfg.ChildProxyID, recoveryEnabled, fallbackEnabled, childCandidates(cfg), cfg.ChildProxyRecoverySuccessCount == nil).Scan(&job.ID, &job.UserID, &job.Mother.ID, &job.Step, &job.ChildUserID, &oldToken, &childProxyID, &job.RecoveryMode, &job.PersonalBaseline, &previousStatus, &job.FallbackPhase, &job.TerminalCode, &job.VerificationOnly)
 	existing := err == nil
 	if !existing && err == pgx.ErrNoRows && maintenanceWaiting() {
 		return nil, nil
@@ -237,11 +237,6 @@ func (s *Store) ClaimRefund(ctx context.Context) (*RefundJob, error) {
 	if err = s.openSecret(job.ID, accountSecret, &job.Account); err != nil {
 		return nil, err
 	}
-	if job.ChildProxy != "" {
-		if _, err = tx.Exec(ctx, "UPDATE refund_proxies SET probe_until=now()+interval '90 seconds' WHERE id=$1 AND failure_at IS NOT NULL", childProxyID); err != nil {
-			return nil, err
-		}
-	}
 	job.DiagnosticContext.Step, job.DiagnosticContext.Mode = job.Step, job.RecoveryMode
 	job.DiagnosticContext.MotherID, job.DiagnosticContext.MotherProxyID, job.DiagnosticContext.ChildProxyID = job.Mother.ID, job.Mother.ProxyID, childProxyID
 	if err = tx.Commit(ctx); err != nil {
@@ -256,9 +251,6 @@ func (s *Store) RenewRefundLease(ctx context.Context, j *RefundJob) error {
 	}
 	if err == nil {
 		_, err = s.Pool.Exec(ctx, "UPDATE refund_member_leases SET expires_at=now()+interval '90 seconds' WHERE token=$1 AND expires_at>now()", j.LeaseToken)
-	}
-	if err == nil {
-		_, err = s.Pool.Exec(ctx, "UPDATE refund_proxies SET probe_until=now()+interval '90 seconds' WHERE id=$1 AND probe_until IS NOT NULL", j.DiagnosticContext.ChildProxyID)
 	}
 	return err
 }

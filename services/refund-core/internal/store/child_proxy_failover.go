@@ -48,7 +48,7 @@ func recordChildProxyFailure(ctx context.Context, tx pgx.Tx, j *RefundJob, d Ref
 	// Proxy rows are never read FOR UPDATE by the selector, avoiding inversion
 	// of the scheduler/user locks. Always cool the execution's current binding.
 	_, err = tx.Exec(ctx, `UPDATE refund_proxies SET failure_at=now(),failure_until=now()+$2*interval '1 second',
- failure_code='network',probe_until=NULL WHERE id=$1`, proxyID, seconds)
+ failure_code='network',probe_until=NULL,recovery_token='',recovery_successes=0,recovery_checked_at=NULL WHERE id=$1`, proxyID, seconds)
 	return err
 }
 
@@ -64,8 +64,8 @@ func childCandidates(cfg RefundSettings) []string {
 	return result
 }
 
-// Called under the same scheduler lock as order allocation. After cooling, one
-// task probes a failed exit while other tasks use the healthy alternatives.
+// Called under the same scheduler lock as order allocation. Background checks
+// restore failed exits before any new order or retry can select them.
 func selectChildProxy(ctx context.Context, tx pgx.Tx, cfg RefundSettings, avoid string) (string, error) {
 	ids := childCandidates(cfg)
 	if len(ids) == 0 {
@@ -74,8 +74,8 @@ func selectChildProxy(ctx context.Context, tx pgx.Tx, cfg RefundSettings, avoid 
 	var id string
 	err := tx.QueryRow(ctx, `SELECT p.id FROM unnest($1::text[]) WITH ORDINALITY choice(id,rank)
  JOIN refund_proxies p ON p.id=choice.id WHERE p.enabled AND p.deleted_at IS NULL AND p.target IN ('both','child')
- AND (p.failure_until IS NULL OR p.failure_until<=now()) AND (p.probe_until IS NULL OR p.probe_until<=now())
- ORDER BY (p.id=$2),choice.rank LIMIT 1`, ids, avoid).Scan(&id)
+ AND (p.failure_until IS NULL OR p.failure_until<=now()) AND (p.failure_at IS NULL OR $3::bool)
+ ORDER BY (p.id=$2),choice.rank LIMIT 1`, ids, avoid, cfg.ChildProxyRecoverySuccessCount == nil).Scan(&id)
 	if err == pgx.ErrNoRows {
 		return "", nil
 	}
@@ -88,7 +88,7 @@ func selectChildProxy(ctx context.Context, tx pgx.Tx, cfg RefundSettings, avoid 
 func clearChildProxyFailure(ctx context.Context, tx pgx.Tx, j *RefundJob) error {
 	// Ignore success from an older concurrent attempt after a newer failure.
 	_, err := tx.Exec(ctx, `UPDATE refund_proxies SET failure_at=NULL,failure_until=NULL,failure_code='',probe_until=NULL
- WHERE id=$1 AND (failure_at IS NULL OR failure_at<$2)`, j.DiagnosticContext.ChildProxyID, j.ProxyAttemptStarted)
+ WHERE id=$1 AND failure_at IS NULL`, j.DiagnosticContext.ChildProxyID)
 	return err
 }
 

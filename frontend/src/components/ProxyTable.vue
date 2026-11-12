@@ -15,8 +15,8 @@ const stageNames:Row={proxy_connect:'代理连接 / 隧道建立',tls:'TLS 握�
 let poll:ReturnType<typeof setTimeout>|undefined,revision=0
 const controller=new AbortController()
 onUnmounted(()=>{revision++;clearTimeout(poll);clearInterval(cooldownTimer);controller.abort()})
-watch(()=>props.rows,rows=>{cooldowns.value=Object.fromEntries(rows.map(r=>[r.id,{cooldown_until:r.cooldown_until,proxy_failures:r.proxy_failures,probe_until:r.probe_until}]))},{immediate:true})
-onMounted(()=>{cooldownTimer=setInterval(async()=>{if(document.visibilityState!=='visible'||props.busy||working.value)return;try{const d=await api('/admin/resources/status?ids='+encodeURIComponent(props.rows.map(r=>r.id).join(',')),'GET',undefined,{},signal());cooldowns.value=Object.fromEntries(d.items.map((r:Row)=>[r.id,{cooldown_until:r.cooldown_until,proxy_failures:r.proxy_failures,probe_until:r.probe_until}]))}catch{}},15000)})
+watch(()=>props.rows,rows=>{cooldowns.value=Object.fromEntries(rows.map(r=>[r.id,{cooldown_until:r.cooldown_until,proxy_failures:r.proxy_failures,probe_until:r.probe_until,recovery_successes:r.recovery_successes,recovery_required:r.recovery_required}]))},{immediate:true})
+onMounted(()=>{cooldownTimer=setInterval(async()=>{if(document.visibilityState!=='visible'||props.busy||working.value)return;try{const d=await api('/admin/resources/status?ids='+encodeURIComponent(props.rows.map(r=>r.id).join(',')),'GET',undefined,{},signal());cooldowns.value=Object.fromEntries(d.items.map((r:Row)=>[r.id,{cooldown_until:r.cooldown_until,proxy_failures:r.proxy_failures,probe_until:r.probe_until,recovery_successes:r.recovery_successes,recovery_required:r.recovery_required}]))}catch{}},15000)})
 const signal=()=>AbortSignal.any([controller.signal,AbortSignal.timeout(12000)])
 async function setGlobal(row:Row){
  if(working.value||props.busy)return;working.value=true
@@ -46,7 +46,7 @@ function tone(s:string){return s==='pass'?'active':s==='fail'?'failed':'review'}
  <template #endpoint="{row}"><code class="proxy-endpoint">{{row.endpoint}}</code></template>
  <template #country="{row}">{{row.ip_mode==='dynamic'?'按订单国家自动匹配':regionLabel(row.country)}}</template>
  <template #capacity="{row}">{{row.in_use}} / {{row.capacity}}</template>
- <template #cooldown="{row}"><ProxyCooldown :until="cooldowns[row.id]?.cooldown_until" :failures="cooldowns[row.id]?.proxy_failures" :probe-until="cooldowns[row.id]?.probe_until"/></template>
+ <template #cooldown="{row}"><ProxyCooldown :until="cooldowns[row.id]?.cooldown_until" :failures="cooldowns[row.id]?.proxy_failures" :probe-until="cooldowns[row.id]?.probe_until" :successes="cooldowns[row.id]?.recovery_successes" :required="cooldowns[row.id]?.recovery_required"/></template>
  <template #last_ip="{row}">{{row.last_ip||'—'}}<small>{{row.last_country||'未检测'}} · {{row.last_latency_ms||0}} ms</small><small>{{labels[row.last_status]||row.last_status}} · {{date(row.last_checked)}}</small></template>
  <template #quality="{row}"><button v-if="row.quality_result?.checked_at" class="text-btn proxy-score" @click="view(row,'quality')"><b>{{row.quality_result.score??'—'}}</b><span>{{row.quality_result.grade||''}}</span></button><span v-else class="muted">未测试</span><small v-if="row.quality_result?.checked_at">{{date(row.quality_result.checked_at)}}</small></template>
  <template #openai="{row}"><button v-if="row.openai_result?.checked_at" class="badge" :class="tone(row.openai_result.status)" @click="view(row,'openai')">{{statusNames[row.openai_result.status]}}</button><span v-else class="muted">未测试</span><small v-if="row.openai_result?.checked_at">{{date(row.openai_result.checked_at)}}</small></template>

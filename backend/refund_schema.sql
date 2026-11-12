@@ -145,3 +145,10 @@ CREATE INDEX IF NOT EXISTS refund_resource_team ON refund_resource_tasks(team_id
 CREATE INDEX IF NOT EXISTS refund_resource_child ON refund_resource_tasks(email,state);
 ALTER TABLE refund_resource_health ADD COLUMN IF NOT EXISTS attempt_key TEXT NOT NULL DEFAULT '';
 ALTER TABLE refund_resource_health ADD COLUMN IF NOT EXISTS probe_id TEXT NOT NULL DEFAULT '';
+
+-- NULL explicitly skips recovery checks; existing installations default to three.
+ALTER TABLE refund_settings ADD COLUMN IF NOT EXISTS child_proxy_recovery_success_count integer DEFAULT 3 CHECK(child_proxy_recovery_success_count BETWEEN 1 AND 20);
+ALTER TABLE refund_proxies ADD COLUMN IF NOT EXISTS recovery_successes integer NOT NULL DEFAULT 0;
+ALTER TABLE refund_proxies ADD COLUMN IF NOT EXISTS recovery_token text NOT NULL DEFAULT '';
+ALTER TABLE refund_proxies ADD COLUMN IF NOT EXISTS recovery_checked_at timestamptz;
+ALTER TABLE refund_settings ADD COLUMN IF NOT EXISTS child_proxy_recovery_interval_seconds integer NOT NULL DEFAULT 5 CHECK(child_proxy_recovery_interval_seconds BETWEEN 1 AND 300);

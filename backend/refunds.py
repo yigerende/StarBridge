@@ -177,6 +177,15 @@ async def resource_list(kind:str,request:Request,page:int=1,page_size:int=10,q:s
 async def save_settings(request:Request):
     v=await body(request)
     require(isinstance(v,dict) and isinstance(v.get('settings'),dict),'设置格式错误')
+    interval='child_proxy_recovery_interval_seconds'
+    if interval not in v['settings']:
+        v['settings'][interval]=await asyncio.to_thread(db.scalar,'SELECT child_proxy_recovery_interval_seconds FROM refund_settings WHERE id')
+    integer(v['settings'][interval],1,300,'恢复测试间隔须为 1～300 秒')
+    field='child_proxy_recovery_success_count'
+    if field not in v['settings']:
+        v['settings'][field]=await asyncio.to_thread(db.scalar,'SELECT child_proxy_recovery_success_count FROM refund_settings WHERE id')
+    if v['settings'][field]=='':v['settings'][field]=None
+    if v['settings'][field] is not None:integer(v['settings'][field],1,20,'恢复连接测试须为 1～20 次，留空则不测试')
     result=await call('save_settings',current(request)['id'],settings=v['settings'])
     return result
 
@@ -196,6 +205,8 @@ async def monitor(request:Request,q:str='',status:str='',fee_status:str='',focus
     result=await call('monitor',current(request)['id'],query=q,status=status,page=page,size=page_size,
                       fee_status=fee_status,focus=focus,sort=sort,start=start,end=end,sort_by=sort_by,sort_dir=sort_dir)
     await asyncio.to_thread(order_timing.refunds,result['items'])
+    from .order_stage import attach
+    await asyncio.to_thread(attach,result['items'],'refund')
     return result
 
 @admin.get('/orders/{id}/timeline')

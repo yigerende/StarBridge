@@ -35,6 +35,32 @@ class ActivityTests(unittest.TestCase):
         self.assertEqual(listing(self.user,search='foreign')['total'],0)
         self.assertEqual(listing(self.user,start='2000-01-01',end='2000-01-02')['total'],0)
 
+    def test_admin_current_stage_from_execution_without_customer_exposure(self):
+        from backend.order_stage import attach
+        from backend.records import admin_orders
+        self.sub('sub-running',status='processing')
+        self.sub('sub-followup',status='succeeded',activation='active',renewal='failed')
+        self.sub('sub-failed',status='failed')
+        db.execute("INSERT INTO payment_trace_events(order_id,phase,state,code) VALUES('sub-running','confirming','running','request_started')")
+        self.reg('reg-running',status='running',delivered=0)
+        db.execute("INSERT INTO platform_items(id,order_id,position,status,stage) VALUES('reg-child','reg-running',1,'running','oauth')")
+        db.execute("INSERT INTO refunds(id,user_id,email,credentials,status,fee) VALUES('refund-running','u','customer@test.example','synthetic','processing',300)")
+        db.execute("INSERT INTO refund_proxies(id,name,secret) VALUES('proxy','fixture','synthetic')")
+        db.execute("INSERT INTO refund_mothers(id,name,email,team_id,secret,proxy_id) VALUES('mother','fixture','mother@test.example','fixture-team','synthetic','proxy')")
+        db.execute("INSERT INTO refund_execution(refund_id,mother_id,step) VALUES('refund-running','mother','removing')")
+        stages={r['id']:r['current_stage'] for r in listing(self.admin_user,admin=True)['items']}
+        self.assertEqual(stages['sub-running'],'提交付款')
+        self.assertEqual(stages['sub-followup'],'取消续费待处理')
+        self.assertEqual(stages['sub-failed'],'已结束（失败）')
+        self.assertEqual(stages['reg-running'],'OAuth 授权 1')
+        self.assertEqual(stages['refund-running'],'移出团队成员')
+        self.assertTrue(all('current_stage' not in r for r in listing(self.user)['items']))
+        self.assertEqual(next(r for r in admin_orders(page=1,page_size=10)['items'] if r['id']=='sub-running')['current_stage'],stages['sub-running'])
+        reg=[{'id':'reg-running','status':'running'}];attach(reg,'registration')
+        refund=[{'id':'refund-running','status':'processing'}];attach(refund,'refund')
+        self.assertEqual(reg[0]['current_stage'],stages['reg-running'])
+        self.assertEqual(refund[0]['current_stage'],stages['refund-running'])
+
     def test_actual_settlement_frozen_and_feature_projection(self):
         self.sub('paid');self.sub('holding',status='review');self.reg('reg',status='partial',delivered=1)
         for oid,kind,amount,ref in [('paid','freeze',0,'freeze-paid'),('paid','charge',-500,'charge-paid'),('paid','refund',100,'refund-paid'),('holding','freeze',0,'freeze-holding')]:

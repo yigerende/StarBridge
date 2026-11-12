@@ -6,7 +6,7 @@ from unittest.mock import patch
 import httpx
 import test_registration_account as fixture
 from backend import db, manual_proxies as manual, subscription, subscription_cslive_go, subscription_cslive_full
-from backend import subscription_retry as retry, proxies, settings
+from backend import subscription_retry as retry, proxies, settings, proxy_recovery
 from backend.checkout_errors import CheckoutError
 from backend.common import encrypt, decrypt, now, BusinessError
 from backend.country_pool import PoolError
@@ -111,16 +111,80 @@ class ManualProxyFailoverTests(unittest.TestCase):
         self.assertEqual(db.scalar("SELECT status FROM orders WHERE id='waiting'"),'queued')
         self.assertEqual(db.scalar('SELECT count(*) FROM order_proxy_sessions'),1)
 
-    def test_concurrent_half_open_allows_one_probe_then_restores_primary(self):
+    def recover(self, passed=True):
+        db.execute("UPDATE resources SET recovery_checked_at=NULL WHERE id='main'")
+        job=proxy_recovery.claim();self.assertIsNotNone(job)
+        proxy_recovery.finish(job,passed)
+        return job
+
+    def test_concurrent_recovery_requires_three_checks_before_allocation(self):
         db.execute("UPDATE resources SET proxy_failures=1,cooldown_until=now()-interval '1 second' WHERE id='main'")
-        for i in range(50):self.order(str(i))
-        with ThreadPoolExecutor(max_workers=20) as pool:urls=list(pool.map(lambda i:self.acquire(str(i)),range(50)))
-        self.assertEqual(sum('@main.' in url for url in urls),1)
-        self.assertEqual(sum('@backup1.' in url for url in urls),49)
-        probe=db.scalar("SELECT probe_owner FROM resources WHERE id='main'")
-        manual.succeeded(probe)
+        with ThreadPoolExecutor(max_workers=20) as pool:jobs=list(pool.map(lambda _:proxy_recovery.claim(),range(50)))
+        claimed=[j for j in jobs if j];self.assertEqual(len(claimed),1)
+        self.order();self.assertIn('@backup1.',self.acquire())
+        proxy_recovery.finish(claimed[0],True)
+        proxy_recovery.finish(claimed[0],True)  # Duplicate completion is fenced.
+        self.assertEqual(db.scalar("SELECT recovery_successes FROM resources WHERE id='main'"),1)
+        self.recover()
+        self.assertEqual(db.scalar("SELECT proxy_failures FROM resources WHERE id='main'"),1)
+        self.recover()
         self.order('next');self.assertIn('@main.',self.acquire('next'))
         self.assertEqual(db.scalar("SELECT proxy_failures FROM resources WHERE id='main'"),0)
+
+    def test_recovery_failure_restarts_cooldown_and_blank_skips_tests(self):
+        self.request.state.user['role']='admin'
+        db.execute("UPDATE resources SET proxy_failures=1,cooldown_until=now()-interval '1 second' WHERE id='main'")
+        self.recover();self.recover(False)
+        row=db.one("SELECT recovery_successes,extract(epoch FROM cooldown_until-now()) AS wait FROM resources WHERE id='main'")
+        self.assertEqual(row['recovery_successes'],0);self.assertGreater(row['wait'],280)
+        self.assertIsNone(proxy_recovery.claim())
+        settings.save_settings_value('proxy',dict(DEFAULTS['proxy'],recovery_success_count=''),self.request)
+        self.assertIsNone(settings.settings()['proxy']['recovery_success_count'])
+        self.order('cooling');self.assertIn('@backup1.',self.acquire('cooling'))
+        db.execute("UPDATE resources SET cooldown_until=now()-interval '1 second' WHERE id='main'")
+        self.order('next');self.assertIn('@main.',self.acquire('next'))
+        with patch('backend.proxies.probe_exit') as check:
+            self.assertFalse(proxy_recovery.tick());check.assert_not_called()
+        self.assertEqual(db.scalar('SELECT count(*) FROM ledger'),0)
+
+    def test_recovery_stale_results_and_changed_settings_are_rejected(self):
+        self.request.state.user['role']='admin'
+        db.execute("UPDATE resources SET proxy_failures=1,cooldown_until=now()-interval '1 second',recovery_successes=2 WHERE id='main'")
+        job=proxy_recovery.claim();self.assertIsNotNone(job)
+        db.execute("UPDATE resources SET health_generation=health_generation+1,recovery_successes=0,cooldown_until=now()+interval '5 minutes' WHERE id='main'")
+        proxy_recovery.finish(job,True)
+        self.assertEqual(db.scalar("SELECT proxy_failures FROM resources WHERE id='main'"),1)
+        db.execute("UPDATE resources SET probe_until=NULL,cooldown_until=now()-interval '1 second',recovery_checked_at=NULL WHERE id='main'")
+        job=proxy_recovery.claim()
+        settings.save_settings_value('proxy',dict(DEFAULTS['proxy'],recovery_success_count=5),self.request)
+        proxy_recovery.finish(job,True)
+        self.assertEqual(db.scalar("SELECT recovery_successes FROM resources WHERE id='main'"),0)
+        for invalid in (0,21,True,1.5,'3'):
+            with self.assertRaises(BusinessError):settings.validate_config('proxy',dict(DEFAULTS['proxy'],recovery_success_count=invalid))
+        self.assertEqual(db.one("SELECT balance,frozen FROM users WHERE id='u'"),dict(balance=1000,frozen=300))
+
+    def test_configured_check_interval_starts_after_previous_result(self):
+        self.request.state.user['role']='admin'
+        settings.save_settings_value('proxy',dict(DEFAULTS['proxy'],recovery_interval_seconds=12),self.request)
+        db.execute("UPDATE resources SET proxy_failures=1,cooldown_until=now()-interval '1 second' WHERE id='main'")
+        self.recover()
+        self.assertIsNone(proxy_recovery.claim())
+        db.execute("UPDATE resources SET recovery_checked_at=now()-interval '11 seconds' WHERE id='main'")
+        self.assertIsNone(proxy_recovery.claim())
+        db.execute("UPDATE resources SET recovery_checked_at=now()-interval '13 seconds' WHERE id='main'")
+        self.assertIsNotNone(proxy_recovery.claim())
+        for value in (0,301,True):
+            with self.assertRaises(BusinessError):settings.validate_config('proxy',dict(DEFAULTS['proxy'],recovery_interval_seconds=value))
+
+    def test_background_probe_uses_fresh_connection_without_business_calls(self):
+        db.execute("UPDATE resources SET proxy_failures=1,cooldown_until=now()-interval '1 second' WHERE id='main'")
+        with patch('backend.proxies.proxy_client') as client,patch('backend.proxies.probe_exit',return_value={'ok':True}) as check:
+            for _ in range(3):
+                db.execute("UPDATE resources SET recovery_checked_at=NULL WHERE id='main'")
+                self.assertTrue(proxy_recovery.tick())
+            self.assertEqual(client.call_count,3);self.assertEqual(check.call_count,3)
+        self.assertEqual(db.scalar('SELECT count(*) FROM orders'),0)
+        self.assertEqual(db.scalar('SELECT count(*) FROM proxy_leases'),0)
 
     def test_stale_success_does_not_clear_fault_and_edit_isolates_old_failures(self):
         self.order('old');self.acquire('old');self.order();self.acquire()
@@ -136,7 +200,7 @@ class ManualProxyFailoverTests(unittest.TestCase):
         self.order();self.acquire();retry.handle_failure('order',CheckoutError('network_error'))
         db.execute("UPDATE resources SET cooldown_until=now()-interval '1 second' WHERE id='main'")
         self.processing();self.assertIn('@backup1.',self.acquire())
-        self.order('new');self.assertIn('@main.',self.acquire('new'))
+        self.order('new');self.assertIn('@backup1.',self.acquire('new'))
 
     def test_old_settings_omit_new_optional_value_without_reset(self):
         self.request.state.user['role']='admin'

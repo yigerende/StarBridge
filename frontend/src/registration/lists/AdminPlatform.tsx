@@ -241,6 +241,7 @@ export default function AdminPlatform({ tab = "overview" }: { tab?: string }) {
               },
               { title: "交付", field:"delivered", render: (r) => `${r.delivered}/${r.quantity}` },
               { title: "状态", field:"status", render: (r) => <Status value={r.status} /> },
+              { title: "当前阶段", render: (r) => r.current_stage || "—" },
               {
                 title: "单价 / 扣费", field:"charged",
                 render: (r) => `${r.unit_price} / ${r.charged}`,

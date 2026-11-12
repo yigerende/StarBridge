@@ -250,6 +250,8 @@ def admin_orders(q:str='',status:str='',attention:str='',include_admin:bool=True
     rows=db.all('SELECT '+ORDER_FIELDS+',o.user_id,o.note,u.email AS owner'+where+' ORDER BY '+ordering+' LIMIT $3 OFFSET $4',q,status,page_size,(page-1)*page_size)
     order_timing.subscriptions(rows)
     _attach_list_payments(rows)
+    from .order_stage import attach
+    attach(rows,'subscription')
     # Aggregate the same filtered set as the list, before pagination. Payment
     # success alone does not mean activation and renewal follow-up are complete.
     followup="o.status='succeeded' AND o.workflow='subscription' AND (o.activation='review' OR o.renewal='review')"

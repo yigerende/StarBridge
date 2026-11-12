@@ -16,12 +16,12 @@ RANGES = {
  'risk': {'login_per_minute':(1,100),'api_per_minute':(10,10000),'order_per_minute':(1,100),'max_open_orders':(1,500),'max_topup':(100,100000000),'session_hours':(1,168),'event_retention_days':(7,365)},
  'scheduler': {'max_parallel':(1,100),'per_user_parallel':(1,20),'retry_limit':(0,10),'retry_delay_seconds':(5,3600),'task_timeout_seconds':(30,1800),'queue_limit':(1,10000)},
  'payment': {'max_parallel':(1,20),'per_user_parallel':(1,5),'prepare_timeout_seconds':(30,300),'quote_timeout_seconds':(30,600),'result_timeout_seconds':(30,600),'requests_per_minute':(1,20),'subscription_wait_seconds':(30,1800),'renewal_check_interval_seconds':(5,300),'renewal_check_limit':(1,60),'network_restart_limit':(0,5),'activation_check_interval_seconds':(2,300),'activation_check_limit':(1,120)},
- 'proxy': {'request_timeout_seconds':(10,120),'failure_cooldown_seconds':(10,3600)}, 'site': {'invite_rate':(0,0)}
+ 'proxy': {'request_timeout_seconds':(10,120),'failure_cooldown_seconds':(10,3600),'recovery_interval_seconds':(1,300)}, 'site': {'invite_rate':(0,0)}
 }
 RANGES['payment']['post_payment_delay_seconds'] = (0,MAX_SECONDS)
 from .rate_limits import RANGES as RATE_RANGES, DEFAULTS as RATE_DEFAULTS
 RANGES['risk'].update(RATE_RANGES)
-OPTIONAL = {'site': {'icon','sidebar_default_expanded','telegram_group_url'}, 'proxy': {'global_id','mode','failure_cooldown_seconds'}, 'payment': {'checkout_flow','subscription_flow','checkout_type','checkout_types','network_restart_limit','post_payment_delay_seconds','cslive_go_visit_return','cslive_go_refresh_before_renewal'}}
+OPTIONAL = {'site': {'icon','sidebar_default_expanded','telegram_group_url'}, 'proxy': {'global_id','mode','failure_cooldown_seconds','recovery_success_count','recovery_interval_seconds'}, 'payment': {'checkout_flow','subscription_flow','checkout_type','checkout_types','network_restart_limit','post_payment_delay_seconds','cslive_go_visit_return','cslive_go_refresh_before_renewal'}}
 
 
 def validate_config(key, v):
@@ -114,6 +114,9 @@ def validate_config(key, v):
                     and supported-{'promax'} <= set(v['checkout_types']) <= supported
                     and all(t in ('hosted','oaics') for t in v['checkout_types'].values()),'请为每个套餐选择链接类型')
     if key=='proxy':
+        if 'recovery_success_count' in v:
+            if v['recovery_success_count']=='':v['recovery_success_count']=None
+            if v['recovery_success_count'] is not None:integer(v['recovery_success_count'],1,20,'恢复连接测试须为 1～20 次，留空则不测试')
         require(v.get('mode','manual') in ('manual','country_pool','national_pool'),'代理模式无效')
         require(v['match_country'] is True,'代理必须按订阅地区自动匹配')
         for name in ('default_id','global_id'):
@@ -168,6 +171,8 @@ def settings():
     result.pop('refund_mother_management',None)  # Dedicated mother-management settings endpoint.
     result['proxy'].setdefault('mode','manual')
     result['proxy'].setdefault('failure_cooldown_seconds',300)
+    result['proxy'].setdefault('recovery_success_count',3)
+    result['proxy'].setdefault('recovery_interval_seconds',5)
     result['payment'].setdefault('post_payment_delay_seconds', DEFAULT_SECONDS)
     if result['payment'].get('subscription_flow') == 'cslive_go_direct_pay':
         result['payment'].setdefault('checkout_types',dict(DEFAULTS['payment']['checkout_types'])).setdefault('promax','hosted')
@@ -211,6 +216,8 @@ def save_settings_value(key,v,request):
             q.execute("UPDATE settings SET value=jsonb_set(value,'{registration_open}',$1::jsonb) WHERE key='site'", json.dumps(v['registration_open']))
         if key == 'site':
             q.execute("UPDATE settings SET value=jsonb_set(value,'{registration_open}',$1::jsonb) WHERE key='security'", json.dumps(v['registration_open']))
+        if key=='proxy' and v.get('recovery_success_count',previous.get('recovery_success_count',3))!=previous.get('recovery_success_count',3):
+            q.execute("UPDATE resources SET recovery_successes=0,probe_owner='',probe_until=NULL WHERE proxy_failures>0")
         for name in OPTIONAL.get(key,set()):
             if name not in v and name in previous: v[name]=previous[name]
         if key=='payment' and v.get('subscription_flow')=='cslive_go_direct_pay':

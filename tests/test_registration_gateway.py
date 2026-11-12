@@ -48,6 +48,28 @@ class RegistrationGatewayTests(unittest.TestCase):
         self.assertEqual(calls[0].headers['x-registration-source-ip'],'127.0.0.1')
         self.assertEqual(calls[0].headers['cookie'],'xupay_session=test')
 
+    def test_only_admin_order_list_attaches_stages_after_authorization(self):
+        import json
+        from backend import order_stage
+        class Body(httpx.AsyncByteStream):
+            async def __aiter__(self):yield json.dumps({'items':[{'id':'r','status':'running'}]}).encode()
+        def handler(request):return httpx.Response(200,stream=Body(),headers={'Content-Type':'application/json'})
+        real=httpx.AsyncClient
+        def client(**kwargs):return real(transport=httpx.MockTransport(handler),**kwargs)
+        def enrich(rows,business):
+            self.assertEqual(business,'registration');rows[0]['current_stage']='账号注册 1'
+        app=FastAPI();app.include_router(gateway.router)
+        with patch.dict('os.environ',{'REGISTRATION_URL':'http://registration-app:3210','REGISTRATION_GATEWAY_SECRET':'s'*40}),patch.object(gateway,'ip',return_value='127.0.0.1'),patch.object(gateway,'authorize') as auth,patch.object(gateway.httpx,'AsyncClient',client),patch.object(order_stage,'attach',side_effect=enrich) as attach:
+            c=TestClient(app)
+            response=c.get('/registration/api/admin/v1/orders')
+            self.assertEqual(response.status_code,200)
+            self.assertEqual(response.json()['items'][0]['current_stage'],'账号注册 1')
+            self.assertEqual(response.headers['cache-control'],'no-store')
+            response=c.get('/registration/api/user/v1/registration-orders')
+            self.assertNotIn('current_stage',response.json()['items'][0])
+            self.assertEqual(auth.call_count,2);self.assertEqual(attach.call_count,1)
+            c.close()
+
     def test_unavailable_registration_returns_controlled_error(self):
         request=Request({'type':'http','method':'GET','raw_path':b'/registration/api/public','query_string':b'',
                          'headers':[(b'host',b'example.test')],'client':('127.0.0.1',5000)})

@@ -190,6 +190,7 @@ func main() {
 		log.Fatal("Missing internal authentication")
 	}
 	p := refundworker.DefaultRunner()
+	go recoverChildProxies(ctx, s, p)
 	worker := refundworker.Worker{DB: s, Runner: p}
 	done := make(chan struct{})
 	go func() { defer close(done); worker.Run(ctx) }()

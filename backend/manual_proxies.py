@@ -33,11 +33,11 @@ def select(q, country, owner, seconds, excluded=()):
                  "FROM resources r WHERE r.enabled AND r.kind='proxy' "
                  "AND (r.country=$1 OR r.ip_mode='dynamic') "
                  "AND (r.cooldown_until IS NULL OR r.cooldown_until<=now()) "
-                 "AND (r.proxy_failures=0 OR r.probe_until IS NULL OR r.probe_until<=now()) "
+                 "AND (r.proxy_failures=0 OR $3::bool) "
                  "ORDER BY r.failover_priority,(r.id=$2) DESC,(r.last_status='failed'),random()*r.weight DESC",
-                 country, cfg.get('default_id', ''))
+                 country, cfg.get('default_id', ''), cfg.get('recovery_success_count',3) is None)
     # A retry prefers a route this order has not already failed on, even when
-    # its delay exceeded the cooldown. Once all were tried, half-open rules apply.
+    # its delay exceeded the cooldown. Once all were tried, only independently recovered routes are eligible.
     untried = [r for r in rows if r['id'] not in excluded]
     rows = untried or rows
     if not rows:
@@ -50,8 +50,7 @@ def select(q, country, owner, seconds, excluded=()):
     q.execute("INSERT INTO proxy_leases(id,resource_id,expires_at) VALUES($1,$2,now()+$3*interval '1 second')",
               lease, row['id'], seconds)
     if row['proxy_failures']:
-        q.execute("UPDATE resources SET probe_owner=$2,probe_until=now()+$3*interval '1 second' WHERE id=$1",
-                  row['id'], owner, seconds)
+        q.execute("UPDATE resources SET proxy_failures=0,cooldown_until=NULL,probe_owner='',probe_until=NULL,recovery_successes=0 WHERE id=$1", row['id'])
     return row, lease
 
 
@@ -78,7 +77,7 @@ def failed(q, order_id):
         return False
     seconds = config('proxy', q).get('failure_cooldown_seconds', 300)
     q.execute("UPDATE resources SET proxy_failures=proxy_failures+1,health_generation=health_generation+1,"
-              "cooldown_until=now()+$3*interval '1 second',probe_owner='',probe_until=NULL "
+              "cooldown_until=now()+$3*interval '1 second',probe_owner='',probe_until=NULL,recovery_successes=0,recovery_checked_at=NULL "
               "WHERE id=$1 AND proxy_revision=$2", binding['resource_id'], binding['resource_revision'], seconds)
     q.execute("UPDATE subscription_runs SET manual_proxy_failures=CASE WHEN $2=ANY(manual_proxy_failures) "
               "THEN manual_proxy_failures ELSE array_append(manual_proxy_failures,$2) END WHERE order_id=$1",
@@ -94,7 +93,7 @@ def succeeded(order_id, q=None):
     # A success from an older in-flight order cannot erase a more recent failure.
     q.execute("UPDATE resources r SET proxy_failures=0,cooldown_until=NULL,probe_owner='',probe_until=NULL "
               "FROM order_proxy_sessions s WHERE s.order_id=$1 AND s.source_mode='manual' "
-              "AND r.id=s.resource_id AND r.proxy_revision=s.resource_revision AND r.health_generation=s.health_generation",
+              "AND r.proxy_failures=0 AND r.id=s.resource_id AND r.proxy_revision=s.resource_revision AND r.health_generation=s.health_generation",
               order_id)
 
 
