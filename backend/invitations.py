@@ -1,3 +1,4 @@
+from .listing import order_by, pagination
 """Direct invitation rewards, independent of payment execution.
 
 Admission snapshots apply only to newly created orders. Settlement is retriable,
@@ -69,31 +70,32 @@ def listing(request, owner=None):
     relations=f"""(SELECT id,email,created_at,invited_by FROM users WHERE invited_by IS NOT NULL UNION
       SELECT u.id,u.email,u.created_at,r.inviter_id AS invited_by FROM users u JOIN {rewards} r ON r.invitee_id=u.id)"""
     params=request.query_params
-    page=integer(int(params.get('page','1')) if params.get('page','1').isdigit() else 0,1,100000)
-    search=params.get('q','').strip();require(len(search)<=100,'搜索内容过长')
-    where="u.invited_by IS NOT NULL AND ($1::text IS NULL OR u.invited_by=$1) AND ($2='' OR u.email ILIKE '%'||$2||'%' OR i.email ILIKE '%'||$2||'%')"
-    # Customer searches must not expose or probe another customer's full email.
-    if owner:
-        search=''
-    args=(owner,search)
-    totals=db.one(f"""SELECT count(*) AS invited,count(r.invitee_id) AS qualified,
-      COALESCE(sum(r.entitled),0)::bigint AS earned,
-      COALESCE(sum(r.recovered),0)::bigint AS recovered,
-      COALESCE(sum(r.granted-r.recovered-r.entitled),0)::bigint AS pending_recovery
-      FROM {relations} u JOIN users i ON i.id=u.invited_by LEFT JOIN (SELECT inviter_id,invitee_id,max(rate_percent) AS rate_percent,sum(fee)::bigint AS fee,
-       sum(granted)::bigint AS granted,sum(entitled)::bigint AS entitled,sum(recovered)::bigint AS recovered,max(created_at) AS created_at
-       FROM {rewards} rewards GROUP BY inviter_id,invitee_id) r ON r.invitee_id=u.id AND r.inviter_id=u.invited_by WHERE """+where,*args)
+    try:page=int(params.get('page','1'));size=int(params.get('page_size','10'))
+    except ValueError:require(False,'分页参数无效')
+    pagination(page,size)
+    search=params.get('q','').strip();state=params.get('state','')
+    require(len(search)<=200 and state in ('','waiting','rewarded','adjusted','reversed','recovering'),'筛选条件无效')
     email="substring(u.email from 1 for 2)||'***@'||split_part(u.email,'@',2)" if owner else 'u.email'
     inviter="NULL::text" if owner else 'i.email'
-    rows=db.all(f"""SELECT u.id,{email} AS email,{inviter} AS inviter,u.created_at,
+    cte=f"""WITH relations AS (
+      SELECT u.id,{email} AS email,{inviter} AS inviter,u.created_at,
       r.rate_percent,r.fee,r.granted,r.entitled,r.recovered,r.created_at AS rewarded_at,
       CASE WHEN r.invitee_id IS NULL THEN 'waiting' WHEN r.granted-r.recovered>r.entitled THEN 'recovering'
        WHEN r.entitled=0 AND r.granted>0 THEN 'reversed' WHEN r.recovered>0 THEN 'adjusted' ELSE 'rewarded' END AS reward_state
       FROM {relations} u JOIN users i ON i.id=u.invited_by LEFT JOIN (SELECT inviter_id,invitee_id,max(rate_percent) AS rate_percent,sum(fee)::bigint AS fee,
        sum(granted)::bigint AS granted,sum(entitled)::bigint AS entitled,sum(recovered)::bigint AS recovered,max(created_at) AS created_at
        FROM {rewards} rewards GROUP BY inviter_id,invitee_id) r ON r.invitee_id=u.id AND r.inviter_id=u.invited_by
-      WHERE {where} ORDER BY u.created_at DESC,u.id LIMIT 25 OFFSET $3""",*args,(page-1)*25)
-    return {'items':rows,'stats':totals,'total':totals['invited'],'page':page,'has_more':page*25<totals['invited'],'rules':config('invites')}
+      WHERE u.invited_by IS NOT NULL AND ($1::text IS NULL OR u.invited_by=$1)) """
+    # Customer filters only compare the same masked address visible in the page.
+    where=" FROM relations WHERE ($2='' OR email ILIKE '%'||$2||'%' OR inviter ILIKE '%'||$2||'%') AND ($3='' OR reward_state=$3)"
+    ordering=order_by(params.get('sort_by','created_at'),params.get('sort_dir','desc'),{k:k for k in ('email','inviter','created_at','reward_state','fee','rate_percent','entitled','recovered','rewarded_at')},'created_at')
+    args=(owner,search,state)
+    with db.transaction() as tx:
+        tx.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        totals=tx.one(cte+"SELECT count(*) AS invited,count(*) FILTER(WHERE reward_state<>'waiting') AS qualified,coalesce(sum(entitled),0)::bigint AS earned,coalesce(sum(recovered),0)::bigint AS recovered,coalesce(sum(granted-recovered-entitled),0)::bigint AS pending_recovery"+where,*args)
+        rows=tx.all(cte+'SELECT *'+where+' ORDER BY '+ordering+' LIMIT $4 OFFSET $5',*args,size,(page-1)*size)
+    return {'items':rows,'stats':totals,'total':totals['invited'],'page':page,'page_size':size,'has_more':page*size<totals['invited'],'rules':config('invites')}
+
 
 
 @router.get('/invites')

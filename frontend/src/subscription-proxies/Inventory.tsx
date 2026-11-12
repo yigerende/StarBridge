@@ -4,7 +4,7 @@ import { LoaderCircle, RefreshCw, Search, Activity } from 'lucide-react';
 import { endpoints } from './api';
 import { AppSelect } from '../../../services/gpt-register/web/src/components/AppSelect';
 import { Button, Notice } from '../../../services/gpt-register/web/src/components/ConsoleUi';
-import { Pagination } from '../../../services/gpt-register/web/src/components/Pagination';
+import {Pagination,SortHead,useList,useStored} from '../registration/lists/listing';
 
 
 export type ProxyInventoryRow = {
@@ -26,14 +26,15 @@ const time = (value?: string) => value ? new Date(value).toLocaleString('zh-CN',
 
 export default function ProxyInventory() {
   const client = useQueryClient();
-  const [filters, setFilters] = useState(initial), [search, setSearch] = useState(''), [offset, setOffset] = useState(0);
+  const [filters, setFilters] = useStored('national-inventory-filter',initial), [search, setSearch] = useState(filters.q);
+  const listing=useList('national-inventory','used'),{offset,setOffset}=listing;
   const [selected, setSelected] = useState<Set<string>>(new Set()), [error, setError] = useState('');
-  const list = useQuery({ queryKey: ['proxies', 'inventory', filters, offset], queryFn: () => endpoints.proxyInventory({ ...filters, offset: String(offset), limit: '50' }), refetchInterval: query => query.state.data?.test?.status === 'running' ? 1000 : 10000 });
+  const list = useQuery({ queryKey: ['proxies', 'inventory', filters, listing.params], queryFn: () => endpoints.proxyInventory({...filters,...listing.params}), refetchInterval: query => query.state.data?.test?.status === 'running' ? 1000 : 10000 });
   const test = useMutation({
     mutationFn: (body: { ids?: string[]; all?: boolean }) => endpoints.testProxyInventory({ ...body, filters }),
     onSuccess: result => {
       setError('');
-      client.setQueryData(['proxies', 'inventory', filters, offset], (data: ProxyInventoryPage | undefined) => data ? { ...data, test: result } : data);
+      client.setQueryData(['proxies', 'inventory', filters, listing.params], (data: ProxyInventoryPage | undefined) => data ? { ...data, test: result } : data);
       void client.invalidateQueries({ queryKey: ['proxies', 'inventory'] });
     },
     onError: e => setError((e as Error).message),
@@ -51,7 +52,7 @@ export default function ProxyInventory() {
       <AppSelect ariaLabel="筛选协议" value={filters.protocol} onValueChange={v => update('protocol', v)} options={[{ value: 'all', label: '全部协议' }, { value: 'http', label: 'HTTP' }, { value: 'https', label: 'HTTPS' }, { value: 'socks5', label: 'SOCKS5' }]} />
       <AppSelect ariaLabel="筛选检测结果" value={filters.status} onValueChange={v => update('status', v)} options={[{ value: 'all', label: '全部检测结果' }, { value: 'unknown', label: '未检测' }, { value: 'healthy', label: '连接成功' }, { value: 'failed', label: '连接失败' }]} />
       <AppSelect ariaLabel="筛选使用状态" value={filters.usage} onValueChange={v => update('usage', v)} options={[{ value: 'all', label: '全部使用状态' }, { value: 'available', label: '空闲未冷却' }, { value: 'cooling', label: '冷却中（未占用）' }, { value: 'in_use', label: '使用中' }]} />
-      <AppSelect ariaLabel="代理排序" value={filters.sort} onValueChange={v => update('sort', v)} options={[{ value: 'used', label: '最近使用优先' }, { value: 'country', label: '按国家排序' }, { value: 'latency', label: '延迟从低到高' }, { value: 'checked', label: '最近检测优先' }, { value: 'pulled', label: '最近拉取优先' }]} />
+      <AppSelect ariaLabel="代理排序" value={filters.sort} onValueChange={v => {update('sort', v);listing.sort(v)}} options={[{ value: 'used', label: '最近使用优先' }, { value: 'country', label: '按国家排序' }, { value: 'latency', label: '延迟从低到高' }, { value: 'checked', label: '最近检测优先' }, { value: 'pulled', label: '最近拉取优先' }]} />
       <input aria-label="搜索代理" placeholder="搜索地址、端口、出口 IP 或厂商" value={search} onChange={e => setSearch(e.target.value)} maxLength={200} />
       <Button type="submit" icon={<Search size={15} />}>查询</Button>
     </form>
@@ -61,11 +62,11 @@ export default function ProxyInventory() {
       <div><span>已选 {selected.size} / 1000</span><Button disabled={!selected.size || busy} onClick={() => test.mutate({ ids: [...selected] })}>测试已选</Button><Button disabled={!list.data?.total || list.data.total > 1000 || busy || list.isFetching} onClick={() => test.mutate({ all: true })}>测试筛选结果</Button><Button disabled={!selected.size} onClick={() => setSelected(new Set())}>清除选择</Button></div>
     </div>
     {job && <div className="proxy-inventory-progress" role="status"><span>{busy && <LoaderCircle size={16} className="spin" />}{job.status === 'running' ? '正在测试' : '测试完成'} {job.done}/{job.total} · 成功 {job.succeeded} · 失败 {job.failed}</span><progress aria-label="代理测试进度" value={job.done} max={job.total || 1} /></div>}
-    <div className="proxy-inventory-table"><table><thead><tr><th><input type="checkbox" aria-label="选择本页代理" checked={!!ids.length && ids.every(id => selected.has(id))} onChange={e => toggle(ids, e.target.checked)} /></th><th>代理地址</th><th>国家 / 厂商</th><th>协议 / 粘性</th><th>最近使用时间{filters.sort === 'used' ? ' ↓' : ''}</th><th>冷却释放时间</th><th>出口 IP</th><th>检测结果 / 延迟</th><th>拉取 / 检测时间</th><th>操作</th></tr></thead><tbody>
+    <div className="proxy-inventory-table"><table><thead><tr><th><input type="checkbox" aria-label="选择本页代理" checked={!!ids.length && ids.every(id => selected.has(id))} onChange={e => toggle(ids, e.target.checked)} /></th><SortHead label="代理地址" field="endpoint" list={listing}/><SortHead label="国家 / 厂商" field="country" list={listing}/><SortHead label="协议 / 粘性" field="protocol" list={listing}/><SortHead label="最近使用时间" field="used" list={listing}/><SortHead label="冷却释放时间" field="cooldown" list={listing}/><th>出口 IP</th><SortHead label="检测结果 / 延迟" field="latency" list={listing}/><SortHead label="拉取 / 检测时间" field="pulled" list={listing}/><th>操作</th></tr></thead><tbody>
       {rows.map(row => <tr key={`${row.scope}:${row.countryCode}:${row.sourceId}:${row.id}`}><td><input type="checkbox" aria-label={`选择 ${row.endpoint}`} checked={selected.has(row.id)} disabled={!selected.has(row.id) && selected.size >= 1000} onChange={e => toggle([row.id], e.target.checked)} /></td><td><code>{row.endpoint}</code></td><td>{row.countryCode === 'GLOBAL' ? '全球' : row.countryCode || '本地'}<small>{row.providerLabel}</small></td><td>{row.protocol.toUpperCase()}<small>{row.sessionMinutes ? `${row.sessionMinutes} 分钟` : '—'}</small></td><td>{row.lastUsedAt ? time(row.lastUsedAt) : '未记录'}</td><td>{row.inUse ? '使用中，释放后计算' : time(row.cooldownUntil)}<small className={row.inUse ? 'proxy-usage-busy' : row.cooling ? 'proxy-usage-cooling' : 'proxy-check-healthy'}>{row.inUse ? '占用期间不可分配' : row.cooling ? '冷却中' : row.cooldownUntil ? '冷却已结束' : '空闲'}</small></td><td><code>{row.check?.exitIp || '—'}</code></td><td><span className={`proxy-check-${row.check?.status || 'unknown'}`}>{row.check?.status === 'healthy' ? '连接成功' : row.check?.status === 'failed' ? '连接失败' : '未检测'}</span><small>{row.check?.latencyMs != null ? `${row.check.latencyMs} ms` : row.check?.message || '点击测试获取实时出口'}</small></td><td>{time(row.pulledAt)}<small>{time(row.check?.checkedAt)}</small></td><td><Button disabled={busy} icon={<Activity size={14} />} onClick={() => test.mutate({ ids: [row.id] })}>测试</Button></td></tr>)}
       {!rows.length && <tr><td colSpan={10}>{list.isLoading ? '正在加载代理…' : '没有符合条件的代理'}</td></tr>}
     </tbody></table></div>
-    <Pagination label="全部代理分页" total={list.data?.total || 0} offset={offset} busy={list.isFetching} onChange={setOffset} />
+    <Pagination size={listing.size} onSize={listing.setSize} total={list.data?.total || 0} offset={offset} busy={list.isFetching} onChange={setOffset} />
     <p className="proxy-inventory-hint">每次最多测试 1000 条，4 条并行。检测会消耗少量代理流量；结果仅代表检测时刻，服务重启后清空。粘性到期后出口 IP 可能变化；连接成功不代表目标网站一定接受该 IP。</p>
     <p className="proxy-inventory-hint">任务释放代理后，按该条代理的会话粘性时长开始冷却，使用记录重启后保留。优先选择未冷却代理；可选代理全部冷却时，可回退到未占用的冷却代理。已占用代理始终不可重复分配。未配置粘性时长的代理只记录使用时间。</p>
   </section>;

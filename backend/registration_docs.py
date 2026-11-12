@@ -10,8 +10,8 @@ def session_contract(registration):
     fields.update({
         'session':{'type':['object','null'],'additionalProperties':True,
                    'description':'完整网页登录 Session JSON，保留返回的全部字段。尚未获取时为 null；查看不会刷新。',
-                   'properties':{'user':{'type':'object','additionalProperties':True},
-                                 'expires':{'type':'string','format':'date-time'},'accessToken':{'type':'string'}}},
+                   'properties':{'user':{'type':'object','additionalProperties':True,'description':'此 Session 对应的账号资料，字段按实际返回保留。'},
+                                 'expires':{'type':'string','format':'date-time','description':'Session 到期时间。'},'accessToken':{'type':'string','description':'网页登录 Access Token。'}}},
         'session_status':{'type':'string','enum':['pending','ready','failed','unavailable'],
                           'description':'pending：正在获取，可稍后查询；ready：已保存；failed：获取失败；unavailable：尚未保存。'},
         'session_fetched_at':{'type':['string','null'],'format':'date-time','description':'完整 Session 保存时间；尚未保存时为 null。'},
@@ -46,6 +46,19 @@ def document():
     directory=Path(__file__).resolve().parent
     result=json.loads((directory/'openapi.json').read_text(encoding='utf-8'))
     registration=json.loads((directory/'registration-openapi.json').read_text(encoding='utf-8'))
+    for path,columns in {
+        '/open/v1/registration-orders':['id','need_oauth','created_at','updated_at','status','quantity','delivered','charged','unit_price'],
+        '/open/v1/accounts':['email','need_oauth','created_at','download_expires_at'],
+    }.items():
+        operation=registration['paths'][path]['get']
+        for parameter in operation.get('parameters',[]):
+            if parameter.get('name')=='limit':
+                parameter['schema']={'type':'integer','minimum':1,'maximum':500,'default':50}
+                parameter['description']='每页条数，1～500；建议 10、50、100 或 500。'
+        operation.setdefault('parameters',[]).extend([
+            {'name':'sort_by','in':'query','description':'完整筛选结果的排序字段，同值按记录标识稳定排序。','schema':{'type':'string','enum':columns,'default':'created_at'}},
+            {'name':'sort_dir','in':'query','description':'asc 升序，desc 降序。','schema':{'type':'string','enum':['asc','desc'],'default':'desc'}},
+        ])
     # Customer wording and unified membership fields; the engine contract stays intact.
     registration['paths']['/open/v1/products']['get']['description']='查询标准注册及含 OAuth 服务的当前单价、会员减免和每单数量上限。下单使用 quantity 与 need_oauth，无需 product_id。'
     registration['paths']['/open/v1/products']['get']['responses']['200']['content']['application/json']['example']['products']=[{'name': '标准账号', 'need_oauth': False, 'unit_price': 50, 'standard_price': 50, 'saved': 0, 'membership_eligible': True, 'price_source': 'membership'}, {'name': 'OAuth 账号', 'need_oauth': True, 'unit_price': 100, 'standard_price': 100, 'saved': 0, 'membership_eligible': False, 'price_source': 'standard'}]

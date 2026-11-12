@@ -70,6 +70,9 @@ func planFallbackCheckpoint(ctx context.Context, tx pgx.Tx, j *RefundJob, c Chec
 			return ErrState
 		}
 		event = "兜底：个人套餐为 Free，按业务规则完成。"
+		if err := finishResources(ctx, tx, j, true, true, step); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, "INSERT INTO refund_events(refund_id,message,internal) VALUES($1,$2,true)", j.ID, event); err != nil {
 			return err
 		}

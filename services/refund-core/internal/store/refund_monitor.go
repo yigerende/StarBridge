@@ -9,6 +9,7 @@ import (
 
 type RefundMonitorFilter struct {
 	Query, Status, FeeStatus, Start, End, Focus, Sort string
+	SortBy, SortDir                                   string
 	Page, Size                                        int
 }
 
@@ -88,12 +89,12 @@ func (s *Store) AdminRefundMonitor(ctx context.Context, f RefundMonitorFilter) (
 	if out.Page > 100000 {
 		out.Page = 100000
 	}
-	if out.Size < 1 || out.Size > 100 {
-		out.Size = 100
+	if out.Size < 1 || out.Size > 500 {
+		out.Size = 500
 	}
 	// One SQL snapshot keeps the full summary, filtered total and page in sync.
 	// Only generic public events establish start time; internal steps stay private.
-	const query = `WITH scoped AS (
+	query := `WITH scoped AS (
  SELECT r.id,r.email,r.status,r.fee,r.fee_status,r.message,r.created_at,r.updated_at,
  u.id AS user_id,u.name AS user_name,u.email AS user_email,p.started_at,
  COALESCE((NOT e.released OR (r.status='queued' AND e.recovery_mode='mother_switch')) AND e.recovery_started_at<=now()-((cfg.recovery->>'alert_seconds')::int * interval '1 second'),false) AS recovery_alert,
@@ -132,6 +133,15 @@ func (s *Store) AdminRefundMonitor(ctx context.Context, f RefundMonitorFilter) (
 )
 SELECT row_to_json(summary), (SELECT count(*) FROM filtered),
  COALESCE((SELECT jsonb_agg(to_jsonb(p)-'rn' ORDER BY rn) FROM (SELECT * FROM ordered ORDER BY rn LIMIT $8 OFFSET $9) p),'[]'::jsonb),now() FROM summary`
+	if f.SortBy != "" {
+		ordering, err := refundListOrder(f.SortBy, f.SortDir, true)
+		if err != nil {
+			return out, err
+		}
+		begin := strings.Index(query, "row_number() OVER (ORDER BY")
+		end := strings.Index(query[begin:], ") AS rn FROM filtered") + begin
+		query = query[:begin] + "row_number() OVER (ORDER BY CASE WHEN $7::text IS NULL THEN 0 ELSE 0 END, " + ordering + query[end:]
+	}
 	var summary, rows []byte
 	err := s.Pool.QueryRow(ctx, query, f.Query, from, until, f.Status, f.FeeStatus, f.Focus, f.Sort, out.Size, (out.Page-1)*out.Size).Scan(&summary, &out.Total, &rows, &out.GeneratedAt)
 	if err != nil {
@@ -156,4 +166,23 @@ func oneOf(value string, choices ...string) bool {
 		}
 	}
 	return false
+}
+
+// Whitelisted read-model ordering. It never changes execution priority.
+func refundListOrder(field, direction string, admin bool) (string, error) {
+	if field == "" {
+		field = "created_at"
+	}
+	if direction == "" {
+		direction = "desc"
+	}
+	columns := map[string]string{"email": "email", "status": "status", "fee": "fee", "fee_status": "fee_status", "created_at": "created_at", "updated_at": "updated_at"}
+	if admin {
+		columns["user_email"] = "user_email"
+	}
+	column, ok := columns[field]
+	if !ok || !oneOf(direction, "asc", "desc") {
+		return "", invalid("排序参数无效")
+	}
+	return column + " " + direction + " NULLS LAST,id " + direction, nil
 }

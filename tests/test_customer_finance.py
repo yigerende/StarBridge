@@ -47,7 +47,7 @@ class CustomerFinanceTests(unittest.TestCase):
         for n in range(35):self.entry('after-'+str(n),'adjustment',1,balance=701+n,frozen=0)
         request=self.report_request('start=2026-11-11&end=2026-11-11')
         before=db.one("SELECT balance,frozen FROM users WHERE id='u'")
-        first=customer_ledger('u',request);second=customer_ledger('u',request,page=2)
+        first=customer_ledger('u',request,page_size=25);second=customer_ledger('u',request,page=2,page_size=25)
         self.assertEqual((first['total'],len(first['items']),len(second['items'])),(37,25,12))
         rows={r['description']:r for r in first['items']+second['items']}
         self.assertEqual((rows['记录 freeze']['available_delta'],rows['记录 freeze']['frozen_delta']),(-300,300))

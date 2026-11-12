@@ -116,7 +116,8 @@ class PasswordFailureTests(unittest.TestCase):
             invite = {'id': 'invite-1', 'email_address': 'child@example.com', 'role': 'standard-user'}
             client.find = Mock(side_effect=[None, invite, None, None, None, None])
             client.call = Mock(side_effect=runner.UpstreamFailure('mother_network', network_code=28) if response_lost else None)
-            client.cleanup_unaccepted('')
+            with patch.object(runner.MotherClient, 'find', client.find):
+                client.cleanup_unaccepted('')
             client.call.assert_called_once_with('DELETE', '/invites', {'email_address': 'child@example.com'})
             self.assertEqual(client.find.call_count, 6)
 
@@ -139,7 +140,8 @@ class PasswordFailureTests(unittest.TestCase):
         member = {'id': 'new-child', 'role': 'standard-user'}
         client.find = Mock(side_effect=[None, invite, member, member, None, None, None])
         client.call = Mock()
-        client.cleanup_unaccepted('')
+        with patch.object(runner.MotherClient, 'find', client.find):
+            client.cleanup_unaccepted('')
         self.assertEqual([c.args for c in client.call.call_args_list], [('DELETE', '/invites', {'email_address': 'child@example.com'}), ('DELETE', '/users/new-child')])
 
 

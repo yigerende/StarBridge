@@ -2,21 +2,18 @@
 import {computed,ref,watch,nextTick,onUnmounted} from 'vue'
 import {Languages,X,Search,RefreshCw} from 'lucide-vue-next'
 import {pricePlans,referencePlan,priceNumber,priceTime,priceDate,taxLabel,websiteLabel,type PriceData} from '../priceReference'
+import {useRemoteList} from '../useRemoteList'
+import ListPager from './ListPager.vue'
+import SortHeader from './SortHeader.vue'
 const props=defineProps<{data:PriceData;initialPlan:string;selectedCountry:string;loading:boolean;error:string}>()
 const emit=defineEmits<{refresh:[]}>()
-const open=ref(false),plan=ref('plus'),seat=ref('standard'),search=ref(''),sort=ref('price'),dialog=ref<HTMLElement|null>(null)
+const open=ref(false),plan=ref(referencePlan(props.initialPlan)||'plus'),seat=ref(props.initialPlan==='team_premium'?'premium':'standard'),search=ref(''),dialog=ref<HTMLElement|null>(null)
 let prior:HTMLElement|null=null,priorOverflow=''
-const selectedKey=computed(()=>plan.value==='team'&&seat.value==='premium'?'team_premium':plan.value)
-const allRows=computed(()=>{
- const quotes=props.data.rows.filter(r=>r.plan===selectedKey.value)
- return props.data.countries?.map(c=>quotes.find(r=>r.country===c.code)||{
-  country:c.code,name:c.name,currency:c.currency,plan:selectedKey.value,amount:null,amount_cny:null,
-  website_amount:null,website_amount_cny:null,tax:'',website_tax:'',rate_to_cny:null,updated_at:null,stale:false,
- })||quotes
-})
-const rows=computed(()=>allRows.value.filter(r=>[r.name,r.country,r.currency].join(' ').toLowerCase().includes(search.value.trim().toLowerCase())).sort((a,b)=>sort.value==='country'?a.name.localeCompare(b.name,'zh-CN'):(a.amount_cny??Infinity)-(b.amount_cny??Infinity)||a.country.localeCompare(b.country)))
+const selectedKey=computed({get:()=>plan.value==='team'&&seat.value==='premium'?'team_premium':plan.value,set:value=>{if(value==='team_premium'){plan.value='team';seat.value='premium'}else if(pricePlans.some(p=>p.id===value)){plan.value=value;seat.value='standard'}}})
+const {page,size,sortBy,sortDir,data:listData,rows,loading:listLoading,error:listError,load,sort:sortRows}=useRemoteList('price-reference',()=>open.value?'/subscription-prices/list':'',{plan:selectedKey,q:search},{sortBy:'amount_cny',sortDir:'asc'})
+const selectedSort=computed({get:()=>sortBy.value==='name'&&sortDir.value==='asc'?'country':sortBy.value==='amount_cny'&&sortDir.value==='asc'?'price':'custom',set:value=>{if(value==='custom')return;sortBy.value=value==='country'?'name':'amount_cny';sortDir.value='asc';page.value=1}})
 const stale=computed(()=>props.data.fx_stale||rows.value.some(r=>r.stale))
-function show(){plan.value=pricePlans.some(p=>p.id===referencePlan(props.initialPlan))?referencePlan(props.initialPlan):'plus';seat.value=props.initialPlan==='team_premium'?'premium':'standard';search.value='';sort.value='price';open.value=true;emit('refresh')}
+function show(){open.value=true;emit('refresh')}
 function keydown(event:KeyboardEvent){if(event.key==='Escape')open.value=false;if(event.key!=='Tab')return;const nodes=dialog.value?.querySelectorAll<HTMLElement>('button:not(:disabled),input,select,a[href]');if(!nodes?.length)return;const first=nodes[0],last=nodes[nodes.length-1];if(event.shiftKey&&document.activeElement===first){event.preventDefault();last.focus()}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first.focus()}}
 watch(open,async value=>{if(value){prior=document.activeElement as HTMLElement;priorOverflow=document.body.style.overflow;document.body.style.overflow='hidden';document.addEventListener('keydown',keydown);await nextTick();dialog.value?.focus()}else{document.body.style.overflow=priorOverflow;document.removeEventListener('keydown',keydown);prior?.focus()}})
 onUnmounted(()=>{if(open.value)document.body.style.overflow=priorOverflow;document.removeEventListener('keydown',keydown)})
@@ -29,13 +26,13 @@ onUnmounted(()=>{if(open.value)document.body.style.overflow=priorOverflow;docume
 <div class="price-reference-body">
 <div class="price-reference-tabs" role="tablist" aria-label="价格查询套餐"><button v-for="p in pricePlans" :key="p.id" type="button" role="tab" :aria-selected="plan===p.id" :class="{active:plan===p.id}" @click="plan=p.id;search=''">{{p.name}}</button></div>
 <div v-if="plan==='team'" class="price-seat-tabs"><button type="button" :class="{active:seat==='standard'}" @click="seat='standard'">普通席位</button><button type="button" :class="{active:seat==='premium'}" @click="seat='premium'">高级席位</button><span>每席位月费，订单金额按席位数量计算</span></div>
-<div class="price-reference-toolbar"><div class="price-reference-search"><Search :size="15"/><input v-model="search" placeholder="搜索国家、地区或币种" aria-label="搜索价格国家或币种"/></div><select v-model="sort" aria-label="价格排序"><option value="price">R 价格从低到高</option><option value="country">国家 / 地区名称</option></select><button type="button" :disabled="loading" @click="emit('refresh')"><RefreshCw :size="14" :class="{spinning:loading}"/>刷新</button></div>
-<p v-if="error" class="price-reference-warning" role="alert">{{error}}，请稍后刷新。</p>
+<div class="price-reference-toolbar"><div class="price-reference-search"><Search :size="15"/><input v-model="search" placeholder="搜索国家、地区或币种" aria-label="搜索价格国家或币种"/></div><select v-model="selectedSort" aria-label="价格排序"><option v-if="selectedSort==='custom'" value="custom" disabled>按表头排序</option><option value="price">R 价格从低到高</option><option value="country">国家 / 地区名称</option></select><button type="button" :disabled="loading" @click="emit('refresh');load()"><RefreshCw :size="14" :class="{spinning:loading}"/>刷新</button></div>
+<p v-if="listError" class="price-reference-warning">{{listError}}</p><p v-if="error" class="price-reference-warning" role="alert">{{error}}，请稍后刷新。</p>
 <p v-else-if="stale" class="price-reference-warning">部分数据尚未更新，保留最近成功的参考价和原更新时间。</p>
-<div class="price-reference-meta"><span>{{pricePlans.find(p=>p.id===plan)?.name}} · {{rows.length}} 个地区</span><span>汇率更新：{{priceTime(data.fx_updated_at)}}</span></div>
-<div class="price-reference-table-wrap"><table class="price-reference-table"><thead><tr><th>国家 / 地区</th><th>当地参考价 / {{plan==='team'?'席位 / ':''}}月</th><th>约合 R / {{plan==='team'?'席位 / ':''}}月</th><th>参考汇率</th></tr></thead><tbody>
+<div class="price-reference-meta"><span>{{pricePlans.find(p=>p.id===plan)?.name}} · {{listData.total||0}} 个地区</span><span>汇率更新：{{priceTime(data.fx_updated_at)}}</span></div>
+<div class="price-reference-table-wrap"><table class="price-reference-table"><thead><tr><SortHeader label="国家 / 地区" field="name" :sort-by="sortBy" :sort-dir="sortDir" @sort="sortRows"/><SortHeader label="当地参考价 / 月" field="amount" :sort-by="sortBy" :sort-dir="sortDir" @sort="sortRows"/><SortHeader label="约合 R / 月" field="amount_cny" :sort-by="sortBy" :sort-dir="sortDir" @sort="sortRows"/><SortHeader label="参考汇率" field="rate_to_cny" :sort-by="sortBy" :sort-dir="sortDir" @sort="sortRows"/></tr></thead><tbody>
 <tr v-for="r in rows" :key="r.country"><td><span>{{r.name}}</span><small>{{r.country}} <em v-if="r.country===selectedCountry">当前选择</em></small></td><td><span>{{r.amount==null?'暂无参考价':priceNumber(r.amount)}} <small class="inline">{{r.currency}}</small></span><small v-if="r.amount!=null">{{taxLabel(r.tax)}} · {{priceDate(r.updated_at)}}<template v-if="r.stale"> · 待更新</template></small><small v-if="r.website_amount!=null && (r.website_amount!==r.amount||r.website_tax!==r.tax)">{{websiteLabel(r.website_tax)}} {{priceNumber(r.website_amount)}} {{r.currency}}</small></td><td><strong class="price-reference-r">{{r.amount==null?'—':r.amount_cny==null?'暂无汇率':'≈ '+priceNumber(r.amount_cny)+' R'}}</strong><small v-if="r.website_amount_cny!=null&&(r.website_amount!==r.amount||r.website_tax!==r.tax)">{{websiteLabel(r.website_tax)}} ≈ {{priceNumber(r.website_amount_cny)}} R</small></td><td><small>{{r.rate_to_cny==null?'暂无汇率':'1 '+r.currency+' ≈ '+r.rate_to_cny.toLocaleString('zh-CN',{maximumSignificantDigits:6})+' R'}}</small></td></tr>
-</tbody></table></div>
+</tbody></table></div><ListPager v-model:page="page" v-model:size="size" :total="listData.total||0" :loading="listLoading"/>
 <div v-if="!rows.length" class="price-reference-empty" role="status"><RefreshCw v-if="loading" :size="24" class="spinning"/><p>{{loading?'正在读取参考价格…':search?'没有匹配的地区':'当前套餐暂无地区参考价'}}</p><small v-if="!loading&&!search">数据由后台定时更新，请稍后查看。</small></div>
 </div>
 <footer class="price-reference-footer"><div><span>优先展示官方支付通道参考价，税费、优惠及平台服务费以实际结账为准。</span><a href="https://www.exchangerate-api.com" target="_blank" rel="noopener noreferrer">汇率来源：ExchangeRate-API</a></div><button type="button" @click="open=false">关闭</button></footer>

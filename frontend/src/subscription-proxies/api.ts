@@ -1,7 +1,7 @@
 import type {ProxyCatalogSnapshot} from '../../../services/gpt-register/web/src/types'
 import type {PageInfo} from '../../../services/gpt-register/web/src/components/Pagination'
 import type {ProxyInventoryPage,ProxyTest} from './Inventory'
-type Snapshot=ProxyCatalogSnapshot&PageInfo&{operation?:{id:string};settings?:{renewal_country:string}}
+type Snapshot=ProxyCatalogSnapshot&PageInfo&{apiSourceCount:number;operation?:{id:string};settings?:{renewal_country:string}}
 const base='/registration/api/admin/v1/subscription-proxies'
 async function request<T>(path:string,method='GET',body?:unknown):Promise<T>{
  const r=await fetch(base+path,{method,credentials:'same-origin',headers:{'X-Requested-With':'gptreg',...(body!==undefined?{'Content-Type':'application/json'}:{})},...(body!==undefined?{body:JSON.stringify(body)}:{})})
@@ -20,8 +20,8 @@ async function mutate<T>(path:string,method='POST',body:unknown={}):Promise<T>{
  }
 }
 export const endpoints={
- proxiesPage:(_offset:number)=>request<Snapshot>(''),
- proxyEntries:(country:string,offset:number)=>request<PageInfo&{items:{id:string;url:string}[]}>(`/pools/${encodeURIComponent(country)}/entries?offset=${offset}&limit=50`),
+ proxiesPage:(query:Record<string,string>={})=>request<Snapshot>('?'+new URLSearchParams(query)),
+ proxyEntries:(country:string,query:Record<string,string>)=>request<PageInfo&{items:{id:string;url:string}[]}>(`/pools/${encodeURIComponent(country)}/entries?${new URLSearchParams(query)}`),
  proxyInventory:(query:Record<string,string>)=>request<ProxyInventoryPage>('/inventory?'+new URLSearchParams(query)),
  testProxyInventory:(body:unknown)=>mutate<ProxyTest>('/inventory/test','POST',body),
  previewProxies:(body:unknown)=>request<any>('/preview','POST',body),

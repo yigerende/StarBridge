@@ -1,7 +1,13 @@
 <script setup lang="ts">
+import {useRemoteList} from '../useRemoteList'
+import {rememberList} from '../listState'
+import ListPager from './ListPager.vue'
+import SortHeader from './SortHeader.vue'
+import RefundMotherTools from './RefundMotherTools.vue'
+import RefundResourceRecovery from './RefundResourceRecovery.vue'
 import ProxyCooldown from "./ProxyCooldown.vue";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
-import {api as bridgeAPI,labels as statuses} from '../lib'
+import {api as bridgeAPI,labels as statuses,cash} from '../lib'
 async function api<T=any>(path:string,options?:{method?:string;body?:string}):Promise<T>{return bridgeAPI(path,options?.method||'GET',options?.body?JSON.parse(options.body):undefined) as Promise<T>}
 import ResourceCheckSummary from "../refund/ResourceCheckSummary.vue";
 import type { ResourceCheck } from "../refund/resource-check";
@@ -12,14 +18,22 @@ type ProxyRow = { target?:string; failure_until?:string; failure_code?:string; c
 type Mother = { auth_blocked?:boolean; check?:ResourceCheck; id:string; name:string; email:string; team_id:string; proxy_id:string; seat_type:string; enabled:boolean; has_secret:boolean; access_token?:string; session?:string; refresh_token?:string; has_refresh?:boolean; plan_type?:string; token_expires_at?:string; active_refund?:string; active_email?:string; active_status?:string };
 type CredentialPreview = {email:string;team_id:string;plan_type:string;expires_at:string|null;has_refresh:boolean};
 type Recovery={verification_http_statuses?:number[];plan_fallback?:{enabled:boolean;max_cycles:number;max_attempts:number;retry_seconds:number};enabled:boolean;max_retries:number;verify_intervals:number[];cleanup_intervals:number[];alert_seconds:number;cleanup_failed:boolean};
-type Settings = { child_proxy_backups:string[];child_proxy_cooldown_seconds:number; mother_failover:{enabled:boolean;max_switches:number;retry_seconds:number}; recovery:Recovery; enabled:boolean; max_parallel:number; max_attempts:number; retry_seconds:number; child_proxy_id:string; mother_interval_seconds:number };
+type Settings = { query_personal_plan:boolean;resource_recovery:{failure_limit:number;cooldown_seconds:number;watch_seconds:number;retry_seconds:number;slow_retry_seconds:number;fast_attempts:number;login_failure_limit:number;login_window_seconds:number;login_cooldown_seconds:number}; child_proxy_backups:string[];child_proxy_cooldown_seconds:number; mother_failover:{enabled:boolean;max_switches:number;retry_seconds:number}; recovery:Recovery; enabled:boolean; max_parallel:number; max_attempts:number; retry_seconds:number; child_proxy_id:string; mother_interval_seconds:number };
 const section=ref('mothers'),runtimeReady=ref(false);
 const emit=defineEmits<{toast:[message:string]}>();
-const settings=ref<Settings>({child_proxy_backups:[],child_proxy_cooldown_seconds:300,mother_failover:{enabled:true,max_switches:3,retry_seconds:30},recovery:{plan_fallback:{enabled:true,max_cycles:2,max_attempts:3,retry_seconds:30},enabled:true,max_retries:3,verify_intervals:[30,60,120,300],cleanup_intervals:[15,30,60],alert_seconds:600,cleanup_failed:true},enabled:false,max_parallel:2,max_attempts:2,retry_seconds:30,child_proxy_id:"",mother_interval_seconds:0});
+const resourceDefaults={failure_limit:3,cooldown_seconds:300,watch_seconds:60,retry_seconds:30,slow_retry_seconds:300,fast_attempts:3,login_failure_limit:3,login_window_seconds:60,login_cooldown_seconds:30};
+const settings=ref<Settings>({query_personal_plan:true,resource_recovery:{...resourceDefaults},child_proxy_backups:[],child_proxy_cooldown_seconds:300,mother_failover:{enabled:true,max_switches:3,retry_seconds:30},recovery:{plan_fallback:{enabled:true,max_cycles:2,max_attempts:3,retry_seconds:30},enabled:true,max_retries:3,verify_intervals:[30,60,120,300],cleanup_intervals:[15,30,60],alert_seconds:600,cleanup_failed:true},enabled:false,max_parallel:2,max_attempts:2,retry_seconds:30,child_proxy_id:"",mother_interval_seconds:0});
 const intervalText=(key:'verify_intervals'|'cleanup_intervals')=>computed({get:()=>settings.value.recovery[key].join(', '),set:(value:string)=>{settings.value.recovery[key]=value.split(/[,，\s]+/).filter(Boolean).map(Number)}});
 const verifyIntervals=intervalText('verify_intervals'),cleanupIntervals=intervalText('cleanup_intervals');
 const verificationStatuses=ref("404");
 const mothers=ref<Mother[]>([]),proxies=ref<ProxyRow[]>([]),busy=ref(false),error=ref(""),formError=ref(""),modal=ref("");
+const resourceSummary=ref<Record<string,{total:number;enabled:number}>>({})
+rememberList('refund-resource-section',{section})
+const motherQuery=ref(''),motherStatus=ref(''),proxyQuery=ref(''),proxyStatus=ref(''),proxyTarget=ref('')
+const motherList=useRemoteList('refund-mothers',()=>section.value==='mothers'?'/admin/refund/resources/mothers':'',{q:motherQuery,status:motherStatus},{sortBy:'name',sortDir:'asc'})
+const proxyList=useRemoteList('refund-proxies',()=>section.value==='proxies'?'/admin/refund/resources/proxies':'',{q:proxyQuery,status:proxyStatus,target:proxyTarget},{sortBy:'name',sortDir:'asc'})
+const {page:motherPage,size:motherSize,sortBy:motherSort,sortDir:motherDir,data:motherData,rows:motherRows,loading:motherLoading,error:motherError}=motherList
+const {page:proxyPage,size:proxySize,sortBy:proxySort,sortDir:proxyDir,data:proxyData,rows:proxyRows,loading:proxyLoading,error:proxyError}=proxyList
 const mother=ref<Mother>({id:"",name:"",email:"",team_id:"",proxy_id:"",seat_type:"default",enabled:true,has_secret:false,access_token:""});
 const proxy=ref<ProxyRow>({id:"",name:"",url:"",target:"both",enabled:true,has_secret:false});
 const motherProxies=computed(()=>proxies.value.filter(p=>p.target!=='child'));
@@ -28,6 +42,12 @@ const targetName=(p:ProxyRow)=>p.target==='mother'?'母号':p.target==='child'?'
 function selectBackup(id:string,checked:boolean){settings.value.child_proxy_backups=checked?[...settings.value.child_proxy_backups,id]:settings.value.child_proxy_backups.filter(x=>x!==id)}
 function moveBackup(id:string,by:number){const a=[...settings.value.child_proxy_backups],i=a.indexOf(id),to=i+by;if(to>=0&&to<a.length){[a[i],a[to]]=[a[to],a[i]];settings.value.child_proxy_backups=a}}
 watch(()=>settings.value.child_proxy_id,id=>{settings.value.child_proxy_backups=settings.value.child_proxy_backups.filter(x=>x!==id)});
+const managedMother=ref<Mother|null>(null),motherSnapshots=ref<Record<string,any>>({}),managedTab=ref('details'),motherTools=ref<InstanceType<typeof RefundMotherTools>>();
+const snapshot=(m:Mother)=>motherSnapshots.value[m.id]?.management_json||{};
+function seats(m:Mother,key:string){const value=snapshot(m).capacity,check=m.check;return value&&(!check?.checked_at||Date.parse(value.checked_at)>=Date.parse(check.checked_at))?value[key]:check?.seats?.[key as 'standard'|'premium']}
+function seatPrice(m:Mother){const expiry=Date.parse(snapshot(m).plan?.expires_at||'');if(!Number.isFinite(expiry))return '—';const days=Math.max(0,Math.floor((expiry+28800000)/86400000)-Math.floor((Date.now()+28800000)/86400000));return '$'+(125/30*days).toFixed(2)}
+function manage(m:Mother,tab='details'){managedTab.value=tab;managedMother.value=m}
+async function changeMother(m:Mother,changes:{enabled?:boolean;proxy_id?:string}){busy.value=true;error.value='';try{await api(`/admin/refund/mother-management/${m.id}/resource`,{method:'PATCH',body:JSON.stringify(changes)});await load();emit('toast','母号设置已保存')}catch(e){error.value=(e as Error).message}finally{busy.value=false}}
 const removing=ref<{kind:string;id:string;name:string}>();
 const motherCheck=ref<ResourceCheck>(),proxyCheck=ref<ResourceCheck>();
 const motherPreview=ref<CredentialPreview>(),parsing=ref(false),fileInput=ref<HTMLInputElement>();
@@ -39,7 +59,7 @@ const proxyInput=()=>{const {check,...value}=proxy.value;return value};
 const displayTime=(value:string)=>new Date(value).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false});
 async function load(){
  busy.value=true;error.value="";
- try{const d=await api<{settings:Settings;mothers:Mother[];proxies:ProxyRow[];runtime_ready:boolean}>("/admin/refund/settings");runtimeReady.value=d.runtime_ready;settings.value={...d.settings,child_proxy_backups:d.settings.child_proxy_backups||[],child_proxy_cooldown_seconds:d.settings.child_proxy_cooldown_seconds||300};settings.value.recovery.plan_fallback??={enabled:true,max_cycles:2,max_attempts:3,retry_seconds:30};verificationStatuses.value=(settings.value.recovery.verification_http_statuses??[404]).join(',');mothers.value=d.mothers;proxies.value=d.proxies}
+ try{const d=await api<{settings:Settings;mothers:Mother[];proxies:ProxyRow[];runtime_ready:boolean;resource_summary:Record<string,{total:number;enabled:number}>}>("/admin/refund/settings?summary_only=true");runtimeReady.value=d.runtime_ready;settings.value={...d.settings,query_personal_plan:d.settings.query_personal_plan!==false,resource_recovery:{...resourceDefaults,...d.settings.resource_recovery},child_proxy_backups:d.settings.child_proxy_backups||[],child_proxy_cooldown_seconds:d.settings.child_proxy_cooldown_seconds||300};settings.value.recovery.plan_fallback??={enabled:true,max_cycles:2,max_attempts:3,retry_seconds:30};verificationStatuses.value=(settings.value.recovery.verification_http_statuses??[404]).join(',');resourceSummary.value=d.resource_summary;mothers.value=d.mothers;proxies.value=d.proxies;await motherList.load();await proxyList.load();await motherTools.value?.load()}
  catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
 async function saveSettings(){
@@ -105,18 +125,20 @@ async function save(){
 function openOrder(id:string){window.location.hash='/admin/orders?business=refund&order_id='+id}
 let resourceTimer:ReturnType<typeof setInterval>|undefined,resourcesDisposed=false;
 const resourceController=new AbortController();
-onMounted(()=>{void load();resourceTimer=setInterval(async()=>{if(section.value!=='proxies'||document.visibilityState!=='visible'||busy.value||modal.value)return;try{const d=await bridgeAPI("/admin/refund/settings","GET",undefined,{},AbortSignal.any([resourceController.signal,AbortSignal.timeout(12000)]));if(!resourcesDisposed&&!busy.value&&!modal.value)proxies.value=d.proxies}catch{}},15000)});
+onMounted(()=>{void load();resourceTimer=setInterval(async()=>{if(section.value!=='proxies'||document.visibilityState!=='visible'||busy.value||modal.value)return;try{await proxyList.load()}catch{}},15000)});
 onUnmounted(()=>{resourcesDisposed=true;clearInterval(resourceTimer);resourceController.abort()});
 </script>
 <template>
  <div class="page-heading"><div><span class="eyebrow">REFUND OPERATIONS</span><h1>代退资源与调度</h1><p>管理代退母号与独立代理，设置并行、重试和异常恢复。</p></div><button class="btn secondary" :disabled="busy" @click="load">刷新状态</button></div>
- <div class="refund-resource-overview"><article class="panel"><span>母号资源</span><b>{{mothers.filter(m=>m.enabled).length}}<small> / {{mothers.length}} 已启用</small></b></article><article class="panel"><span>代退代理</span><b>{{proxies.filter(p=>p.enabled).length}}<small> / {{proxies.length}} 已启用</small></b></article><article class="panel"><span>执行队列</span><b class="queue-state">{{settings.enabled?'自动办理已开启':'自动办理已暂停'}}</b><small>{{runtimeReady?'执行环境已就绪':'执行环境暂未就绪'}}</small></article></div>
+ <div class="refund-resource-overview"><article class="panel"><span>母号资源</span><b>{{resourceSummary.mothers?.enabled||0}}<small> / {{resourceSummary.mothers?.total||0}} 已启用</small></b></article><article class="panel"><span>代退代理</span><b>{{resourceSummary.proxies?.enabled||0}}<small> / {{resourceSummary.proxies?.total||0}} 已启用</small></b></article><article class="panel"><span>执行队列</span><b class="queue-state">{{settings.enabled?'自动办理已开启':'自动办理已暂停'}}</b><small>{{runtimeReady?'执行环境已就绪':'执行环境暂未就绪'}}</small></article></div>
  <div class="tabs refund-resource-tabs" role="tablist" aria-label="代退资源分类"><button v-for="item in [{id:'mothers',label:'母号资源'},{id:'proxies',label:'代退代理'},{id:'schedule',label:'调度与恢复'}]" :key="item.id" role="tab" :aria-selected="section===item.id" :class="{active:section===item.id}" :aria-controls="'refund-resource-'+item.id" @click="section=item.id">{{item.label}}</button></div>
  <div class="execution-settings">
   <div v-if="error" class="error-banner" role="alert">{{error}}</div>
   <section v-show="section==='schedule'" id="refund-resource-schedule" role="tabpanel" class="panel">
    <div class="section-title"><div><h2>队列调度</h2><p>根据实际办理结果更新服务单并结算费用。</p></div></div>
    <form class="execution-form" @submit.prevent="saveSettings">
+    <label class="checkbox-label"><input v-model="settings.query_personal_plan" type="checkbox"/>查询并记录办理前个人套餐</label>
+    <p class="muted">开启后，在密码和 2FA 登录后查询个人套餐，再进入团队。关闭只跳过办理前套餐记录，异常后的套餐兜底仍按原配置执行。</p>
     <label class="checkbox-label"><input v-model="settings.enabled" type="checkbox"/>允许队列自动办理申请</label>
     <div class="form-row">
      <label>并行母号上限<input v-model.number="settings.max_parallel" type="number" min="1" max="8" required/></label>
@@ -133,13 +155,34 @@ onUnmounted(()=>{resourcesDisposed=true;clearInterval(resourceTimer);resourceCon
     <p class="muted">单个母号依次办理，不同母号可同时工作。暂停队列只阻止领取新申请，已经开始的任务继续运行；待核实申请按下方恢复和套餐兜底规则处理。</p>
     <p class="muted">接单间隔从同母号上一单成功完成后开始计算，默认 0 秒，不额外等待。保存后对正在等待的母号立即生效；到期后在下一轮调度（约 2 秒内）接单，其他空闲母号照常办理，已开始的任务及续跑不受影响。</p>
     <fieldset class="recovery-settings">
+     <legend>母号冷却与残留清理</legend>
+     <div class="form-row">
+      <label>母号连续失败次数<input v-model.number="settings.resource_recovery.failure_limit" type="number" min="1" max="10" required/></label>
+      <label>母号故障冷却（秒）<input v-model.number="settings.resource_recovery.cooldown_seconds" type="number" min="30" max="3600" required/></label>
+      <label>异常清理后观察（秒）<input v-model.number="settings.resource_recovery.watch_seconds" type="number" min="30" max="1800" required/></label>
+      <label>清理重试间隔（秒）<input v-model.number="settings.resource_recovery.retry_seconds" type="number" min="5" max="300" required/></label>
+      <label>转低频前失败次数<input v-model.number="settings.resource_recovery.fast_attempts" type="number" min="1" max="10" required/></label>
+      <label>低频重试间隔（秒）<input v-model.number="settings.resource_recovery.slow_retry_seconds" type="number" min="60" max="3600" required/></label>
+     </div>
+     <p class="muted">满员未清理时停止分配；账号密码错误和邮箱验证不计入母号故障。订单结束后仍会检查残留，不重复收费。</p>
+    </fieldset>
+    <fieldset class="recovery-settings">
+     <legend>登录服务故障保护</legend>
+     <div class="form-row">
+      <label>触发保护的不同账号数<input v-model.number="settings.resource_recovery.login_failure_limit" type="number" min="2" max="20" required/></label>
+      <label>故障统计窗口（秒）<input v-model.number="settings.resource_recovery.login_window_seconds" type="number" min="10" max="600" required/></label>
+      <label>恢复探测间隔（秒）<input v-model.number="settings.resource_recovery.login_cooldown_seconds" type="number" min="5" max="3600" required/></label>
+     </div>
+     <p class="muted">多个账号在同一登录步骤遇到上游故障时暂停新登录，到期只放行一笔探测。密码错误、邮箱验证不触发；母号清理照常运行。</p>
+    </fieldset>
+    <fieldset class="recovery-settings">
      <legend>母号异常自动换号</legend>
      <label class="checkbox-label"><input v-model="settings.mother_failover.enabled" type="checkbox"/>开始办理前母号不可用时，重新排队换母号</label>
      <div class="form-row">
       <label>每笔申请最多换母号次数<input v-model.number="settings.mother_failover.max_switches" type="number" min="0" max="10" required/></label>
       <label>换母号前等待（秒）<input v-model.number="settings.mother_failover.retry_seconds" type="number" min="5" max="3600" required/></label>
      </div>
-     <p class="muted">默认开启，最多换 3 次，每次等待 30 秒。按原申请提交时间排队，遵守并行上限和同母号接单间隔；没有可用母号就继续等待，不占执行并发，也不重复冻结费用。已开始邀请或办理的申请保留原母号，避免重复操作。</p>
+     <p class="muted">默认开启，最多换 3 次，每次等待 30 秒。按原申请提交时间排队，遵守并行上限和同母号接单间隔；没有可用母号就继续等待，不占执行并发，也不重复冻结费用。已邀请的申请先在原母号完成清理和复查，确认没有残留后才允许换号；提交结果未知时不换号重提。</p>
      <p class="muted">凭证过期或授权失效的母号不再接新单，更新凭证或校验通过后恢复。关闭此开关会暂停等待换号的申请。</p>
     </fieldset>
     <fieldset class="recovery-settings">
@@ -170,22 +213,42 @@ onUnmounted(()=>{resourcesDisposed=true;clearInterval(resourceTimer);resourceCon
     </fieldset>
     <button class="btn primary" :disabled="busy">应用调度配置</button>
    </form>
+   <RefundResourceRecovery :active="section==='schedule'"/>
   </section>
   <section v-show="section==='mothers'" id="refund-resource-mothers" role="tabpanel" class="panel">
+   <RefundMotherTools ref="motherTools" :initial-tab="managedTab" :selected="managedMother" @close="managedMother=null" @snapshot="motherSnapshots=$event" @changed="motherList.load"/>
    <div class="section-title"><div><h2>母号管理</h2><p>在此维护母号与对应资源，申请人只需提交自己的账号资料。</p></div><button class="btn primary" :disabled="busy" @click="editMother()">录入母号</button></div>
-   <div class="table-scroll"><table><thead><tr><th>母号</th><th>团队 / 席位</th><th>代理</th><th>校验 / 席位（剩余 / 总数）</th><th>状态</th><th>当前申请</th><th>操作</th></tr></thead><tbody>
-    <tr v-for="m in mothers" :key="m.id"><td><strong>{{m.name}}</strong><small class="block">{{m.email}}</small><small v-if="m.plan_type" class="block">{{m.plan_type}}</small></td><td>{{m.team_id}}<small class="block">{{m.seat_type==='default'?'标准席位':'高级席位（prolite）'}}</small><small v-if="m.token_expires_at" class="block">AT 到期：{{displayTime(m.token_expires_at)}}</small><small v-if="m.has_refresh" class="block">RT 已加密保存</small></td><td>{{proxies.find(p=>p.id===m.proxy_id)?.name||'专属代理不可用'}}</td><td><ResourceCheckSummary :check="m.check" mother/></td><td><span class="badge" :class="m.enabled?'green':'gray'">{{m.enabled?'启用':'停用'}}</span><small v-if="m.auth_blocked" class="block form-error">授权失效，暂停接单</small><small v-else-if="m.token_expires_at&amp;&amp;new Date(m.token_expires_at).getTime()&lt;=Date.now()" class="block form-error">凭证过期，暂停接单</small></td><td><button v-if="m.active_refund" class="link" @click="openOrder(m.active_refund)">{{m.active_email}} · {{statuses[m.active_status||'']||'处理中'}}</button><span v-else>空闲</span></td><td><div class="execution-actions"><button class="btn secondary" :disabled="busy" @click="checkMother(m)">校验 / 刷新席位</button><button class="btn secondary" :disabled="busy" @click="editMother(m)">编辑</button><button class="btn secondary danger" :disabled="busy" @click="removing={kind:'mothers',id:m.id,name:m.name};modal='delete';formError=''">删除</button></div></td></tr>
-    <tr v-if="!mothers.length"><td colspan="7" class="empty-state">请先录入网络出口，再录入母号资源。</td></tr>
-   </tbody></table></div>
-   <p class="execution-footnote">删除母号后立即从配置列表移除并停止分配新申请，历史服务记录保留，已开始的申请继续按原流程收尾。</p>
-  </section>
+   <div class="table-toolbar"><input v-model="motherQuery" type="search" placeholder="搜索资源名称或账号" maxlength="200"/><select v-model="motherStatus"><option value="">全部状态</option><option value="enabled">启用</option><option value="disabled">停用</option><option value="busy">使用中</option><option value="idle">空闲</option></select></div><p v-if="motherError" class="alert danger">{{motherError}}</p><div class="table-scroll mother-resource-scroll"><table class="mother-resource-table"><thead><tr>
+     <SortHeader v-for="[field,label] in [['name','名称 / 邮箱'],['enabled','接单状态']]" :key="field" :field="field" :label="label" :sort-by="motherSort" :sort-dir="motherDir" @sort="motherList.sort"/><th>套餐</th><SortHeader label="套餐到期" field="plan_expires_at" :sort-by="motherSort" :sort-dir="motherDir" @sort="motherList.sort"/><th>当前 5x 参考价</th><th>团队</th><th>专属代理</th>
+     <SortHeader v-for="[field,label] in [['member_count','当前成员'],['standard_remaining','普通席位'],['premium_remaining','高级席位 5x'],['held','临停席位'],['handled','累计办理'],['settled','累计服务费'],['token_expires_at','凭据续期']]" :key="field" :field="field" :label="label" :sort-by="motherSort" :sort-dir="motherDir" @sort="motherList.sort"/><th>校验</th><th>操作</th>
+    </tr></thead><tbody>
+     <tr v-for="m in (motherRows as Mother[])" :key="m.id">
+      <td class="mother-identity"><strong>{{m.name}}</strong><small class="block">{{m.email}}</small><button v-if="m.active_refund" class="link" @click="openOrder(m.active_refund)">{{m.active_email}} · {{statuses[m.active_status||'']||'处理中'}}</button></td>
+      <td><button class="mother-switch" role="switch" :aria-checked="m.enabled" :aria-label="m.name+' 接单状态'" :disabled="busy" @click="changeMother(m,{enabled:!m.enabled})"><i :class="{on:m.enabled}"/>{{m.enabled?'已启用':'已停用'}}</button><small v-if="m.auth_blocked" class="block form-error">授权失效，暂停接单</small><small v-else-if="m.token_expires_at&amp;&amp;new Date(m.token_expires_at).getTime()&lt;=Date.now()" class="block form-error">凭据已过期</small></td>
+      <td>{{snapshot(m).plan?.subscription_plan||m.plan_type||'—'}}<small class="block">{{m.seat_type==='prolite'?'高级席位':'普通席位'}}</small></td>
+      <td><strong>{{snapshot(m).plan?.expires_at?displayTime(snapshot(m).plan.expires_at):'—'}}</strong><small class="block">{{snapshot(m).plan?.checked_at?'查询于 '+displayTime(snapshot(m).plan.checked_at):'未查询'}}</small></td>
+      <td><strong>{{seatPrice(m)}}</strong><small class="block">125 / 30 × 剩余天数</small></td>
+      <td class="mother-team" :title="m.team_id">{{m.team_id}}</td>
+      <td><select class="mother-proxy-select" :value="m.proxy_id" :aria-label="m.name+' 专属代理'" :disabled="busy" @change="changeMother(m,{proxy_id:($event.target as HTMLSelectElement).value})"><option v-if="!motherProxies.some(p=>p.id===m.proxy_id)" :value="m.proxy_id">专属代理不可用</option><option v-for="p in motherProxies" :key="p.id" :value="p.id" :disabled="!p.enabled">{{p.name}}{{p.enabled?'':'（已停用）'}}</option></select></td>
+      <td><strong>{{snapshot(m).members?.count??'—'}}</strong><small class="block">{{snapshot(m).members?'个子号 · 上次查询':'未查询'}}</small><button class="btn secondary" @click="manage(m,'members')">查看成员</button></td>
+      <td v-for="key in ['standard','premium']" :key="key"><strong>{{seats(m,key)?seats(m,key).remaining+' / '+seats(m,key).total:'— / —'}}</strong><small class="block">剩余 / 总量</small></td>
+      <td><strong>{{seats(m,'standard')||seats(m,'premium')?'普通 '+(seats(m,'standard')?.held??'—')+' / 5x '+(seats(m,'premium')?.held??'—'):'—'}}</strong><small class="block">临停</small></td>
+      <td><strong>{{motherSnapshots[m.id]?.handled||0}} 笔</strong><small class="block">已完成 {{motherSnapshots[m.id]?.completed||0}} 笔</small></td>
+      <td><strong>{{cash(motherSnapshots[m.id]?.settled)}} 积分</strong><small class="block">已结算</small></td>
+      <td><span class="badge" :class="m.has_refresh?'green':'gray'">{{m.has_refresh?'已保存 RT':'无 RT'}}</span><small class="block">AT {{m.token_expires_at?displayTime(m.token_expires_at):'未提供到期时间'}}</small></td>
+      <td><ResourceCheckSummary :check="m.check"/></td>
+      <td><div class="mother-row-actions"><button class="link" :disabled="busy" @click="checkMother(m)">校验 / 刷新席位</button><button class="link" :disabled="busy" @click="manage(m)">套餐 / 成员 / 凭据</button><button class="link" :disabled="busy" @click="editMother(m)">编辑</button><button class="link danger" :disabled="busy" @click="removing={kind:'mothers',id:m.id,name:m.name};modal='delete';formError=''">删除</button></div></td>
+     </tr>
+     <tr v-if="!motherRows.length"><td colspan="16" class="empty-state">{{motherLoading?'正在加载…':motherQuery||motherStatus?'没有符合条件的母号':'请先录入网络出口，再录入母号资源'}}</td></tr>
+    </tbody></table></div>
+  <ListPager v-model:page="motherPage" v-model:size="motherSize" :total="motherData.total||0" :loading="motherLoading"/></section>
   <section v-show="section==='proxies'" id="refund-resource-proxies" role="tabpanel" class="panel">
    <div class="section-title"><div><h2>代退代理</h2><p>连接信息加密保管，列表只展示名称与可用状态。</p></div><button class="btn primary" :disabled="busy" @click="editProxy()">录入代理</button></div>
-   <div class="table-scroll"><table><thead><tr><th>名称</th><th>适用对象</th><th>状态</th><th>配置</th><th>冷却释放时间</th><th>连接测试</th><th>操作</th></tr></thead><tbody>
-    <tr v-for="p in proxies" :key="p.id"><td>{{p.name}}</td><td>{{targetName(p)}}</td><td><span class="badge" :class="p.enabled?'green':'gray'">{{p.enabled?'启用':'停用'}}</span></td><td>{{settings.child_proxy_id===p.id?'子号主用':settings.child_proxy_backups.includes(p.id)?'子号备用 '+(settings.child_proxy_backups.indexOf(p.id)+1):'连接信息已保存'}}</td><td><ProxyCooldown :until="p.failure_until"/></td><td><ResourceCheckSummary :check="p.check"/></td><td><div class="execution-actions"><button class="btn secondary" :disabled="busy" @click="checkProxy(p)">测试代理</button><button class="btn secondary" :disabled="busy" @click="editProxy(p)">编辑</button><button class="btn secondary danger" :disabled="busy" @click="removing={kind:'proxies',id:p.id,name:p.name};modal='delete';formError=''">删除</button></div></td></tr>
-    <tr v-if="!proxies.length"><td colspan="7" class="empty-state">还没有网络出口配置。</td></tr>
+   <div class="table-toolbar"><input v-model="proxyQuery" type="search" placeholder="搜索资源名称或账号" maxlength="200"/><select v-model="proxyStatus"><option value="">全部状态</option><option value="enabled">启用</option><option value="disabled">停用</option><option value="cooling">冷却中</option></select><select v-model="proxyTarget"><option value="">全部适用对象</option><option value="mother">母号可用</option><option value="child">子号可用</option></select></div><p v-if="proxyError" class="alert danger">{{proxyError}}</p><div class="table-scroll"><table><thead><tr><SortHeader label="名称" field="name" :sort-by="proxySort" :sort-dir="proxyDir" @sort="proxyList.sort"/><SortHeader label="适用对象" field="target" :sort-by="proxySort" :sort-dir="proxyDir" @sort="proxyList.sort"/><SortHeader label="状态" field="enabled" :sort-by="proxySort" :sort-dir="proxyDir" @sort="proxyList.sort"/><th>配置</th><SortHeader label="冷却释放时间" field="failure_until" :sort-by="proxySort" :sort-dir="proxyDir" @sort="proxyList.sort"/><th>连接测试</th><th>操作</th></tr></thead><tbody>
+    <tr v-for="p in (proxyRows as ProxyRow[])" :key="p.id"><td>{{p.name}}</td><td>{{targetName(p)}}</td><td><span class="badge" :class="p.enabled?'green':'gray'">{{p.enabled?'启用':'停用'}}</span></td><td>{{settings.child_proxy_id===p.id?'子号主用':settings.child_proxy_backups.includes(p.id)?'子号备用 '+(settings.child_proxy_backups.indexOf(p.id)+1):'连接信息已保存'}}</td><td><ProxyCooldown :until="p.failure_until"/></td><td><ResourceCheckSummary :check="p.check"/></td><td><div class="execution-actions"><button class="btn secondary" :disabled="busy" @click="checkProxy(p)">测试代理</button><button class="btn secondary" :disabled="busy" @click="editProxy(p)">编辑</button><button class="btn secondary danger" :disabled="busy" @click="removing={kind:'proxies',id:p.id,name:p.name};modal='delete';formError=''">删除</button></div></td></tr>
+    <tr v-if="!proxyRows.length"><td colspan="7" class="empty-state">还没有网络出口配置。</td></tr>
    </tbody></table></div>
-  </section>
+  <ListPager v-model:page="proxyPage" v-model:size="proxySize" :total="proxyData.total||0" :loading="proxyLoading"/></section>
  </div>
  <Modal v-if="modal" :title="modal==='mother'?'母号配置':modal==='proxy'?'代理配置':'删除配置'" :busy="busy" @close="!busy&&close()">
   <form class="execution-form" @submit.prevent="save">
@@ -225,7 +288,7 @@ onUnmounted(()=>{resourcesDisposed=true;clearInterval(resourceTimer);resourceCon
 <style scoped>
 .refund-resource-overview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-bottom:28px}.refund-resource-overview article{padding:22px}.refund-resource-overview span{display:block;font-size:11px;color:var(--muted);margin-bottom:15px}.refund-resource-overview b{display:block;font-size:28px}.refund-resource-overview small{font-size:11px;font-weight:400;color:var(--muted)}.refund-resource-overview b.queue-state{font-size:16px;margin-bottom:10px}.refund-resource-tabs{margin-bottom:22px}.refund-resource-tabs button{padding:13px 22px}@media(max-width:650px){.refund-resource-overview{grid-template-columns:1fr 1fr;gap:10px}.refund-resource-overview article{padding:17px}.refund-resource-overview article:last-child{grid-column:1/-1}.refund-resource-tabs button{padding:12px 16px}}
 
-.execution-settings{display:grid;gap:22px}.panel{padding:24px;min-width:0;overflow:auto}.section-title,.execution-actions{display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap}.section-title p{color:var(--muted);font-size:12px;margin:8px 0 20px}.execution-form{display:grid;gap:16px}.execution-form label{display:grid;gap:8px;font-size:12px}.execution-form .checkbox-label{display:flex;align-items:center;gap:10px}.checkbox-label input{width:auto}.form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px}.muted{font-size:12px;line-height:1.8;margin:0}.recovery-settings{border:1px solid var(--line);border-radius:12px;padding:20px;display:grid;gap:16px}.recovery-settings legend{padding:0 8px;font-weight:600}.error-banner,.form-error{color:#b4423c;padding:10px}.execution-form .btn{justify-self:start}.execution-settings table{width:100%;min-width:700px}.execution-settings td{vertical-align:top}.execution-actions .btn{padding:7px 12px}.modal-actions{display:flex;justify-content:flex-end;gap:12px}.execution-form input,.execution-form select,.execution-form textarea{max-width:100%;min-width:0} @media(max-width:600px){.panel{padding:16px}.recovery-settings{padding:14px}}
+.mother-resource-scroll{overflow:auto;max-height:680px}.execution-settings .mother-resource-table{min-width:2200px;table-layout:auto}.mother-resource-table th{white-space:nowrap;position:sticky;top:0;z-index:1;background:var(--surface)}.mother-resource-table td{padding:18px 14px;font-size:12px}.mother-resource-table small{font-size:11px;color:var(--muted);margin-top:7px}.mother-identity{min-width:190px}.mother-team{max-width:130px;overflow-wrap:anywhere;font-family:monospace}.mother-proxy-select{min-width:145px}.mother-row-actions{display:grid;gap:10px;white-space:nowrap}.mother-row-actions .link{text-align:left}.mother-switch{display:flex;align-items:center;gap:7px;background:none;border:0;white-space:nowrap;color:var(--text);font-size:12px}.mother-switch i{display:block;width:26px;height:15px;border-radius:12px;background:#b9c3c6;position:relative}.mother-switch i:after{content:'';position:absolute;top:3px;left:3px;width:9px;height:9px;border-radius:50%;background:white}.mother-switch i.on{background:#0f8b78}.mother-switch i.on:after{left:14px}.execution-settings{display:grid;gap:22px}.panel{padding:24px;min-width:0;overflow:auto}.section-title,.execution-actions{display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap}.section-title p{color:var(--muted);font-size:12px;margin:8px 0 20px}.execution-form{display:grid;gap:16px}.execution-form label{display:grid;gap:8px;font-size:12px}.execution-form .checkbox-label{display:flex;align-items:center;gap:10px}.checkbox-label input{width:auto}.form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px}.muted{font-size:12px;line-height:1.8;margin:0}.recovery-settings{border:1px solid var(--line);border-radius:12px;padding:20px;display:grid;gap:16px}.recovery-settings legend{padding:0 8px;font-weight:600}.error-banner,.form-error{color:#b4423c;padding:10px}.execution-form .btn{justify-self:start}.execution-settings table{width:100%;min-width:700px}.execution-settings td{vertical-align:top}.execution-actions .btn{padding:7px 12px}.modal-actions{display:flex;justify-content:flex-end;gap:12px}.execution-form input,.execution-form select,.execution-form textarea{max-width:100%;min-width:0} @media(max-width:600px){.panel{padding:16px}.recovery-settings{padding:14px}}
 </style>
 <style scoped>
 .child-proxy-policy{border:1px solid #dce7e9;border-radius:12px;padding:20px;margin:8px 0 16px}.child-proxy-heading{display:flex;justify-content:space-between;gap:15px;align-items:center;margin-bottom:16px}.child-proxy-heading h3{font-size:15px;margin:0}.child-proxy-heading>span{font-size:11px;color:#488579}.child-proxy-fields{display:grid;grid-template-columns:2fr 1fr;gap:18px}.child-proxy-fields small{font-size:11px;font-weight:normal;color:#81929a}.child-proxy-options{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}.child-proxy-options label{display:flex;align-items:center;background:#f7f9fa;border:1px solid #dce7e9;border-radius:8px;padding:11px 15px;gap:9px}.child-proxy-options small{display:block;font-size:11px;color:#a16a68}.child-proxy-priority{list-style:none;padding:0;display:grid;gap:8px}.child-proxy-priority li{display:flex;gap:8px;align-items:center;font-size:12px}.child-proxy-priority li>span{flex:1}.child-proxy-priority button{font-size:11px;padding:5px 9px}.child-proxy-policy>p{margin-bottom:0;line-height:1.8}@media(max-width:600px){.child-proxy-fields{grid-template-columns:1fr}.child-proxy-heading{align-items:flex-start;flex-direction:column;gap:6px}.child-proxy-policy{padding:14px}.child-proxy-options label{width:100%}}

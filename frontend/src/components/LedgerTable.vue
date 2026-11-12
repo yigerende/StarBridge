@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import {computed,ref} from 'vue'
+import {computed,ref,watch} from 'vue'
+import {useRemoteList} from '../useRemoteList'
 import {Search,ArrowUpRight,ArrowDownLeft,ArrowUpRight as Outgoing,LockKeyhole,RotateCcw,ReceiptText} from 'lucide-vue-next'
 import {cash,date,labels,type Row} from '../lib'
 import {deltaTone,signed,upstreamAmount,discountText} from '../record-format'
 import RecordsTable from './RecordsTable.vue'
-const props=defineProps<{rows:Row[];loading:boolean;business:string}>()
+const props=defineProps<{rows:Row[];loading:boolean;revision?:number;business:string}>()
 const shared=computed(()=>props.business==='shared')
 const registration=computed(()=>props.business==='registration')
 const searchLabel=computed(()=>shared.value?'流水编号 / 账户收支说明':registration.value?'注册订单号 / 流水说明':'订单号 / 邮箱 / 流水说明')
@@ -13,26 +14,10 @@ const q=ref(''),kind=ref(''),start=ref(''),end=ref('')
 const kinds=computed(()=>shared.value?['topup','redeem','adjustment','invite_reward','invite_reversal']:['freeze','unfreeze','charge','refund'])
 const invalidDates=computed(()=>!!(start.value&&end.value&&start.value>end.value))
 const hasFilters=computed(()=>!!(q.value||kind.value||start.value||end.value))
-const filtered=computed(()=>{
- if(invalidDates.value)return []
- const from=start.value?new Date(`${start.value}T00:00:00`).getTime():-Infinity
- const until=end.value?new Date(`${end.value}T00:00:00`):null
- if(until)until.setDate(until.getDate()+1)
- return props.rows.filter(r=>{
-  const when=new Date(r.created_at).getTime(),o=r.related_order
-  return (!q.value||`${r.id} ${r.description} ${r.registration_order_id||''} ${r.refund_order_id||''} ${o?.id||''} ${o?.email||''} ${o?.product_name||''}`.toLowerCase().includes(q.value.trim().toLowerCase()))&&(!kind.value||r.kind===kind.value)&&when>=from&&when<(until?.getTime()??Infinity)
- })
-})
-const totals=computed(()=>filtered.value.reduce((s,r)=>{
- if(['topup','redeem'].includes(r.kind))s.credit+=Number(r.amount)
- if(r.kind==='charge')s.spent-=Number(r.amount)
- if(r.kind==='freeze')s.held+=Math.max(0,Number(r.frozen_delta||0))
- if(['unfreeze','refund'].includes(r.kind))s.returned+=Math.max(0,Number(r.available_delta||0))
- if(r.kind==='adjustment')s.adjusted+=Number(r.amount)
- if(['invite_reward','invite_reversal'].includes(r.kind))s.reward+=Number(r.amount)
- s.net+=Number(r.amount)
- return s
-},{credit:0,spent:0,held:0,returned:0,adjusted:0,reward:0,net:0}))
+const {page,size,sortBy,sortDir,data,rows,loading,error,load,sort}=useRemoteList('ledger-'+props.business,()=>'/wallet/ledger',{q,kind,start,end},{extra:()=>({business:props.business})})
+const filtered=rows
+const totals=computed(()=>data.value.summary||{credit:0,spent:0,held:0,returned:0,adjusted:0,reward:0,net:0})
+watch(()=>props.revision,()=>void load())
 function ledgerDescription(row:Row){
  const fee=Math.abs(Number(row.frozen_delta||row.amount||0))
  if(row.kind==='freeze')return `${row.related_order?.product_name||(row.business==='registration'?'注册订单':'订单')}冻结 ${cash(fee)} 积分，等待办理结算`
@@ -42,9 +27,9 @@ function ledgerDescription(row:Row){
 }
 function reset(){q.value='';kind.value='';start.value='';end.value=''}
 const source=(r:Row)=>r.refund_order_id?'代退订单':r.registration_order_id?'注册订单':r.related_order?'订阅订单':({invite_reward:'伙伴计划奖励',invite_reversal:'伙伴计划退回',topup:'人工充值',redeem:'兑换码入账',adjustment:'运营调整',refund:'服务退费',charge:'服务结算',freeze:'服务费冻结',unfreeze:'服务费解冻'} as Row)[r.kind]||'账户变动'
-const columns=computed(()=>[{key:'kind',label:'流水类型'},{key:'source',label:'业务来源'},...props.business!=='subscription'?[]:[{key:'payment',label:'银行卡费用'}],{key:'available',label:'可用变动'},{key:'frozen',label:'冻结变动'},{key:'balance',label:'变动后余额'},{key:'related',label:registration.value?'注册订单 / 关联记录':'关联记录',wide:true},{key:'description',label:'说明',wide:true},{key:'time',label:'发生时间'}])
+const columns=computed(()=>[{key:'kind',label:'流水类型'},{key:'source',sortKey:'business',label:'业务来源'},...props.business!=='subscription'?[]:[{key:'payment',sortKey:false as const,label:'银行卡费用'}],{key:'available',sortKey:'available_delta',label:'可用变动'},{key:'frozen',sortKey:'frozen_delta',label:'冻结变动'},{key:'balance',sortKey:'balance_after',label:'变动后余额'},{key:'related',sortKey:false as const,label:registration.value?'注册订单 / 关联记录':'关联记录',wide:true},{key:'description',sortKey:false as const,label:'说明',wide:true},{key:'time',sortKey:'created_at',label:'发生时间'}])
 </script>
-<template>
+<template><p v-if="error" class="alert danger">{{error}}<button @click="load">重试</button></p>
  <section class="panel record-panel ledger-panel">
   <div class="records-heading"><div><h2>{{shared?'账户收支':business==='refund'?'代退资金明细':registration?'注册资金明细':'订阅资金明细'}}</h2><p>{{shared?'充值、兑换码、运营调整和伙伴奖励计入共用钱包，可用于注册、订阅与代退。':registration?'下单先冻结积分，按成功交付的账号结算；失败部分释放冻结，恢复可用余额。':'冻结转入待结算金额；确认扣费从冻结金额结算，不重复扣减可用余额。'}}</p></div><span class="pill">账户单位 · 积分</span></div>
   <div v-if="shared" class="ledger-totals"><div><span><ArrowDownLeft :size="15"/>充值 / 兑换</span><b>{{cash(totals.credit)}} <em>积分</em></b></div><div><span><ReceiptText :size="15"/>人工调整</span><b>{{signed(totals.adjusted)}} <em>积分</em></b></div><div><span><ArrowUpRight :size="15"/>伙伴奖励净额</span><b>{{signed(totals.reward)}} <em>积分</em></b></div><div><span><Outgoing :size="15"/>收支净额</span><b>{{signed(totals.net)}} <em>积分</em></b></div></div>
@@ -56,7 +41,7 @@ const columns=computed(()=>[{key:'kind',label:'流水类型'},{key:'source',labe
    <button v-if="hasFilters" class="text-btn records-reset" @click="reset">重置</button>
   </div>
   <p v-if="invalidDates" class="records-date-error" role="alert">结束日期不能早于开始日期。</p>
-  <RecordsTable :rows="filtered" :columns="columns" :loading="loading" :filtered="hasFilters" scope="最近 300 条资金流水；汇总随筛选更新" @reset="reset">
+  <RecordsTable remote v-model:page="page" v-model:size="size" :total="data.total" :sort-by="sortBy" :sort-dir="sortDir" @sort="sort" :rows="filtered" :columns="columns" :loading="loading" :filtered="hasFilters" scope="全部资金流水；汇总随筛选更新" @reset="reset">
    <template #kind="{row}"><span class="ledger-kind" :class="'ledger-'+row.kind"><ReceiptText :size="13"/>{{labels[row.kind]||'账户变动'}}</span><small class="mono">#{{row.id}}</small></template>
    <template #source="{row}"><b>{{row.related_order?.product_name||source(row)}}</b><small v-if="row.related_order">服务费 {{cash(row.related_order.fee)}} 积分</small><small v-if="row.related_order" :class="{'positive':Number(row.related_order.price_snapshot?.standard)>row.related_order.fee}">{{discountText(row.related_order)}}</small><small v-else>账户资金</small></template>
    <template #payment="{row}"><b class="record-money">{{upstreamAmount(row.payment).value}}</b><small>{{row.related_order?upstreamAmount(row.payment).label:'不涉及上游付款'}}</small><small v-if="row.payment?.last4" class="mono">自备卡 · 尾号 {{row.payment.last4}}</small></template>

@@ -1,3 +1,4 @@
+from .listing import order_by, pagination, result as list_result
 """Redemption transactions run in a worker thread with bounded database waits."""
 from contextlib import contextmanager
 
@@ -41,29 +42,31 @@ def redeem(request, value):
     return {'ok': True, 'amount': row['amount']}
 
 
-def listing(page, page_size, search, status):
-    integer(page, 1, 1000000); integer(page_size, 1, 100)
+def listing(page, page_size, search, status, sort_by='created_at', sort_dir='desc'):
+    integer(page, 1, 1000000); integer(page_size, 1, 500)
     require(isinstance(search, str) and len(search) <= 200, '搜索内容过长')
     require(status in ('', 'active', 'used', 'disabled', 'expired'), '兑换码状态无效')
     # Escape wildcard characters so searching an identifier means a literal match.
     pattern = '%'+search.strip().replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')+'%'
     source = f"FROM redeem_codes c LEFT JOIN users u ON c.used_by=u.id WHERE ($1='' OR {EFFECTIVE_STATUS}=$1) AND (c.prefix ILIKE $2 OR c.batch ILIKE $2 OR COALESCE(u.email,'') ILIKE $2)"
+    ordering=order_by(sort_by,sort_dir,{'prefix':'c.prefix','amount':'c.amount','batch':'c.batch','status':EFFECTIVE_STATUS,'used_by':'u.email','expires_at':'c.expires_at','created_at':'c.created_at'},'created_at','c.id')
     # Count and page share a snapshot, including during concurrent code issuance.
     with transaction(readonly=True) as q:
         total = q.scalar('SELECT count(*) '+source, status, pattern)
-        items = q.all(f'SELECT c.id,c.prefix,c.amount,c.batch,{EFFECTIVE_STATUS} AS status,c.used_at,c.expires_at,c.created_at,u.email AS used_by '+source+' ORDER BY c.created_at DESC,c.id DESC LIMIT $3 OFFSET $4', status, pattern, page_size, (page-1)*page_size)
+        items = q.all(f'SELECT c.id,c.prefix,c.amount,c.batch,{EFFECTIVE_STATUS} AS status,c.used_at,c.expires_at,c.created_at,u.email AS used_by '+source+' ORDER BY '+ordering+' LIMIT $3 OFFSET $4', status, pattern, page_size, (page-1)*page_size)
     return {'items': items, 'total': total, 'page': page, 'page_size': page_size, 'has_more': page*page_size < total}
 
 
-def usage(period, anchor, search, page, page_size):
-    integer(page,1,1000000);integer(page_size,1,100)
+def usage(period, anchor, search, page, page_size, sort_by='redeemed_at', sort_dir='desc'):
+    integer(page,1,1000000);integer(page_size,1,500)
     require(isinstance(search,str) and len(search)<=200,'搜索内容过长')
+    ordering=order_by(sort_by,sort_dir,{'redeemed_at':'c.used_at','prefix':'c.prefix','email':'u.email','amount':'c.amount','note':'c.batch'},'redeemed_at','c.id')
     start,end=report_period(period,anchor)
     pattern='%'+search.strip().replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%'
     where="FROM redeem_codes c LEFT JOIN users u ON u.id=c.used_by WHERE c.used_at >= $1 AND c.used_at < $2 AND c.used_by IS NOT NULL AND (c.prefix ILIKE $3 OR c.batch ILIKE $3 OR u.email ILIKE $3 OR u.name ILIKE $3)"
     with transaction(readonly=True) as q:
         summary=q.one('SELECT count(*) AS redemptions,count(DISTINCT c.id) AS codes,count(DISTINCT c.used_by) AS accounts,COALESCE(sum(c.amount),0) AS amount '+where,start,end,pattern)
-        items=q.all('SELECT c.id,c.id AS code_id,c.prefix,c.used_by AS user_id,u.email,u.name,c.batch AS note,c.amount,c.used_at AS redeemed_at '+where+' ORDER BY c.used_at DESC,c.id DESC LIMIT $4 OFFSET $5',start,end,pattern,page_size,(page-1)*page_size)
+        items=q.all('SELECT c.id,c.id AS code_id,c.prefix,c.used_by AS user_id,u.email,u.name,c.batch AS note,c.amount,c.used_at AS redeemed_at '+where+' ORDER BY '+ordering+' LIMIT $4 OFFSET $5',start,end,pattern,page_size,(page-1)*page_size)
     return {'items':items,'summary':summary,'total':summary['redemptions'],'page':page,'page_size':page_size,'start_date':start.date().isoformat(),'end_date':(end-timedelta(days=1)).date().isoformat(),'timezone':'Asia/Shanghai'}
 
 

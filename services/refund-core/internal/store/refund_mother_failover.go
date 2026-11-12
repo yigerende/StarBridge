@@ -21,7 +21,7 @@ func (v MotherFailoverSettings) Validate() error {
 // Only the initial, read-only preflight can release a reservation for switching.
 // Inviting and all later stages may have upstream effects and cannot use this path.
 func scheduleMotherFailover(ctx context.Context, tx pgx.Tx, j *RefundJob, step string, d RefundDiagnostic) (bool, error) {
-	if step != "assigned" || !oneOf(d.Code, "mother_preflight_auth", "mother_preflight_failed") {
+	if step != "assigned" || !oneOf(d.Code, "mother_preflight_auth", "mother_preflight_failed", "mother_capacity") {
 		return false, nil
 	}
 	var untouched bool

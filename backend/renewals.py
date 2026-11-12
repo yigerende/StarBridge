@@ -8,6 +8,7 @@ from fastapi import APIRouter,Depends,Request
 from . import db, country_pool
 from .common import *
 from . import customer_contract
+from .listing import order_by,pagination,result as list_result
 from .proxies import proxy_client,acquire
 
 router=APIRouter(prefix='/api',dependencies=[Depends(member)])
@@ -65,8 +66,14 @@ async def inspect_session(request:Request):
 
 
 @router.get('/renewals')
-def tasks(request:Request):
-    return {'items':db.all('SELECT '+FIELDS+' FROM renewal_tasks WHERE user_id=$1 ORDER BY created_at DESC LIMIT 200',current(request)['id'])}
+def tasks(request:Request,q:str='',status:str='',page:int=1,page_size:int=10,sort_by:str='created_at',sort_dir:str='desc'):
+    pagination(page,page_size);require(len(q)<=200,'搜索内容过长')
+    require(status in ('','queued','processing','checking','disabled','no_subscription','review'),'续费任务状态无效')
+    where=" FROM renewal_tasks WHERE user_id=$1 AND ($2='' OR status=$2) AND ($3='' OR email ILIKE '%'||$3||'%' OR id ILIKE '%'||$3||'%')"
+    ordering=order_by(sort_by,sort_dir,{k:k for k in ('email','status','created_at','updated_at')},'created_at')
+    args=(current(request)['id'],status,q)
+    rows=db.all('SELECT '+FIELDS+where+' ORDER BY '+ordering+' LIMIT $4 OFFSET $5',*args,page_size,(page-1)*page_size)
+    return list_result(rows,db.scalar('SELECT count(*)'+where,*args),page,page_size)
 
 
 @router.get('/renewals/{id}')

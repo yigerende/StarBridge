@@ -49,7 +49,7 @@ func fixture(t *testing.T) (*Store, string, string) {
 		connection.Exec(testctx, "DROP SCHEMA "+schema+" CASCADE")
 		connection.Close(testctx)
 	})
-	for _, name := range []string{"schema.sql", "refund_schema.sql"} {
+	for _, name := range []string{"schema.sql", "refund_schema.sql", "refund_mother_schema.sql"} {
 		raw, e := os.ReadFile(filepath.Join("../../../../backend", name))
 		if e != nil {
 			t.Fatal(e)

@@ -16,6 +16,9 @@ func childProxyNetworkFailure(d RefundDiagnostic) bool {
 	if e.ProxyHTTPStatus == 407 || e.ProxyHTTPStatus == 502 || e.ProxyHTTPStatus == 503 || e.ProxyHTTPStatus == 504 {
 		return true
 	}
+	if oneOf(e.Reason, "network_error", "unknown_error") && oneOf(e.Exception, "ProxyError", "ConnectionError", "TimeoutError", "ConnectTimeout", "ReadTimeout", "ConnectionResetError", "DNSError", "SSLError") {
+		return true
+	}
 	if e.Reason != "network_error" {
 		return false
 	}
@@ -30,14 +33,22 @@ func recordChildProxyFailure(ctx context.Context, tx pgx.Tx, j *RefundJob, d Ref
 	if seconds < 30 {
 		seconds = 300
 	}
-	// The active lease fences duplicate completions. Proxy rows are never read
-	// FOR UPDATE by the selector, so this cannot invert scheduler/user row locks.
-	_, err := tx.Exec(ctx, `UPDATE refund_proxies SET failure_at=now(),failure_until=now()+$2*interval '1 second',
- failure_code='network',probe_until=NULL WHERE id=(SELECT child_proxy_id FROM refund_execution WHERE refund_id=$1)`, j.ID, seconds)
+	// Checkpoints and completion both hold the execution row and lease fence.
+	// Mark once per binding: a repeated signal/final diagnostic must not extend
+	// its cooldown. A later attempt clears pending when it selects its proxy.
+	var proxyID string
+	err := tx.QueryRow(ctx, `UPDATE refund_execution SET child_proxy_switch_pending=true
+ WHERE refund_id=$1 AND NOT child_proxy_switch_pending RETURNING COALESCE(child_proxy_id,'')`, j.ID).Scan(&proxyID)
+	if err == pgx.ErrNoRows {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
-	_, err = tx.Exec(ctx, "UPDATE refund_execution SET child_proxy_switch_pending=true WHERE refund_id=$1", j.ID)
+	// Proxy rows are never read FOR UPDATE by the selector, avoiding inversion
+	// of the scheduler/user locks. Always cool the execution's current binding.
+	_, err = tx.Exec(ctx, `UPDATE refund_proxies SET failure_at=now(),failure_until=now()+$2*interval '1 second',
+ failure_code='network',probe_until=NULL WHERE id=$1`, proxyID, seconds)
 	return err
 }
 

@@ -2,24 +2,26 @@
 import {computed,ref} from 'vue'
 import {Plus,RefreshCw,MapPin,Shuffle} from 'lucide-vue-next'
 import DataTable from './DataTable.vue'
+import {useRemoteList} from '../useRemoteList'
+import ListPager from './ListPager.vue'
 import Modal from './Modal.vue'
 import {api,notify,type Row} from '../lib'
 
 const props=defineProps<{value:Row}>()
-const rows=ref<Row[]>(JSON.parse(JSON.stringify(props.value.address_templates||[])))
 const busy=ref(false),error=ref(''),filter=ref('all'),modal=ref(''),original=ref(''),form=ref<Row>({}),formError=ref('')
 const states='AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY'.split(' ')
 const enabled=(row:Row)=>row.enabled!==false
-const liveCount=computed(()=>rows.value.filter(r=>enabled(r)).length)
-const paymentCount=computed(()=>rows.value.filter(r=>r.enabled===true&&r.test_only===false).length)
+const q=ref('')
+const {page,size,sortBy,sortDir,data,rows:filtered,loading,error:listError,load,sort}=useRemoteList('billing-profiles',()=>'/admin/billing-profiles',{q,status:filter},{sortBy:'account',sortDir:'asc'})
+const liveCount=computed(()=>data.value.summary?.enabled||0),paymentCount=computed(()=>data.value.summary?.payment||0)
 const profileKey=(row:Row)=>row.id||row.email
 const sample=ref<Row|null>(null)
-const filtered=computed(()=>rows.value.filter(r=>filter.value==='all'||(filter.value==='enabled'&&enabled(r))||(filter.value==='disabled'&&!enabled(r))||(filter.value==='test'&&r.test_only)||(filter.value==='live'&&!r.test_only)))
+
 const columns=[{key:'account',label:'资料名称'},{key:'holder',label:'持卡人'},{key:'address',label:'US 账单地址'},{key:'status',label:'状态 / 用途'},{key:'action',label:'操作'}]
 function edit(row?:Row){original.value=row?profileKey(row):'';form.value=row?{...row,enabled:enabled(row),test_only:!!row.test_only}:{name:'',first_name:'',last_name:'',state:'',city:'',line1:'',postal_code:'',enabled:true,test_only:true};formError.value='';modal.value='edit'}
 function close(){if(!busy.value){modal.value='';form.value={};formError.value=''}}
-async function refresh(){if(busy.value)return;busy.value=true;error.value='';try{rows.value=(await api('/admin/billing-profiles')).items}catch(e){error.value=(e as Error).message}finally{busy.value=false}}
-async function change(method:string,endpoint:string,payload?:Row){if(busy.value)return;busy.value=true;error.value='';formError.value='';try{rows.value=(await api('/admin/billing-profiles'+endpoint,method,payload)).items;modal.value='';form.value={};notify(method==='DELETE'?'订阅资料已删除':'订阅资料已保存')}catch(e){if(modal.value)formError.value=(e as Error).message;else error.value=(e as Error).message}finally{busy.value=false}}
+async function refresh(){if(busy.value)return;busy.value=true;error.value='';try{await load()}catch(e){error.value=(e as Error).message}finally{busy.value=false}}
+async function change(method:string,endpoint:string,payload?:Row){if(busy.value)return;busy.value=true;error.value='';formError.value='';try{await api('/admin/billing-profiles'+endpoint,method,payload);await load();modal.value='';form.value={};notify(method==='DELETE'?'订阅资料已删除':'订阅资料已保存')}catch(e){if(modal.value)formError.value=(e as Error).message;else error.value=(e as Error).message}finally{busy.value=false}}
 function save(){const payload={...form.value};for(const key of ['name','email','first_name','last_name','state','city','line1','postal_code'])if(typeof payload[key]==='string')payload[key]=payload[key].trim();if(payload.email)payload.email=payload.email.toLowerCase();change(original.value?'PUT':'POST',original.value?'/'+encodeURIComponent(original.value):'',payload)}
 function toggle(row:Row){const payload={...row};payload.enabled=!enabled(row);payload.test_only=!!row.test_only;change('PUT','/'+encodeURIComponent(profileKey(row)),payload)}
 async function drawSample(){if(busy.value)return;busy.value=true;error.value='';try{sample.value=(await api('/admin/billing-profiles/sample','POST',{})).profile;modal.value='sample'}catch(e){error.value=(e as Error).message}finally{busy.value=false}}
@@ -29,19 +31,19 @@ function remove(row:Row){form.value={...row};formError.value='';modal.value='del
 <template>
   <section class="billing-manager">
     <div class="billing-heading">
-      <div><span class="eyebrow">SUBSCRIPTION PROFILES</span><h2>资料库</h2><p>共 {{rows.length}} 条 · 已启用 {{liveCount}} 条 · 可用于付款 {{paymentCount}} 条</p></div>
-      <div class="actions"><button class="btn secondary" :disabled="busy" @click="drawSample"><Shuffle :size="16"/>随机测试</button><button class="btn secondary" :disabled="busy" @click="refresh"><RefreshCw :size="16"/>刷新</button><button class="btn primary" :disabled="busy||rows.length>=100" @click="edit()"><Plus :size="16"/>新增订阅资料</button></div>
+      <div><span class="eyebrow">SUBSCRIPTION PROFILES</span><h2>资料库</h2><p>共 {{(data.summary?.total||0)}} 条 · 已启用 {{liveCount}} 条 · 可用于付款 {{paymentCount}} 条</p></div>
+      <div class="actions"><button class="btn secondary" :disabled="busy" @click="drawSample"><Shuffle :size="16"/>随机测试</button><button class="btn secondary" :disabled="busy" @click="refresh"><RefreshCw :size="16"/>刷新</button><button class="btn primary" :disabled="busy||(data.summary?.total||0)>=100" @click="edit()"><Plus :size="16"/>新增订阅资料</button></div>
     </div>
     <div class="billing-note"><MapPin :size="18"/><p>订阅付款会从已启用的正式资料中随机选择一条，无需绑定订阅邮箱；同一订单固定使用选中的资料。停用及仅供测试的资料不参与付款，随机测试按钮仅预览测试资料。</p></div>
     <div v-if="error" class="alert danger" role="alert">{{error}}</div>
-    <div class="billing-filters"><label>筛选资料<select v-model="filter" aria-label="筛选资料"><option value="all">全部资料</option><option value="enabled">已启用</option><option value="disabled">已停用</option><option value="live">正式资料</option><option value="test">仅供测试</option></select></label><small>可按名称、姓名、城市、州或地址搜索，最多保存 100 条。</small></div>
-    <DataTable :rows="filtered" :columns="columns" :searchable="true">
+    <div class="billing-filters"><input v-model="q" type="search" placeholder="搜索名称、姓名或地址" maxlength="200"/><label>筛选资料<select v-model="filter" aria-label="筛选资料"><option value="all">全部资料</option><option value="enabled">已启用</option><option value="disabled">已停用</option><option value="live">正式资料</option><option value="test">仅供测试</option></select></label><small>可按名称、姓名、城市、州或地址搜索，最多保存 100 条。</small></div>
+    <p v-if="listError" class="alert danger">{{listError}}</p><DataTable paged hide-toolbar hide-pagination :rows="filtered" :columns="columns" :sort-by="sortBy" :sort-dir="sortDir" @sort="sort">
       <template #account="{row}"><b>{{row.name||row.first_name+' '+row.last_name}}</b><small>{{profileKey(row)}}</small></template>
       <template #holder="{row}">{{row.first_name}} {{row.last_name}}</template>
       <template #address="{row}"><span>{{row.line1}}</span><small>{{row.city}} · {{row.state}} {{row.postal_code}} · US</small></template>
       <template #status="{row}"><span class="badge" :class="enabled(row)?'active':'disabled'">{{enabled(row)?'已启用':'已停用'}}</span><small :class="{'test-label':row.test_only}">{{row.test_only?'仅供测试':'正式资料'}}</small></template>
       <template #action="{row}"><div class="actions"><button class="text-btn" :disabled="busy" @click="edit(row)">编辑</button><button class="text-btn" :disabled="busy" @click="toggle(row)">{{enabled(row)?'停用':'启用'}}</button><button class="text-btn danger-text" :disabled="busy" @click="remove(row)">删除</button></div></template>
-    </DataTable>
+    </DataTable><ListPager v-model:page="page" v-model:size="size" :total="data.total||0" :loading="loading"/>
     <Modal v-if="modal==='edit'" :title="original?'编辑订阅资料':'新增订阅资料'" wide @close="close">
       <form @submit.prevent="save" autocomplete="off">
         <div v-if="formError" class="alert danger" role="alert">{{formError}}</div>

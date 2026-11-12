@@ -120,6 +120,13 @@ class ProxyFlow:
         data = json.loads(raw) if raw and headers.get("Content-Type", "").startswith("application/json") else {}
         team = self.job["mother"]["team_id"]
         email = self.job["account"]["email"]
+        if path == "/backend-api/subscriptions":
+            assert role == "mother" and method == "GET"
+            assert parse_qs(url.query)["account_id"] == [team]
+            assert headers["Authorization"] == "Bearer " + self.job["mother"]["access_token"]
+            return 200, {"seat_capacity": [{"type": typ, "paid": 2, "held": 0,
+                                          "available": 0 if self.members else 1}
+                                         for typ in ("default", "prolite")]}, {}
         if path == "/backend-api/accounts/check/v4-2023-04-27":
             assert role == "child" and method == "GET"
             assert headers["Authorization"] in {"Bearer " + self.token, "Bearer " + self.personal_token}
@@ -239,7 +246,7 @@ class ProxyTransportTests(unittest.TestCase):
             result = runner.execute(value, lambda method, *args: checkpoints.append(method), sleep=lambda _: None)
         self.assertEqual(fixture.errors, [])
         self.assertEqual(result, {"ok": True})
-        self.assertEqual([s for s in checkpoints if s != 'diagnostic'], ["inviting", "invited", "login", "merge_v2_ready", "merge_v2_submitting", "merge_v2_accepted", "removing", "completed"])
+        self.assertEqual([s for s in checkpoints if s != 'diagnostic'], ["mother_check_started", "mother_check_completed", "inviting", "invited", "login", "merge_v2_ready", "merge_v2_submitting", "merge_v2_accepted", "removing", "completed"])
         self.assertIn("password_verify", fixture.sent_tokens)
         self.assertFalse(fixture.members)
         self.assertEqual(sum(path.endswith("export_and_deactivate") for _, _, path, _, _ in fixture.records), 1)
@@ -280,7 +287,7 @@ class ProxyTransportTests(unittest.TestCase):
         self.assertEqual(fixture.errors, [])
         self.assertFalse(fixture.invited)
         self.assertFalse(fixture.members)
-        self.assertEqual([s for s in checkpoints if s != 'diagnostic'], ['inviting', 'invited', 'login', 'password_failed', 'cleanup_started', 'cleanup_completed'])
+        self.assertEqual([s for s in checkpoints if s != 'diagnostic'], ['mother_check_started', 'mother_check_completed', 'inviting', 'invited', 'login', 'password_failed', 'cleanup_started', 'cleanup_completed'])
         self.assertFalse(any(path.endswith("export_and_deactivate") or '/users/' in path or '/mfa/' in path for _, _, path, _, _ in fixture.records))
         self.assertEqual(sum(path.endswith('/password/verify') for _, _, path, _, _ in fixture.records), 1)
         self.assertEqual([(role, path) for role, method, path, _, _ in fixture.records if method == 'DELETE'], [('mother', '/backend-api/accounts/fixture-team/invites')])

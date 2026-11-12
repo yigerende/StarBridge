@@ -1,3 +1,4 @@
+from .listing import page_rows
 import secrets
 from fastapi import APIRouter, Depends, Request
 from starlette.concurrency import run_in_threadpool
@@ -164,6 +165,7 @@ def settings():
     result['features']={**DEFAULTS['features'],**result.get('features',{})}
     result['risk']={**DEFAULTS['risk'],**result.get('risk',{})}
     result.pop('country_pool',None)
+    result.pop('refund_mother_management',None)  # Dedicated mother-management settings endpoint.
     result['proxy'].setdefault('mode','manual')
     result['proxy'].setdefault('failure_cooldown_seconds',300)
     result['payment'].setdefault('post_payment_delay_seconds', DEFAULT_SECONDS)
@@ -238,8 +240,14 @@ def save_settings_value(key,v,request):
 
 
 @router.get('/billing-profiles')
-def profiles():
-    return {'items':config('billing').get('address_templates',[])}
+def profiles(page:int=1,page_size:int|None=None,q:str='',status:str='all',sort_by:str='account',sort_dir:str='asc'):
+    rows=config('billing').get('address_templates',[])
+    if page_size is None:return {'items':rows}
+    require(status in ('all','enabled','disabled','test','live'),'资料状态无效')
+    summary={'total':len(rows),'enabled':sum(r.get('enabled') is not False for r in rows),'payment':sum(r.get('enabled') is True and r.get('test_only') is False for r in rows)}
+    rows=[r for r in rows if status=='all' or (status=='enabled' and r.get('enabled') is not False) or (status=='disabled' and r.get('enabled') is False) or (status=='test' and r.get('test_only')) or (status=='live' and not r.get('test_only'))]
+    data=page_rows(rows,page=page,page_size=page_size,q=q,sort_by=sort_by,sort_dir=sort_dir,default='account',search=lambda r:' '.join(str(r.get(k,'')) for k in ('name','first_name','last_name','city','state','line1','postal_code')),columns={'account':lambda r:r.get('name') or r.get('first_name','')+' '+r.get('last_name',''),'holder':lambda r:r.get('first_name','')+' '+r.get('last_name',''),'address':lambda r:r.get('city','')+' '+r.get('line1',''),'status':lambda r:r.get('enabled') is not False})
+    return dict(data,summary=summary)
 
 
 @router.post('/billing-profiles/sample')

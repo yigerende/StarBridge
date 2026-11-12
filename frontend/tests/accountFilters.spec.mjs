@@ -39,7 +39,7 @@ test('account search, filters, pagination, reset and supplier session settings',
   assert.match(await page.locator('thead').innerText(),/冻结余额[\s\S]*已用余额[\s\S]*会员等级/);assert.match(await page.locator('tbody tr').first().innerText(),/123.45 积分/)
   await page.getByLabel('选择本页',{exact:true}).check();await page.getByRole('button',{name:'下一页',exact:true}).click()
   await page.getByText('客户 10',{exact:true}).waitFor();assert.equal(await page.getByLabel('选择本页',{exact:true}).isChecked(),false)
-  assert.deepEqual(await page.getByLabel('每页账户数').locator('option').allTextContents(),['10','50','100','500'])
+  assert.deepEqual(await page.getByLabel('每页条数').locator('option').allTextContents(),['10','50','100','500'])
   await page.getByLabel('选择本页',{exact:true}).check();await page.getByRole('button',{name:'批量专属价格',exact:true}).click()
   const pricing=page.getByRole('dialog',{name:'批量调整专属价格'});await pricing.getByLabel('标准账号调整方式',{exact:true}).selectOption('set');await pricing.getByLabel('标准账号专属价格',{exact:true}).fill('1.23')
   await pricing.getByLabel('Plus调整方式',{exact:true}).selectOption('clear');await pricing.getByLabel('代退服务费调整方式',{exact:true}).selectOption('set');await pricing.getByLabel('代退服务费专属价格',{exact:true}).fill('0')
@@ -53,7 +53,7 @@ test('account search, filters, pagination, reset and supplier session settings',
   await page.getByLabel('账户角色',{exact:true}).selectOption('member');await page.getByLabel('账户状态',{exact:true}).selectOption('disabled');await page.getByLabel('会员等级筛选',{exact:true}).selectOption('gold')
   await page.waitForFunction(()=>document.querySelector('.account-panel')?.getAttribute('aria-busy')==='false')
   assert.equal(queries.at(-1).tier,'gold');assert.equal(await page.locator('tbody tr').count(),10)
-  await page.getByLabel('每页账户数').selectOption('50');await page.waitForFunction(()=>document.querySelectorAll('tbody tr').length===25)
+  await page.getByLabel('每页条数').selectOption('50');await page.waitForFunction(()=>document.querySelectorAll('tbody tr').length===25)
   for(const width of [1440,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await page.screenshot({path:path.join(output,`accounts-${width}.png`),fullPage:true})}
   await page.getByLabel('搜索账户').fill('slow');await page.getByRole('button',{name:'查询',exact:true}).click()
   await page.getByLabel('搜索账户').fill('member1');await page.getByLabel('账户状态').selectOption('')

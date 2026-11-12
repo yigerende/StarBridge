@@ -1,3 +1,4 @@
+from .listing import order_by, pagination, result as list_result
 import csv
 import io
 import ipaddress
@@ -32,7 +33,12 @@ async def product(id:str,request:Request):
 
 
 @router.get('/announcements')
-def announcements(): return {'items':db.all('SELECT * FROM announcements ORDER BY sort,created_at DESC')}
+def announcements(q:str='',status:str='',tone:str='',page:int=1,page_size:int=10,sort_by:str='created_at',sort_dir:str='desc'):
+    pagination(page,page_size);require(len(q)<=200 and status in ('','published','draft') and tone in ('','info','warning','success'),'公告筛选无效')
+    where=" FROM announcements WHERE ($1='' OR title ILIKE '%'||$1||'%' OR body ILIKE '%'||$1||'%') AND ($2='' OR published=($2='published')) AND ($3='' OR tone=$3)"
+    ordering=order_by(sort_by,sort_dir,{k:k for k in ('title','tone','published','sort','starts_at','ends_at','created_at')},'created_at')
+    rows=db.all('SELECT *'+where+' ORDER BY '+ordering+' LIMIT $4 OFFSET $5',q,status,tone,page_size,(page-1)*page_size)
+    return list_result(rows,db.scalar('SELECT count(*)'+where,q,status,tone),page,page_size)
 
 
 @router.post('/announcements')
@@ -56,7 +62,7 @@ def delete_announcement(id:str,request:Request):
 
 
 @router.get('/risk')
-def risk(severity:str='',q:str='',category:str='',state:str='',start:str='',end:str='',all_time:bool=False,page:int=Query(1,ge=1,le=100000),page_size:int=Query(50,ge=1,le=100)):
+def risk(severity:str='',q:str='',category:str='',state:str='',start:str='',end:str='',all_time:bool=False,page:int=Query(1,ge=1,le=100000),page_size:int=Query(50,ge=1,le=500),sort_by:str='last_seen',sort_dir:str='desc'):
     require(severity in ('','high','medium','low') and state in ('','pending','resolved') and len(q)<=200 and len(category)<=80,'筛选参数无效')
     today=datetime.now(timezone(timedelta(hours=8))).date()
     try:
@@ -68,10 +74,11 @@ def risk(severity:str='',q:str='',category:str='',state:str='',start:str='',end:
     if all_time:where=where[:where.index(' AND COALESCE(e.last_seen')]
     args=(severity,q,category,state,first,last)
     totals=db.one("SELECT count(*) AS total,count(*) FILTER(WHERE NOT e.resolved) AS pending,count(*) FILTER(WHERE e.severity='high' AND NOT e.resolved) AS high,COALESCE(sum(e.occurrences),0) AS occurrences"+where,*args)
-    rows=db.all('SELECT e.*,u.email,u.name AS user_name,COALESCE(e.last_seen,e.created_at) AS last_seen'+where+' ORDER BY COALESCE(e.last_seen,e.created_at) DESC,e.id DESC LIMIT $7 OFFSET $8',*args,page_size,(page-1)*page_size)
-    blocks=db.all('SELECT * FROM blocked_ips WHERE expires_at>now() ORDER BY created_at DESC')
-    return {'items':rows,'total':totals['total'],'page':page,'page_size':page_size,'summary':dict(totals,blocks=len(blocks)),
-            'blocks':blocks,'config':risk_settings(),'categories':[r['category'] for r in db.all('SELECT DISTINCT category FROM risk_events ORDER BY category')],
+    ordering=order_by(sort_by,sort_dir,{'severity':'e.severity','category':'e.category','email':'u.email','ip':'e.ip','last_seen':'COALESCE(e.last_seen,e.created_at)','occurrences':'e.occurrences','resolved':'e.resolved'},'last_seen','e.id')
+    rows=db.all('SELECT e.*,u.email,u.name AS user_name,COALESCE(e.last_seen,e.created_at) AS last_seen'+where+' ORDER BY '+ordering+' LIMIT $7 OFFSET $8',*args,page_size,(page-1)*page_size)
+    block_count=db.scalar('SELECT count(*) FROM blocked_ips WHERE expires_at>now()')
+    return {'items':rows,'total':totals['total'],'page':page,'page_size':page_size,'summary':dict(totals,blocks=block_count),
+            'blocks':[],'config':risk_settings(),'categories':[r['category'] for r in db.all('SELECT DISTINCT category FROM risk_events ORDER BY category')],
             'generated_at':now(),'start':first,'end':last,'all_time':all_time}
 
 
@@ -81,6 +88,14 @@ def resolve(id:int,request:Request):
         require(q.execute('UPDATE risk_events SET resolved=true WHERE id=$1',id)==1,'记录不存在',404)
         audit(q,request,'risk.resolved',str(id),'标记已核查')
     return {'ok':True}
+
+
+@router.get('/blocks')
+def block_list(q:str='',page:int=1,page_size:int=10,sort_by:str='expires_at',sort_dir:str='desc'):
+    pagination(page,page_size);require(len(q)<=200,'搜索内容过长')
+    where=" FROM blocked_ips WHERE expires_at>now() AND ($1='' OR ip ILIKE '%'||$1||'%' OR reason ILIKE '%'||$1||'%')"
+    ordering=order_by(sort_by,sort_dir,{k:k for k in ('ip','reason','created_at','expires_at')},'expires_at','ip')
+    return list_result(db.all('SELECT *'+where+' ORDER BY '+ordering+' LIMIT $2 OFFSET $3',q,page_size,(page-1)*page_size),db.scalar('SELECT count(*)'+where,q),page,page_size)
 
 
 @router.post('/blocks')
@@ -103,7 +118,16 @@ def unblock(address:str,request:Request):
 
 
 @router.get('/audit')
-def audits():return {'items':db.all('SELECT a.*,u.email AS actor FROM audit_events a LEFT JOIN users u ON a.actor_id=u.id ORDER BY a.id DESC LIMIT 300')}
+def audits(q:str='',action:str='',start:str='',end:str='',page:int=1,page_size:int=10,sort_by:str='created_at',sort_dir:str='desc'):
+    pagination(page,page_size);require(len(q)<=200 and len(action)<=100,'筛选参数无效')
+    begin=parsedate(start+'T00:00:00+08:00') if start else None
+    until=parsedate(end+'T00:00:00+08:00')+timedelta(days=1) if end else None
+    require(not begin or not until or until>begin,'日期范围无效')
+    where=" FROM audit_events a LEFT JOIN users u ON a.actor_id=u.id WHERE ($1='' OR a.action=$1) AND ($2='' OR a.detail ILIKE '%'||$2||'%' OR a.target ILIKE '%'||$2||'%' OR a.ip ILIKE '%'||$2||'%' OR u.email ILIKE '%'||$2||'%') AND ($3::timestamptz IS NULL OR a.created_at >= $3) AND ($4::timestamptz IS NULL OR a.created_at < $4)"
+    ordering=order_by(sort_by,sort_dir,{'actor':'u.email','action':'a.action','target':'a.target','ip':'a.ip','created_at':'a.created_at'},'created_at','a.id')
+    args=(action,q,begin,until)
+    rows=db.all('SELECT a.*,u.email AS actor'+where+' ORDER BY '+ordering+' LIMIT $5 OFFSET $6',*args,page_size,(page-1)*page_size)
+    return list_result(rows,db.scalar('SELECT count(*)'+where,*args),page,page_size,actions=[r['action'] for r in db.all('SELECT DISTINCT action FROM audit_events ORDER BY action')])
 
 
 TOTALS="COALESCE(sum(l.amount) FILTER(WHERE l.kind IN ('topup','redeem')),0) AS credited,COALESCE(sum(-l.amount) FILTER(WHERE l.kind='charge'),0) AS spent,COALESCE(sum(l.amount) FILTER(WHERE l.kind='adjustment'),0) AS adjusted"
@@ -119,14 +143,25 @@ def finance_data(request):
     period=args.get('period','day');period=period if period in ('day','week','month','year') else 'day';exclude=args.get('include_admin')!='true'
     business=args.get('business','subscription');require(business in ('subscription','refund'),'业务类型无效')
     table='refunds' if business=='refund' else 'orders'
+    try:page=int(args.get('page','1'));size=int(args.get('page_size','10'))
+    except ValueError:raise BusinessError('分页参数无效')
+    pagination(page,size)
+    search=args.get('q','');require(len(search)<=200,'搜索内容过长')
+    paged='page_size' in args
+    ordering=order_by(args.get('sort_by','spent'),args.get('sort_dir','desc'),{k:k for k in ('email','name','spent','orders','frozen','fee_override')}|{'balance':'balance-frozen','credited':'credited'},'spent')
+
     where=' WHERE '+TIME+f" AND l.business='{business}' AND (NOT $3::bool OR u.role!='admin')"
     with db.transaction() as q:
         q.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
         totals=q.one('SELECT '+TOTALS+',count(*) AS entries FROM ledger l JOIN users u ON u.id=l.user_id'+where,start,end,exclude)
         trend=q.all("SELECT to_char(date_trunc($4,l.created_at AT TIME ZONE 'Asia/Shanghai'),'YYYY-MM-DD') AS period,"+TOTALS+' FROM ledger l JOIN users u ON u.id=l.user_id'+where+' GROUP BY 1 ORDER BY 1',start,end,exclude,period)
-        users=q.all(f"SELECT u.id,u.email,u.name,u.role,u.balance,u.frozen,u.fee_override,COALESCE(x.credited,0) AS credited,COALESCE(x.spent,0) AS spent,COALESCE(x.adjusted,0) AS adjusted,(SELECT count(*) FROM {table} o WHERE o.user_id=u.id AND o.created_at>=($1::date AT TIME ZONE 'Asia/Shanghai') AND o.created_at<(($2::date+1) AT TIME ZONE 'Asia/Shanghai')) AS orders FROM users u LEFT JOIN (SELECT l.user_id,"+TOTALS+' FROM ledger l WHERE '+TIME+f" AND l.business='{business}' GROUP BY l.user_id) x ON x.user_id=u.id WHERE (NOT $3::bool OR u.role!='admin') ORDER BY credited DESC,u.email",start,end,exclude)
+        user_sql=f"SELECT u.id,u.email,u.name,u.role,u.balance,u.frozen,u.fee_override,COALESCE(x.credited,0) AS credited,COALESCE(x.spent,0) AS spent,COALESCE(x.adjusted,0) AS adjusted,(SELECT count(*) FROM {table} o WHERE o.user_id=u.id AND o.created_at>=($1::date AT TIME ZONE 'Asia/Shanghai') AND o.created_at<(($2::date+1) AT TIME ZONE 'Asia/Shanghai')) AS orders FROM users u LEFT JOIN (SELECT l.user_id,"+TOTALS+' FROM ledger l WHERE '+TIME+f" AND l.business='{business}' GROUP BY l.user_id) x ON x.user_id=u.id WHERE (NOT $3::bool OR u.role!='admin')"
+        user_scope=" FROM ("+user_sql+") customer WHERE ($4='' OR email ILIKE '%'||$4||'%' OR name ILIKE '%'||$4||'%')"
+        total=q.scalar('SELECT count(*)'+user_scope,start,end,exclude,search)
+        users=q.all('SELECT *'+user_scope+' ORDER BY '+ordering+(' LIMIT $5 OFFSET $6' if paged else ''),start,end,exclude,search,*((size,(page-1)*size) if paged else ()))
+
         current=q.one("SELECT COALESCE(sum(balance),0) AS balance,COALESCE(sum(frozen),0) AS frozen FROM users WHERE (NOT $1::bool OR role!='admin')",exclude)
-    return {'totals':totals,'current':current,'trend':trend,'users':users,'period':period,'start':start,'end':end,'timezone':'Asia/Shanghai'}
+    return {'totals':totals,'current':current,'trend':trend,'users':users,'total':total,'page':page,'page_size':size,'period':period,'start':start,'end':end,'timezone':'Asia/Shanghai'}
 
 
 @router.get('/finance')

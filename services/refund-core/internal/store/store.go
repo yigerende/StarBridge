@@ -230,13 +230,27 @@ func (s *Store) Events(ctx context.Context, uid, id string) ([]Event, error) {
 	return out, rows.Err()
 }
 
-func (s *Store) ListRefunds(ctx context.Context, uid, q, status string, page, size int) ([]Refund, int, error) {
+func (s *Store) ListRefunds(ctx context.Context, uid, q, status string, page, size int, sorting ...string) ([]Refund, int, error) {
+	field, direction := "created_at", "desc"
+	if len(sorting) > 0 {
+		field = sorting[0]
+	}
+	if len(sorting) > 1 {
+		direction = sorting[1]
+	}
+	ordering, orderErr := refundListOrder(field, direction, false)
+	if orderErr != nil {
+		return nil, 0, orderErr
+	}
+	if size < 1 || size > 500 || page < 1 || page > 100000 {
+		return nil, 0, invalid("分页参数无效")
+	}
 	where := " FROM refunds WHERE user_id=$1 AND ($2='' OR position(lower($2) in lower(email))>0 OR position(lower($2) in id)>0) AND ($3='' OR status=$3 OR ($3='active' AND status IN ('queued','processing','verifying')))"
 	var count int
 	if err := s.Pool.QueryRow(ctx, "SELECT count(*)"+where, uid, q, status).Scan(&count); err != nil {
 		return nil, 0, err
 	}
-	rows, err := s.Pool.Query(ctx, "SELECT "+refundColumns+where+" ORDER BY created_at DESC,id LIMIT $4 OFFSET $5", uid, q, status, size, (page-1)*size)
+	rows, err := s.Pool.Query(ctx, "SELECT "+refundColumns+where+" ORDER BY "+ordering+" LIMIT $4 OFFSET $5", uid, q, status, size, (page-1)*size)
 	if err != nil {
 		return nil, 0, err
 	}

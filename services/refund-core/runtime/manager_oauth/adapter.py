@@ -550,7 +550,7 @@ class ProjectProtocolLogin(upstream.ChatGPTProtocolLogin):
         ):
             final_headers.pop(header_name, None)
         last_error = ""
-        attempts = 3 if self.proxy_url else 2
+        attempts = max(1, min(3, int(self.payload.get("_transport_attempts", 3 if self.proxy_url else 2))))
         for attempt in range(attempts):
             transport_started = time.monotonic()
             try:

@@ -3,7 +3,11 @@ import {computed,onMounted,onUnmounted,ref,watch} from 'vue'
 import {ShieldCheck,ArrowRight,RefreshCw,Check,Clock3} from 'lucide-vue-next'
 import {api,date,key,type Row} from '../lib'
 import DataTable from './DataTable.vue'
-const session=ref(''),info=ref<Row|null>(null),error=ref(''),refreshError=ref(''),checking=ref(false),busy=ref(false),accepted=ref(false),items=ref<Row[]>([]),detail=ref<Row|null>(null)
+import ListPager from './ListPager.vue'
+import {useRemoteList} from '../useRemoteList'
+const session=ref(''),info=ref<Row|null>(null),error=ref(''),refreshError=ref(''),checking=ref(false),busy=ref(false),accepted=ref(false),detail=ref<Row|null>(null)
+const q=ref(''),status=ref('')
+const {page,size,sortBy,sortDir,data,rows:items,loading,error:listError,load,sort}=useRemoteList('renewals',()=>'/renewals',{q,status})
 const names:Record<string,string>={queued:'排队中',processing:'检查中',checking:'核实中',disabled:'已关闭',no_subscription:'无需关闭',review:'待核实'}
 const now=ref(Date.now()),expired=computed(()=>!!info.value&&new Date(info.value.expires_at).getTime()<=now.value)
 const ready=computed(()=>!!info.value&&!expired.value&&!checking.value&&!busy.value&&accepted.value)
@@ -27,7 +31,7 @@ async function show(id:string){const rev=++detailRevision;const v=await api('/re
 async function select(id:string){try{await show(id)}catch(e){if(!disposed)refreshError.value=(e as Error).message}}
 async function refresh(){
  if(refreshing)return;refreshing=true
- try{const v=await api('/renewals','GET',undefined,{},AbortSignal.any([lifetime.signal,AbortSignal.timeout(10000)]));if(disposed)return;items.value=v.items;if(detail.value&&(active(detail.value.task.status)||items.value.find(x=>x.id===detail.value?.task.id)?.updated_at!==detail.value.task.updated_at))await show(detail.value.task.id);refreshError.value=''}
+ try{await load();if(disposed)return;if(detail.value&&(active(detail.value.task.status)||items.value.find(x=>x.id===detail.value?.task.id)?.updated_at!==detail.value.task.updated_at))await show(detail.value.task.id);refreshError.value=''}
  catch{if(!disposed)refreshError.value='记录暂时刷新失败，请重试。'}finally{refreshing=false}
 }
 async function submit(){
@@ -61,7 +65,7 @@ onUnmounted(()=>{disposed=true;revision++;detailRevision++;clearTimeout(timer);c
  <p class="callout">{{detail.task.message}}</p>
  <details><summary>查看处理记录</summary><div class="timeline"><div v-for="(e,i) in detail.events" :key="i"><span class="timeline-dot"></span><small>{{date(e.created_at)}}</small><p>{{e.message}}</p></div></div></details>
 </section>
-<section class="panel renewal-history"><div class="renewal-detail-heading"><h2>独立处理记录</h2><button class="text-btn" @click="refresh"><RefreshCw :size="14"/>刷新</button></div><p v-if="refreshError" class="alert danger" role="alert">{{refreshError}}</p><DataTable :rows="items" :columns="[{key:'email',label:'订阅账号'},{key:'status',label:'处理状态'},{key:'created_at',label:'提交时间'},{key:'action',label:'操作'}]"><template #status="{row}"><span class="badge" :class="{succeeded:row.status==='disabled',review:row.status==='review'}">{{names[row.status]}}</span></template><template #created_at="{row}">{{date(row.created_at)}}</template><template #action="{row}"><button class="text-btn" @click="select(row.id)">查看进度</button></template></DataTable></section>
+<section class="panel renewal-history"><div class="renewal-detail-heading"><h2>独立处理记录</h2><button class="text-btn" @click="refresh"><RefreshCw :size="14"/>刷新</button></div><p v-if="refreshError" class="alert danger" role="alert">{{refreshError}}</p><div class="table-toolbar"><input v-model="q" type="search" placeholder="搜索账号或申请编号" maxlength="200"/><select v-model="status"><option value="">全部状态</option><option v-for="(label,value) in names" :key="value" :value="value">{{label}}</option></select></div><p v-if="listError" class="alert danger">{{listError}}</p><DataTable paged hide-toolbar hide-pagination :sort-by="sortBy" :sort-dir="sortDir" @sort="sort" :rows="items" :columns="[{key:'email',label:'订阅账号'},{key:'status',label:'处理状态'},{key:'created_at',label:'提交时间'},{key:'action',label:'操作'}]"><template #status="{row}"><span class="badge" :class="{succeeded:row.status==='disabled',review:row.status==='review'}">{{names[row.status]}}</span></template><template #created_at="{row}">{{date(row.created_at)}}</template><template #action="{row}"><button class="text-btn" @click="select(row.id)">查看进度</button></template></DataTable><ListPager v-model:page="page" v-model:size="size" :total="data.total||0" :loading="loading"/></section>
 </template>
 
 <style scoped>

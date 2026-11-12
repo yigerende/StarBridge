@@ -425,7 +425,7 @@
     },
     {
       "path": "src/platform/api.js",
-      "sha256": "62cfa361c34bbc95882ba8a4c3ab4c981affaf59e08c588f4271096e50a9fd26"
+      "sha256": "cc1dfc79513b8f6f54648ff4b68d0025abd9817c1769af9abe00b888af70280d"
     },
     {
       "path": "src/platform/app.js",
@@ -576,7 +576,7 @@
     },
     {
       "path": "src/platform/risk.js",
-      "sha256": "e4768f9a8207e06accabdcd3aab6dac8f2717b6c06f000c28e30cfe05dad8229",
+      "sha256": "3e9b877338b148bed35fbe52cc1bf35bb1cd8c2bb4e802cba6b0891b2b998155",
       "reason": "接入层使用主应用的 IP 预算，不重复叠加账号和密钥限流。"
     },
     {

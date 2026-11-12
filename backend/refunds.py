@@ -9,7 +9,7 @@ import sys
 import httpx
 from fastapi import APIRouter, Depends, Query, Request
 from . import db, membership, order_timing
-from .common import administrator, audit, body, current, member, require, integer
+from .common import administrator, audit, body, current, member, require, integer, parsedate, now
 
 router=APIRouter(prefix='/api',dependencies=[Depends(member)])
 _process=None
@@ -45,7 +45,7 @@ async def launch():
     require(binary.is_file(),'代退模块尚未构建，请先执行 scripts/build_refund.py',503)
     _token=secrets.token_urlsafe(48)
     env={**os.environ,'REFUND_INTERNAL_TOKEN':_token,'REFUND_PYTHON':sys.executable,
-         'REFUND_RUNNER':str(db.ROOT/'services/refund-core/runtime/refund_runner.py')}
+         'REFUND_RUNNER':str(db.ROOT/'services/refund-core/integration/runner.py')}
     _process=await asyncio.create_subprocess_exec(str(binary),env=env,stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,stderr=None,
         **({'creationflags':0x08000000} if os.name=='nt' else {}))
@@ -124,9 +124,9 @@ async def create(request:Request):
 
 @router.get('/refund/orders')
 @router.get('/v1/refund/orders')
-async def listing(request:Request,q:str='',status:str='',page:int=Query(1,ge=1,le=100000),page_size:int=Query(50,ge=1,le=200)):
+async def listing(request:Request,q:str='',status:str='',page:int=Query(1,ge=1,le=100000),page_size:int=Query(50,ge=1,le=500),sort_by:str='',sort_dir:str='desc'):
     require(status in ('','active','queued','processing','verifying','attention','succeeded','failed','banned','cancelled'),'状态无效')
-    result=await call('list',current(request)['id'],query=q,status=status,page=page,size=page_size)
+    result=await call('list',current(request)['id'],query=q,status=status,page=page,size=page_size,sort_by=sort_by,sort_dir=sort_dir)
     await asyncio.to_thread(order_timing.refunds,result['items'])
     return result
 
@@ -141,10 +141,37 @@ async def cancel(id:str,request:Request):return await call('cancel',current(requ
 admin=APIRouter(prefix='/api/admin/refund',dependencies=[Depends(administrator)])
 
 @admin.get('/settings')
-async def settings(request:Request):
+async def settings(request:Request,summary_only:bool=False):
     data=await call('settings',current(request)['id'])
     data.update(await asyncio.to_thread(db.one,'SELECT accepting,service_fee FROM refund_settings WHERE id'))
+    if summary_only:
+        data['resource_summary']={kind:{'total':len(data[kind]),'enabled':sum(bool(r.get('enabled')) for r in data[kind])} for kind in ('mothers','proxies')}
+        data['mothers']=[]
+        data['proxies']=[{k:r.get(k) for k in ('id','name','enabled','target')} for r in data['proxies']]
+
     return data
+
+@admin.get('/resources/{kind}')
+async def resource_list(kind:str,request:Request,page:int=1,page_size:int=10,q:str='',status:str='',target:str='',sort_by:str='name',sort_dir:str='asc'):
+    from .listing import page_rows
+    require(kind in ('mothers','proxies'),'资源类型无效')
+    require(status in ('','enabled','disabled','busy','idle','cooling') and target in ('','mother','child','both'),'资源筛选无效')
+    data=await call('settings',current(request)['id'])
+    if kind=='mothers':
+        from . import refund_mothers
+        snapshots={r['id']:r for r in (await asyncio.to_thread(refund_mothers.summary))['items']}
+        for row in data[kind]:
+            snapshot=snapshots.get(row['id'],{})
+            management=snapshot.get('management_json') or {}
+            capacity=management.get('capacity') or (row.get('check') or {}).get('seats') or {}
+            row.update({k:snapshot.get(k,0) for k in ('handled','completed','settled')})
+            row.update(plan_expires_at=management.get('plan',{}).get('expires_at'),member_count=management.get('members',{}).get('count'),
+                       standard_remaining=capacity.get('standard',{}).get('remaining'),premium_remaining=capacity.get('premium',{}).get('remaining'),
+                       held=capacity.get('premium',{}).get('held'))
+    rows=[r for r in data[kind] if (not status or (bool(r.get('enabled'))==(status=='enabled') if status in ('enabled','disabled') else bool(r.get('active_refund')) if status=='busy' else not r.get('active_refund') if status=='idle' else bool(r.get('failure_until') and parsedate(r['failure_until'])>now()))) and (not target or r.get('target','both') in (target,'both'))]
+    fields=('name','email','team_id','seat_type','enabled','active_email','plan_expires_at','member_count','handled','completed','settled','token_expires_at','standard_remaining','premium_remaining','held') if kind=='mothers' else ('name','enabled','target','failure_until')
+    return page_rows(rows,page=page,page_size=page_size,q=q,sort_by=sort_by,sort_dir=sort_dir,default='name',search=lambda r:' '.join(str(r.get(k,'')) for k in ('name','email','team_id','active_email')),columns={k:(lambda r,k=k:r.get(k)) for k in fields})
+
 
 @admin.put('/settings')
 async def save_settings(request:Request):
@@ -165,9 +192,9 @@ async def save_pricing(request:Request):
     return {'ok':True}
 
 @admin.get('/orders')
-async def monitor(request:Request,q:str='',status:str='',fee_status:str='',focus:str='',sort:str='priority',start:str='',end:str='',page:int=Query(1,ge=1,le=100000),page_size:int=Query(50,ge=1,le=200)):
+async def monitor(request:Request,q:str='',status:str='',fee_status:str='',focus:str='',sort:str='priority',start:str='',end:str='',page:int=Query(1,ge=1,le=100000),page_size:int=Query(50,ge=1,le=500),sort_by:str='',sort_dir:str='desc'):
     result=await call('monitor',current(request)['id'],query=q,status=status,page=page,size=page_size,
-                      fee_status=fee_status,focus=focus,sort=sort,start=start,end=end)
+                      fee_status=fee_status,focus=focus,sort=sort,start=start,end=end,sort_by=sort_by,sort_dir=sort_dir)
     await asyncio.to_thread(order_timing.refunds,result['items'])
     return result
 

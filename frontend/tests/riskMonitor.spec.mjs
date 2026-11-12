@@ -33,6 +33,7 @@ test('risk monitor filters, actions, settings and mobile layout',async()=>{
    const page=Number(url.searchParams.get('page')||1)
    json={items:url.searchParams.get('q')==='empty'?[]:[{...event,id:page===1?7:8,resolved}],total:url.searchParams.get('q')==='empty'?0:51,summary:{pending:3,high:1,occurrences:32,blocks:blocked?1:0},categories:['access','rate_limit','login_failed'],blocks:blocked?[{ip:'2001:db8::1234',reason:'连续异常请求',expires_at:'2026-11-11T01:12:00Z'}]:[],start:'2026-10-11',end:'2026-11-10',generated_at:'2026-11-10T01:12:00Z'}
   }
+  if(p==='/api/admin/blocks')json={items:blocked?[{ip:'2001:db8::1234',reason:'连续异常请求',expires_at:'2026-11-11T01:12:00Z'}]:[],total:blocked?1:0}
   if(p.endsWith('/risk/settings'))json={settings:alertSettings}
   if(p.endsWith('/risk/monitor'))json={items:[{...event,severity:'warning',category:'application',message:'注册订单排队时间较长',account:event.email,source_ip:event.ip,target:'order-fixture-123',operation:'scan',status:0,resolved_at:null}],total:1,summary:{requests:32,errors:1,blocked:0,average_ms:18},traffic:[{user_name:event.user_name,email:event.email,operation:'query',channel:'web',requests:32,errors:1,blocked:0,average_ms:18}],last_scan:event.last_seen,monitoring_enabled:true}
   return route.fulfill({json})
@@ -44,7 +45,7 @@ test('risk monitor filters, actions, settings and mobile layout',async()=>{
   assert.equal(await page.locator('.risk-event-link').innerText(),'访问异常')
   assert.equal(await page.getByRole('heading',{name:'风控监控',exact:true}).count(),1)
   await page.screenshot({path:path.join(output,'events-desktop.png'),fullPage:true})
-  await page.getByRole('button',{name:'下一页',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.risk-pagination')?.textContent.includes('2 / 3'))
+  await page.getByRole('button',{name:'下一页',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.list-pagination')?.textContent.includes('2 / 6'))
   assert.ok(requests.some(r=>r.includes('page=2')))
   await page.getByRole('button',{name:'上一页',exact:true}).click()
   await page.getByRole('button',{name:'详情',exact:true}).click();await page.getByRole('dialog',{name:'风险事件',exact:true}).waitFor();await page.keyboard.press('Escape')

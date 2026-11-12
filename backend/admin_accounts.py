@@ -1,3 +1,4 @@
+from .listing import order_by, pagination, result as list_result
 from fastapi import APIRouter,Depends,Request
 from psycopg2.errors import UniqueViolation
 from starlette.concurrency import run_in_threadpool
@@ -45,7 +46,7 @@ def delete_user(id:str,request:Request):
 
 
 @router.get('/users')
-def users(q: str='', role: str='', status: str='', tier: str='', page: int=1, page_size: int=10):
+def users(q: str='', role: str='', status: str='', tier: str='', page: int=1, page_size: int=10, sort_by: str='created_at', sort_dir: str='desc'):
     q=q.strip()
     require(len(q)<=200,'搜索内容不能超过 200 个字符')
     require(role in ('','member','admin') and status in ('','active','disabled'),'账户筛选条件无效')
@@ -74,7 +75,8 @@ def users(q: str='', role: str='', status: str='', tier: str='', page: int=1, pa
         args=(q,role,status,tier,tier_rows,now())
         total=tx.scalar(query+'SELECT count(*) FROM filtered',*args)
         page=min(page,max(1,(total+page_size-1)//page_size))
-        rows=tx.all(query+"SELECT f.*,(SELECT count(*) FROM orders o WHERE o.user_id=f.id AND o.deleted_at IS NULL) AS orders FROM filtered f ORDER BY created_at DESC,id DESC LIMIT $7 OFFSET $8",*args,page_size,(page-1)*page_size)
+        ordering=order_by(sort_by,sort_dir,{'account':'f.email','email':'f.email','created_at':'f.created_at','role':'f.role','status':'f.status','balance':'(f.balance-f.frozen)','frozen':'f.frozen','used_balance':"(SELECT coalesce(-sum(amount),0) FROM ledger WHERE user_id=f.id AND kind IN ('charge','refund'))",'membership':"(f.spent+CASE WHEN f.membership_code<>'' AND (f.membership_until IS NULL OR f.membership_until>now()) THEN f.membership_growth_credit ELSE 0 END)",'orders':'orders','fee_override':'f.fee_override','membership_until':'f.membership_until'},'created_at','f.id')
+        rows=tx.all(query+"SELECT f.*,(SELECT count(*) FROM orders o WHERE o.user_id=f.id AND o.deleted_at IS NULL) AS orders FROM filtered f ORDER BY "+ordering+" LIMIT $7 OFFSET $8",*args,page_size,(page-1)*page_size)
         ids=[row['id'] for row in rows]
         used={r['user_id']:int(r['amount']) for r in tx.all("SELECT user_id,-sum(amount) AS amount FROM ledger WHERE user_id=ANY($1) AND kind IN ('charge','refund') GROUP BY user_id",ids)}
         prices={};services={}
@@ -248,15 +250,15 @@ async def adjust_balance(id: str,request: Request):
 
 
 @router.get('/membership')
-def members():
+def members(summary_only:bool=False):
     rows=db.all('SELECT u.id,u.email,u.name,u.role,u.status,u.fee_override,u.membership_code,u.membership_until,u.membership_growth_credit,COALESCE(s.spent,0)::bigint AS spent FROM users u LEFT JOIN (SELECT user_id,sum(spent)::bigint AS spent FROM ('+SPEND+') s GROUP BY user_id) s ON s.user_id=u.id WHERE u.deleted_at IS NULL ORDER BY u.created_at DESC')
-    distribution={};total=0
+    distribution={};total=0;tiers=config('tiers');at=now();effective_tiers=membership_from({},0,tiers=tiers['items'],at=at)['tiers']
     for u in rows:
-        m=membership_from(u,u['spent']);u['membership']=m
+        m=membership_from(u,u['spent'],tiers=effective_tiers,at=at);u['membership']=m
         if u['role']=='member':
             code=m['current']['code'];distribution[code]=distribution.get(code,0)+1;total+=1
     products=visible_products(db.all('SELECT id,name FROM products WHERE enabled ORDER BY sort,id'),config('payment').get('subscription_flow'))
-    return {'items':rows,'config':config('tiers'),'distribution':distribution,'customers':total,
+    return {'items':[] if summary_only else rows,'config':tiers,'distribution':distribution,'customers':total,
             'discount_services':discount_services(),'products':[{**p,'id':public_id(p['id'])} for p in products]}
 
 
@@ -275,9 +277,14 @@ async def set_membership(id: str,request: Request):
 
 
 @router.get('/topups')
-def topups(status:str='',include_admin:bool=True):
+def topups(status:str='',include_admin:bool=True,q:str='',page:int=1,page_size:int=10,sort_by:str='created_at',sort_dir:str='desc'):
+    pagination(page,page_size);require(len(q)<=200,'搜索内容过长')
     require(status in ('','pending','approved','rejected','cancelled'),'充值状态无效')
-    return {'items':db.all("SELECT t.*,u.email FROM topups t JOIN users u ON u.id=t.user_id WHERE ($1='' OR t.status=$1) AND ($2::bool OR u.role<>'admin') ORDER BY (t.status='pending') DESC,t.created_at DESC LIMIT 500",status,include_admin)}
+    source=" FROM topups t JOIN users u ON u.id=t.user_id WHERE ($1='' OR t.status=$1) AND ($2::bool OR u.role<>'admin') AND ($3='' OR t.id ILIKE '%'||$3||'%' OR u.email ILIKE '%'||$3||'%' OR t.proof ILIKE '%'||$3||'%')"
+    ordering=order_by(sort_by,sort_dir,{'email':'u.email','amount':'t.amount','method':'t.method','status':'t.status','created_at':'t.created_at','updated_at':'t.updated_at'},'created_at','t.id')
+    rows=db.all('SELECT t.*,u.email'+source+' ORDER BY '+ordering+' LIMIT $4 OFFSET $5',status,include_admin,q,page_size,(page-1)*page_size)
+    summary=db.one("SELECT count(*) AS total,count(*) FILTER(WHERE t.status='pending') AS pending"+source,status,include_admin,q)
+    return list_result(rows,summary['total'],page,page_size,summary=summary)
 
 
 @router.post('/topups/{id}/review')
@@ -297,13 +304,13 @@ async def review_topup(id: str,request: Request):
 
 
 @router.get('/codes')
-def codes(page: int=1,page_size: int=100,q: str='',status: str=''):
-    return redeem_codes.listing(page,page_size,q,status)
+def codes(page: int=1,page_size: int=10,q: str='',status: str='',sort_by:str='created_at',sort_dir:str='desc'):
+    return redeem_codes.listing(page,page_size,q,status,sort_by,sort_dir)
 
 
 @router.get('/codes/usage')
-def code_usage(period: str='day',date: str='',q: str='',page: int=1,page_size: int=50):
-    return redeem_codes.usage(period,date,q,page,page_size)
+def code_usage(period: str='day',date: str='',q: str='',page: int=1,page_size: int=50,sort_by:str='redeemed_at',sort_dir:str='desc'):
+    return redeem_codes.usage(period,date,q,page,page_size,sort_by,sort_dir)
 
 
 @router.post('/codes')

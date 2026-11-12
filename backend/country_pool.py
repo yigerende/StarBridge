@@ -109,6 +109,12 @@ def listing():
     return dict(settings=public_settings(cfg), countries=cfg['countries'], mode=mode(), in_use=active_sessions())
 
 
+@router.get('/country-pool/countries')
+def country_list(q:str='',page:int=1,page_size:int=10,sort_by:str='name',sort_dir:str='asc'):
+    from .listing import page_rows
+    return page_rows(settings()['countries'],page=page,page_size=page_size,q=q,sort_by=sort_by,sort_dir=sort_dir,default='name',columns={k:(lambda r,k=k:r.get(k,'')) for k in ('code','name','currency')},search=lambda r:' '.join(str(r.get(k,'')) for k in ('code','name','currency')))
+
+
 def save_config(value, request=None):
     allowed={'username','password','token','subuser_hash','auth_type','lifetime_seconds','max_parallel','renewal_country','auto_sync','import_resource_id'}
     require(isinstance(value,dict) and not set(value)-allowed,'独立会话代理配置字段无效')

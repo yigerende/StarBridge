@@ -540,7 +540,7 @@ class BackendTests(LaunchAuditTests,SubscriptionRecoveryTests,SubscriptionPaymen
             for _,_,client in users:client.close()
 
     @contextmanager
-    def retry_fixture(self, module, workflow='subscription', limit=2):
+    def retry_fixture(self, module, workflow='subscription', limit=2, fixed_proxy=False):
         settings=self.ok(self.client.get('/api/admin/settings'))
         user_id,_,user=self.new_user()
         profile={'id':'bp_retry','first_name':'Fixture','last_name':'User','email':'billing@example.test',
@@ -558,11 +558,16 @@ class BackendTests(LaunchAuditTests,SubscriptionRecoveryTests,SubscriptionPaymen
             order=self.ok(user.post(path,json=payload,headers={'Idempotency-Key':uid()}))['id']
             db.execute('INSERT INTO order_proxy_sessions(order_id,resource_id,endpoint_enc,expires_at) VALUES($1,$2,$3,$4)',
                        order,'fixture',encrypt('http://fixture:secret@proxy.example.test:8080'),now()+timedelta(hours=1))
+            if fixed_proxy:
+                # National-pool bindings remain fixed; manual/session-pool network
+                # failover is covered separately by their allocation tests.
+                db.execute("UPDATE settings SET value=$1 WHERE key='proxy'",dict(settings['proxy'],mode='national_pool'))
+                db.execute("UPDATE order_proxy_sessions SET source_mode='national_pool',resource_id='fixture-'||$1 WHERE order_id=$1",order)
             job=module.claim_subscription();self.assertEqual(job['id'],order)
             yield job
         finally:
             db.execute("UPDATE orders SET status='failed' WHERE user_id=$1",user_id)
-            for key in ('payment','scheduler','billing'):db.execute('UPDATE settings SET value=$2 WHERE key=$1',key,settings[key])
+            for key in ('payment','scheduler','billing','proxy'):db.execute('UPDATE settings SET value=$2 WHERE key=$1',key,settings[key])
             user.close()
 
     @contextmanager
@@ -596,7 +601,7 @@ class BackendTests(LaunchAuditTests,SubscriptionRecoveryTests,SubscriptionPaymen
         import requests
         from backend import subscription,subscription_retry
         for module in (subscription,):
-            with self.subTest(flow=module.FLOW),self.retry_fixture(module) as job,self.retry_network(module) as (generate,stripe,followup):
+            with self.subTest(flow=module.FLOW),self.retry_fixture(module,fixed_proxy=True) as job,self.retry_network(module) as (generate,stripe,followup):
                 order_id=job['id'];user_id=job['user_id']
                 original_proxy=db.scalar('SELECT endpoint_enc FROM order_proxy_sessions WHERE order_id=$1',order_id)
                 original_billing=job['billing_snapshot']
@@ -638,7 +643,7 @@ class BackendTests(LaunchAuditTests,SubscriptionRecoveryTests,SubscriptionPaymen
         from backend import subscription
         for module in (subscription,):
             for workflow,limit in (('subscription',2),('link',0)):
-                with self.subTest(flow=module.FLOW,workflow=workflow),self.retry_fixture(module,workflow,limit) as job,self.retry_network(module) as (generate,stripe,followup):
+                with self.subTest(flow=module.FLOW,workflow=workflow),self.retry_fixture(module,workflow,limit,fixed_proxy=True) as job,self.retry_network(module) as (generate,stripe,followup):
                     order_id=job['id']
                     generate.side_effect=TimeoutError('fixture timed out')
                     for attempt in range(limit+1):
@@ -717,7 +722,10 @@ class BackendTests(LaunchAuditTests,SubscriptionRecoveryTests,SubscriptionPaymen
                 price_calls=[c for c in calls if c.args[0] is main.price_reference.refresh_tick]
                 self.assertEqual(len(price_calls),1)
                 self.assertIs(price_calls[0].args[1],stop)
-                other_calls=[c for c in calls if c.args[0] is not main.price_reference.refresh_tick]
+                # Independent mother maintenance runs with payment disabled too.
+                self.assertEqual(sum(c.args[0] is main.refund_mothers.refresh_due for c in calls),1)
+                self.assertEqual(sum(c.args[0] is main.refund_resource_recovery.tick for c in calls),3)
+                other_calls=[c for c in calls if c.args[0] not in (main.price_reference.refresh_tick,main.refund_mothers.refresh_due,main.refund_resource_recovery.tick)]
                 self.assertEqual(len(other_calls),7)
                 self.assertEqual(sum(c.args[0] is main.subscription_recovery.tick for c in calls),1)
                 self.assertEqual(other_calls[0].args[0],main.country_pool.auto_sync)

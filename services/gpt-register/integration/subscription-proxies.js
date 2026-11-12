@@ -6,7 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { ProxyService } = require('../src/ui-server/proxy-service');
 const { flattenedPoolEntries } = require('../src/proxy-catalog');
-const { pageRows } = require('../src/ui-server/pagination');
+const { pageRows,sortRows } = require('./listing');
 const { fail } = require('../src/platform/security');
 const LOCK = 1886018;
 
@@ -117,15 +117,25 @@ function registerSubscriptionProxies(app, db, cwd) {
   const base = '/api/admin/v1/subscription-proxies';
   app.addHook('onReady', () => pool.initialize());
   app.addHook('preClose', () => pool.close());
-  app.get(base, () => pool.snapshot());
+  app.get(base, async r => {
+    const data=await pool.snapshot();
+    if(r.query.limit===undefined)return data;
+    const q=String(r.query.q||'').toLowerCase();fail(q.length<=200,'搜索内容过长');
+    const rows=data.dynamic.countryPools.filter(p=>!q||[p.countryCode,...p.sources.map(s=>s.provider)].join(' ').toLowerCase().includes(q));
+    const page=pageRows(sortRows(rows,r.query,{countryCode:r=>r.countryCode,total:r=>r.total},'countryCode'),r.query);
+    return {...data,...page,apiSourceCount:data.dynamic.countryPools.reduce((n,p)=>n+p.sources.length,0),dynamic:{...data.dynamic,countryPools:page.items}};
+  });
   app.get(base + '/operations/:id', r => {
     const job = pool.jobs.get(r.params.id); fail(job, '操作记录已过期，请刷新代理列表', 404); return job;
   });
   app.get(base + '/pools/:country/entries', r => {
     const p = pool.service.countryPools().find(p => p.countryCode === r.params.country);
-    return pageRows((p?.entries || []).filter(e => e.sourceId === 'manual'), r.query);
+    return pageRows(sortRows((p?.entries || []).filter(e => e.sourceId === 'manual'&&(!r.query.q||e.url.toLowerCase().includes(String(r.query.q).toLowerCase()))),r.query,{url:r=>r.url},'url'), r.query);
   });
-  app.get(base + '/inventory', async r => { await pool.snapshot(); return pool.service.inventory.list(r.query); });
+  app.get(base + '/inventory', async r => { await pool.loadUsage();
+    const inventory=pool.service.inventory,all=inventory.rows(),rows=inventory.filtered(r.query,all);
+    if(r.query.sort_by)sortRows(rows,r.query,{endpoint:r=>r.endpoint,country:r=>r.countryCode,protocol:r=>r.protocol,used:r=>r.lastUsedAt,cooldown:r=>r.cooldownUntil,latency:r=>r.check?.latencyMs,pulled:r=>r.pulledAt,checked:r=>r.check?.checkedAt},'used');
+    return {...pageRows(rows,r.query),summary:{total:all.length,matched:rows.length,inUse:rows.filter(r=>r.inUse).length,cooling:rows.filter(r=>r.cooling&&!r.inUse).length,healthy:rows.filter(r=>r.check?.status==='healthy').length,failed:rows.filter(r=>r.check?.status==='failed').length},countries:[...new Set(all.map(r=>r.countryCode))].sort(),providers:[...new Set(all.map(r=>r.provider))].map(value=>({value,label:all.find(r=>r.provider===value).providerLabel})),test:inventory.status()}; });
   app.post(base + '/preview', r => pool.service.preview({ ...r.body, scope: 'dynamic' }));
   const mutation = (method, suffix, action, fn) => app.route({ method, url: base + suffix,
     handler: r => pool.start(action, r.user.xufu_user_id, () => fn(r)) });

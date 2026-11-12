@@ -111,7 +111,7 @@ class CheckoutDiagnosticTests:
 
     def test_checkout_network_retries_use_config_and_original_order(self):
         for raw,category,limit in [('network_error','connection',2),('network_timeout','timeout',0),('http_408','timeout',1)]:
-            with self.subTest(raw=raw),self.retry_fixture(flow,limit=limit) as job,self.checkout_process({'error_code':raw}) as (process,payment):
+            with self.subTest(raw=raw),self.retry_fixture(flow,limit=limit,fixed_proxy=True) as job,self.checkout_process({'error_code':raw}) as (process,payment):
                 order_id=job['id'];proxy=db.scalar('SELECT endpoint_enc FROM order_proxy_sessions WHERE order_id=$1',order_id)
                 scheduler=db.scalar("SELECT value FROM settings WHERE key='scheduler'")
                 db.execute("UPDATE settings SET value=$1 WHERE key='scheduler'",dict(scheduler,retry_delay_seconds=17))

@@ -14,7 +14,7 @@ let controller:AbortController|undefined,timer:ReturnType<typeof setTimeout>|und
 function timestamp(value:string|null){return value?new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(value)):'未记录'}
 function duration(n:number|null){if(n===null)return '未记录';if(n<1)return '不足 1 秒';if(n<60)return `${n} 秒`;return `${Math.floor(n/60)} 分 ${n%60} 秒`}
 function tone(state:string){if(['已完成','已确认','已受理'].includes(state))return 'done';if(['进行中','排队中'].includes(state))return 'running';if(['待跟进','待核实','未受理'].includes(state))return 'attention';return 'muted'}
-const stageNames:Record<string,string>={'提':'提交申请','候':'排队调度','邀':'发送邀请','登':'账号登录','团':'确认团队','停':'提交停用','移':'移出与清理','结':'办理结束','验':'套餐核验','核':'结果核实','复':'重新办理'};
+const stageNames:Record<string,string>={'提':'提交申请','候':'排队调度','查':'检查母号','邀':'发送邀请','登':'账号登录','团':'确认团队','停':'提交停用','移':'移出与清理','结':'办理结束','验':'套餐核验','核':'结果核实','复':'重新办理'};
 function planDetails(plan:PersonalPlan){return plan.fields?.map(field=>`${field.name}：${field.value}`).join('\n')||plan.label}
 async function load(background=false){
  clearTimeout(timer);if(disposed)return;

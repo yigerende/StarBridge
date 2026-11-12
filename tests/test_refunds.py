@@ -41,6 +41,32 @@ class RefundTests(unittest.TestCase):
     def test_http_wallet_permissions_idempotency_and_parallel_reads(self):
         asyncio.run(self.scenario())
 
+    def test_real_pagination_global_sort_and_private_resource_pages(self):
+        db.execute("INSERT INTO refunds(id,user_id,email,credentials,status,fee,fee_status) SELECT 'rf'||lpad(n::text,4,'0'),'u','refund'||n||'@fixture.invalid',decode('00','hex'),'succeeded',n,'settled' FROM generate_series(1,525)n")
+        async def scenario():
+            await refunds.start()
+            try:
+                async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://testserver') as c:
+                    for path,actor in [('/api/refund/orders','u'),('/api/v1/refund/orders','key'),('/api/admin/refund/orders','a')]:
+                        headers={'Authorization':'Bearer fixture-api-key-long-enough'} if actor=='key' else {'Cookie':'xupay_session=test-session-'+actor}
+                        for size in (10,50,100,500):
+                            r=await c.get(path,headers=headers,params={'page_size':size,'sort_by':'fee','sort_dir':'desc'})
+                            self.assertEqual(r.status_code,200,r.text);d=r.json()
+                            self.assertEqual(d['total'],525);self.assertEqual(len(d['items']),size)
+                            self.assertEqual([x['fee'] for x in d['items']],list(range(525,525-size,-1)))
+                            self.assertNotIn('credentials',r.text)
+                        r=await c.get(path,headers=headers,params={'page':2,'page_size':500,'sort_by':'fee','sort_dir':'desc'})
+                        self.assertEqual([x['fee'] for x in r.json()['items']],list(range(25,0,-1)))
+                        r=await c.get(path,headers=headers,params={'sort_by':'fee','sort_dir':'asc','q':'refund525@'})
+                        self.assertEqual(r.json()['total'],1);self.assertEqual(r.json()['items'][0]['fee'],525)
+                        self.assertEqual((await c.get(path,headers=headers,params={'sort_by':'fee;DROP TABLE users'})).status_code,400)
+                    self.assertEqual((await c.get('/api/refund/orders',headers={'Cookie':'xupay_session=test-session-v'})).json()['total'],0)
+                    for kind in ('mothers','proxies'):
+                        r=await c.get('/api/admin/refund/resources/'+kind,headers={'Cookie':'xupay_session=test-session-a'},params={'page_size':500,'status':'cooling'})
+                        self.assertEqual(r.status_code,200,r.text)
+            finally:await refunds.stop()
+        asyncio.run(scenario())
+
     def test_proxy_scope_and_backup_settings_through_private_bridge(self):
         async def scenario():
             await refunds.start()

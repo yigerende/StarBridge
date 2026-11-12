@@ -76,6 +76,7 @@ type RefundDiagnostic struct {
 }
 
 var recoveryReasons = map[string]string{
+	"mother_capacity":              "母号席位不足，等待清理",
 	"export_verification_required": "提交响应需核验实际结果，不重复提交",
 	"fallback_paid_unconfirmed":    "个人套餐仍为付费，继续核验，不重新提交",
 	"password_verification_failed": "登录验证未通过（401），本次申请已停止办理",
@@ -283,6 +284,9 @@ func (s *Store) FinishRefundAttempt(ctx context.Context, j *RefundJob, d RefundD
 	}
 	if childProxyNetworkFailure(d) {
 		d.Retryable = true
+	}
+	if err = recordResourceFailure(ctx, tx, j, step, d); err != nil {
+		return err
 	}
 	if err = recordChildProxyFailure(ctx, tx, j, d); err != nil {
 		return err

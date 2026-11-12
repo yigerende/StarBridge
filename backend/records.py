@@ -1,3 +1,4 @@
+from .listing import order_by, pagination
 """Read-only customer and administrative records; no order execution routes."""
 from fastapi import APIRouter, Depends, Query, Request
 from . import db
@@ -85,8 +86,31 @@ def overview(request:Request):
 
 
 @router.get('/announcements')
-def announcements():
-    return {'items':db.all(ANN.replace('id,title,body,tone','id,title,body,tone,starts_at,ends_at,created_at')+' ORDER BY sort,created_at DESC')}
+def announcements(page:int=1,page_size:int=10,q:str='',sort_by:str='created_at',sort_dir:str='desc'):
+    return announcement_page(page,page_size,q,sort_by,sort_dir)
+
+
+@router.post('/announcements/query')
+async def announcement_query(request:Request):
+    v=await body(request)
+    return announcement_page(v.get('page',1),v.get('page_size',10),v.get('q',''),v.get('sort_by','created_at'),v.get('sort_dir','desc'),v.get('seen',{}),v.get('unread',False))
+
+
+def announcement_page(page,page_size,q,sort_by,sort_dir,seen=None,unread=False):
+    pagination(page,page_size)
+    seen=seen or {}
+    require(isinstance(q,str) and len(q)<=200 and type(unread) is bool,'公告筛选无效')
+    require(isinstance(seen,dict) and len(seen)<=10000 and all(isinstance(k,str) and len(k)<=80 and isinstance(v,str) and len(v)<=64 for k,v in seen.items()),'公告已读标记无效')
+    version="md5(jsonb_build_array(title,body,starts_at,ends_at)::text)"
+    active=" FROM announcements WHERE published AND (starts_at IS NULL OR starts_at<=now()) AND (ends_at IS NULL OR ends_at>now())"
+    where=active+" AND ($1='' OR title ILIKE '%'||$1||'%' OR body ILIKE '%'||$1||'%') AND (NOT $2::boolean OR coalesce($3::jsonb->>id,'')<>"+version+")"
+    ordering=order_by(sort_by,sort_dir,{k:k for k in ('title','created_at','sort')},'created_at')
+    with db.transaction() as tx:
+        tx.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+        index=tx.all('SELECT id,'+version+' AS version'+active)
+        total=tx.scalar('SELECT count(*)'+where,q,unread,seen)
+        items=tx.all('SELECT id,title,body,tone,starts_at,ends_at,created_at,'+version+' AS version'+where+' ORDER BY '+ordering+' LIMIT $4 OFFSET $5',q,unread,seen,page_size,(page-1)*page_size)
+    return {'items':items,'index':index,'total':total,'page':page,'page_size':page_size}
 
 
 def _attention_where(attention):
@@ -99,20 +123,25 @@ def _attention_where(attention):
 
 @router.get('/orders')
 @router.get('/v1/orders')
-def orders(request:Request,q:str='',status:str='',workflow:str='',attention:str='',page:int=Query(1,ge=1,le=100000),page_size:int=Query(200,ge=1,le=200)):
-    require(status in ('','draft','queued','processing','awaiting_payment','succeeded','failed','cancelled','review'),'订单状态无效')
-    require(workflow in ('','link','subscription') and len(q)<=200,'订单筛选参数无效')
-    where=" FROM orders o WHERE user_id=$1 AND o.deleted_at IS NULL AND ($2='' OR email ILIKE '%'||$2||'%' OR id ILIKE '%'||$2||'%') AND ($3='' OR status=$3) AND ($4='' OR workflow=$4)"
+def orders(request:Request,q:str='',status:str='',workflow:str='',attention:str='',page:int=Query(1,ge=1,le=100000),page_size:int=Query(50,ge=1,le=500),sort_by:str='created_at',sort_dir:str='desc',product:str='',payment:str='',renewal:str=''):
+    require(status in ('','draft','queued','processing','awaiting_payment','succeeded','failed','cancelled','review','attention'),'订单状态无效')
+    require(workflow in ('','link','subscription') and len(q)<=200 and len(product)<=150,'订单筛选参数无效')
     require(attention in ('','pending','followup'),'订单筛选无效')
-    where+=_attention_where(attention)
-    args=(current(request)['id'],q,status,workflow)
-    rows=db.all('SELECT '+ORDER_FIELDS+where+' ORDER BY created_at DESC,id DESC LIMIT $5 OFFSET $6',*args,page_size,(page-1)*page_size)
+    require(renewal in ('','not_started','pending','kept','disabled','review','retrying','not_applicable'),'续费筛选无效')
+    require(payment in ('','not_started','preparing','quoted','submitting','checking','action_required','review','succeeded','failed','cancelled','link'),'付款筛选无效')
+    payment_expr="CASE WHEN o.workflow='link' THEN 'link' WHEN o.status='succeeded' THEN 'succeeded' WHEN o.status='failed' THEN 'failed' WHEN o.status='cancelled' THEN 'cancelled' WHEN o.status='review' THEN 'review' WHEN o.status='processing' AND EXISTS(SELECT 1 FROM subscription_recoveries x WHERE x.order_id=o.id AND x.stage='payment' AND x.state IN ('armed','queued','running')) THEN 'checking' ELSE 'preparing' END"
+    renewal_expr="CASE WHEN o.workflow='subscription' THEN coalesce(nullif(o.renewal,''),'not_started') ELSE 'not_applicable' END"
+    where=" FROM orders o WHERE user_id=$1 AND o.deleted_at IS NULL AND ($2='' OR email ILIKE '%'||$2||'%' OR id ILIKE '%'||$2||'%') AND ($3='' OR status=$3 OR ($3='attention' AND (o.status='review' OR o.activation='review' OR o.renewal='review'))) AND ($4='' OR workflow=$4)"
+    where+=_attention_where(attention)+" AND ($5='' OR o.product_name=$5) AND ($6='' OR "+payment_expr+"=$6) AND ($7='' OR "+renewal_expr+"=$7)"
+    args=(current(request)['id'],q,status,workflow,product,payment,renewal)
+    ordering=order_by(sort_by,sort_dir,{**{k:'o.'+k for k in ('id','email','product_name','country','fee','status','renewal','created_at','updated_at')},'payment':payment_expr},'created_at','o.id')
+    rows=db.all('SELECT '+ORDER_FIELDS+where+' ORDER BY '+ordering+' LIMIT $8 OFFSET $9',*args,page_size,(page-1)*page_size)
     order_timing.subscriptions(rows)
-    for r in rows:
-        r['payment']=_order_list_payment(r)
-        public_order(r,request)
+    _attach_list_payments(rows)
+    for r in rows:public_order(r,request)
     total=db.scalar('SELECT count(*)'+where,*args)
-    return {'items':rows,'page':page,'page_size':page_size,'total':total,'has_more':page*page_size<total}
+    products=[r['product_name'] for r in db.all('SELECT DISTINCT product_name FROM orders WHERE user_id=$1 AND deleted_at IS NULL ORDER BY product_name',args[0])]
+    return {'items':rows,'page':page,'page_size':page_size,'total':total,'has_more':page*page_size<total,'products':products}
 
 
 @router.get('/orders/{id}')
@@ -168,6 +197,19 @@ def _payment_message(row):
     return ''
 
 
+def _attach_list_payments(rows):
+    ids=[r['id'] for r in rows if r.get('workflow')=='subscription']
+    saved={r['order_id']:r for r in db.all('SELECT order_id,payment_last4,payment_amount,payment_currency FROM subscription_runs WHERE order_id=ANY($1)',ids)} if ids else {}
+    checking={r['order_id'] for r in db.all("SELECT order_id FROM subscription_recoveries WHERE order_id=ANY($1) AND stage='payment' AND state IN ('armed','queued','running')",ids)} if ids else set()
+    for row in rows:
+        if row.get('workflow')!='subscription':row['payment']={};continue
+        state='checking' if row['id'] in checking and row['status']=='processing' else {'succeeded':'succeeded','failed':'failed','cancelled':'cancelled','review':'review'}.get(row['status'],'preparing')
+        fee_state='charged' if row['status']=='succeeded' else 'held' if row['status'] in ('queued','processing','review') else 'released'
+        sr=saved.get(row['id'],{})
+        message='正在持续核实原交易，尚未确认付款结果；请勿重复付款。' if state=='checking' else '正在办理中，请稍候。' if row['status']=='processing' else _payment_message(row)
+        row['payment']={'state':state,'last4':sr.get('payment_last4') or '','amount':sr.get('payment_amount'),'currency':sr.get('payment_currency') or '','fee_state':fee_state,'message':message}
+
+
 def _order_list_payment(row):
     if row.get('workflow') not in ('subscription','link'):
         return {}
@@ -198,16 +240,16 @@ def admin_overview(request:Request, start:str='', end:str='', days:int=1, includ
 
 
 @admin_router.get('/orders')
-def admin_orders(q:str='',status:str='',attention:str='',include_admin:bool=True,page:int=Query(1,ge=1,le=100000),page_size:int=Query(50,ge=1,le=500)):
+def admin_orders(q:str='',status:str='',attention:str='',include_admin:bool=True,page:int=Query(1,ge=1,le=100000),page_size:int=Query(50,ge=1,le=500),sort_by:str='created_at',sort_dir:str='desc'):
     require(len(q)<=200 and status in ('','draft','queued','processing','awaiting_payment','succeeded','failed','cancelled','review'),'订单筛选参数无效')
     where=" FROM orders o JOIN users u ON u.id=o.user_id WHERE o.deleted_at IS NULL AND ($1='' OR o.email ILIKE '%'||$1||'%' OR o.id ILIKE '%'||$1||'%' OR u.email ILIKE '%'||$1||'%' OR u.name ILIKE '%'||$1||'%' OR o.product_name ILIKE '%'||$1||'%') AND ($2='' OR o.status=$2)"
     require(attention in ('','pending','followup'),'订单筛选无效')
     where+=_attention_where(attention)
     if not include_admin:where+=" AND u.role<>'admin'"
-    rows=db.all('SELECT '+ORDER_FIELDS+',o.user_id,o.note,u.email AS owner'+where+' ORDER BY o.created_at DESC,o.id DESC LIMIT $3 OFFSET $4',q,status,page_size,(page-1)*page_size)
+    ordering=order_by(sort_by,sort_dir,{**{k:'o.'+k for k in ('id','email','product_name','fee','status','source','created_at','updated_at')},'owner':'u.email'},'created_at','o.id')
+    rows=db.all('SELECT '+ORDER_FIELDS+',o.user_id,o.note,u.email AS owner'+where+' ORDER BY '+ordering+' LIMIT $3 OFFSET $4',q,status,page_size,(page-1)*page_size)
     order_timing.subscriptions(rows)
-    for r in rows:
-        r['payment']=_order_list_payment(r)
+    _attach_list_payments(rows)
     # Aggregate the same filtered set as the list, before pagination. Payment
     # success alone does not mean activation and renewal follow-up are complete.
     followup="o.status='succeeded' AND o.workflow='subscription' AND (o.activation='review' OR o.renewal='review')"

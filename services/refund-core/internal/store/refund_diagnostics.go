@@ -65,7 +65,7 @@ func (v RefundEvidence) Sanitized() *RefundEvidence {
 	v.VerificationMode = evidenceEnum(v.VerificationMode, "missing other passwordless_login login signup")
 	v.TransportState = evidenceEnum(v.TransportState, "tls_before_request")
 	v.ProxyHTTPStatus = evidenceNumber(v.ProxyHTTPStatus, 599)
-	v.Stage = evidenceEnum(v.Stage, "login csrf signin authorize identifier password mfa_challenge mfa_verify workspace callback session sentinel email_verification personal_check members_read invites_read invite_send invite_revoke member_remove mother_operation export runtime checkpoint fallback_remove fallback_login fallback_plan workspace_observation")
+	v.Stage = evidenceEnum(v.Stage, "login csrf signin authorize identifier password mfa_challenge mfa_verify workspace callback session sentinel email_verification personal_check capacity members_read invites_read invite_send invite_revoke member_remove mother_operation export runtime checkpoint fallback_remove fallback_login fallback_plan workspace_observation")
 	if v.Stage == "workspace_observation" && v.Workspaces != nil {
 		v.Workspaces = v.Workspaces.sanitized()
 	} else {
@@ -85,11 +85,11 @@ func (v RefundEvidence) Sanitized() *RefundEvidence {
 		v.Membership = nil
 	}
 	v.Event = evidenceEnum(v.Event, "start response error failure truncated")
-	v.Reason = evidenceEnum(v.Reason, evidenceReasons+" extra_verification login_response_incomplete login_step_unsupported team_session_expired personal_session_conflict login_upstream_unavailable member_identity_missing")
+	v.Reason = evidenceEnum(v.Reason, evidenceReasons+" extra_verification login_response_incomplete login_step_unsupported team_session_expired personal_session_conflict login_upstream_unavailable member_identity_missing team_selection_conflict")
 	v.UpstreamCode = evidenceEnum(v.UpstreamCode, evidenceReasons)
 	v.Exception = evidenceEnum(v.Exception, "RuntimeError ValueError KeyError TypeError AttributeError ImportError ModuleNotFoundError TimeoutError OSError ConnectionError LoginFlowError DeadAccountError NeedsVerification UpstreamFailure VerificationUnavailable RequestsError ProxyError SSLError DNSError ConnectTimeout ReadTimeout ConnectionResetError JSONDecodeError other")
 	v.BodyKind = evidenceEnum(v.BodyKind, "json html text")
-	v.Source = evidenceEnum(v.Source, "refund_runner.py refund_recovery.py refund_plan_fallback.py personal_plan_observation.py diagnostics.py adapter.py upstream.py merge_v2.py bridge.py tls.py sentinel_vm.py")
+	v.Source = evidenceEnum(v.Source, "resource_guard.py refund_runner.py refund_recovery.py refund_plan_fallback.py personal_plan_observation.py diagnostics.py adapter.py upstream.py merge_v2.py bridge.py tls.py sentinel_vm.py")
 	v.Line = evidenceNumber(v.Line, 100000)
 	v.Sequence = evidenceNumber(v.Sequence, 144)
 	v.TransportAttempt = evidenceNumber(v.TransportAttempt, 10)

@@ -25,6 +25,8 @@ import (
 type input struct {
 	FeeStatus string                   `json:"fee_status"`
 	Focus     string                   `json:"focus"`
+	SortBy    string                   `json:"sort_by"`
+	SortDir   string                   `json:"sort_dir"`
 	Sort      string                   `json:"sort"`
 	Start     string                   `json:"start"`
 	End       string                   `json:"end"`
@@ -61,10 +63,10 @@ func dispatch(ctx context.Context, s *store.Store, p refundworker.ProtocolRunner
 		e, err := s.Events(ctx, v.Actor, v.ID)
 		return map[string]any{"order": r, "events": e}, err
 	case "list":
-		if v.Page < 1 || v.Page > 100000 || v.Size < 1 || v.Size > 200 || len(v.Query) > 254 {
+		if v.Page < 1 || v.Page > 100000 || v.Size < 1 || v.Size > 500 || len(v.Query) > 254 {
 			return nil, store.ErrInvalid
 		}
-		items, total, err := s.ListRefunds(ctx, v.Actor, v.Query, v.Status, v.Page, v.Size)
+		items, total, err := s.ListRefunds(ctx, v.Actor, v.Query, v.Status, v.Page, v.Size, v.SortBy, v.SortDir)
 		return map[string]any{"items": items, "total": total, "page": v.Page, "page_size": v.Size}, err
 	case "cancel":
 		r, err := s.Refund(ctx, v.Actor, v.ID)
@@ -159,10 +161,10 @@ func dispatch(ctx context.Context, s *store.Store, p refundworker.ProtocolRunner
 		}
 		return r, err
 	case "monitor":
-		if v.Page < 1 || v.Page > 100000 || v.Size < 1 || v.Size > 200 {
+		if v.Page < 1 || v.Page > 100000 || v.Size < 1 || v.Size > 500 {
 			return nil, store.ErrInvalid
 		}
-		return s.AdminRefundMonitor(ctx, store.RefundMonitorFilter{Query: v.Query, Status: v.Status, Page: v.Page, Size: v.Size, Sort: v.Sort, FeeStatus: v.FeeStatus, Focus: v.Focus, Start: v.Start, End: v.End})
+		return s.AdminRefundMonitor(ctx, store.RefundMonitorFilter{Query: v.Query, Status: v.Status, Page: v.Page, Size: v.Size, Sort: v.Sort, SortBy: v.SortBy, SortDir: v.SortDir, FeeStatus: v.FeeStatus, Focus: v.Focus, Start: v.Start, End: v.End})
 	case "timeline":
 		return s.AdminRefundTimeline(ctx, v.ID)
 	case "resume":

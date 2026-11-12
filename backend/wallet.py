@@ -1,9 +1,11 @@
+from datetime import timedelta
 import secrets
 from fastapi import APIRouter,Depends,Request
 from starlette.concurrency import run_in_threadpool
 from . import db
 from .common import *
 from . import customer_contract
+from .listing import order_by, pagination, result as list_result
 
 router=APIRouter(prefix='/api',dependencies=[Depends(member)])
 LEDGER_QUERY="""WITH history AS (
@@ -40,8 +42,9 @@ def credit(q,request,user_id,kind,reference,description,amount,require_active=Fa
 
 
 @router.get('/wallet')
-def wallet(request: Request):
+def wallet(request: Request, summary_only: bool=False):
     user=current(request)
+    if summary_only:return {"balance":user["balance"],"frozen":user["frozen"]}
     ledger=db.all(LEDGER_QUERY,user['id'])
     ledger.sort(key=lambda row:row['created_at'],reverse=True)
     project_ledger(ledger,user)
@@ -91,6 +94,47 @@ def project_ledger(rows,user):
     return rows
 
 
+def ledger_page(request, q='', business='', kind='', start='', end='', page=1, page_size=10, sort_by='created_at', sort_dir='desc', admin_projection=False):
+    pagination(page,page_size)
+    require(len(q)<=200 and business in ('','shared','registration','subscription','refund'),'流水筛选无效')
+    require(kind in ('','topup','redeem','adjustment','invite_reward','invite_reversal','freeze','unfreeze','charge','refund'),'流水类型无效')
+    begin=parsedate(start+'T00:00:00+08:00') if start else None
+    until=parsedate(end+'T00:00:00+08:00')+timedelta(days=1) if end else None
+    require(not begin or not until or until>begin,'日期范围无效')
+    # LAG is calculated on the complete account history before filtering/paging.
+    source=LEDGER_QUERY.replace(' ORDER BY id DESC LIMIT 300','').rsplit(' ORDER BY l.id DESC',1)[0]
+    source=source.replace('l.created_at,l.business,',"l.created_at,CASE WHEN l.kind IN ('topup','redeem','adjustment','invite_reward','invite_reversal') THEN 'shared' ELSE l.business END AS business,")
+    cte='WITH projected AS ('+source+') '
+    where=" FROM projected l WHERE ($2='' OR business=$2) AND ($3='' OR kind=$3) AND ($4='' OR id::text ILIKE '%'||$4||'%' OR description ILIKE '%'||$4||'%' OR related_order->>'email' ILIKE '%'||$4||'%' OR related_order->>'id' ILIKE '%'||$4||'%' OR registration_order_id ILIKE '%'||$4||'%' OR refund_order_id ILIKE '%'||$4||'%') AND ($5::timestamptz IS NULL OR created_at >= $5) AND ($6::timestamptz IS NULL OR created_at < $6)"
+    ordering=order_by(sort_by,sort_dir,{k:k for k in ('id','kind','business','amount','available_delta','frozen_delta','balance_after','frozen_after','created_at')},'created_at')
+    args=(current(request)['id'],business,kind,q,begin,until)
+    with db.transaction() as tx:
+        tx.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        summary=tx.one(cte+"SELECT count(*) AS total,coalesce(sum(amount) FILTER(WHERE kind IN ('topup','redeem')),0) AS credit,coalesce(sum(-amount) FILTER(WHERE kind='charge'),0) AS spent,coalesce(sum(greatest(frozen_delta,0)) FILTER(WHERE kind='freeze'),0) AS held,coalesce(sum(greatest(available_delta,0)) FILTER(WHERE kind IN ('unfreeze','refund')),0) AS returned,coalesce(sum(amount) FILTER(WHERE kind='adjustment'),0) AS adjusted,coalesce(sum(amount) FILTER(WHERE kind IN ('invite_reward','invite_reversal')),0) AS reward,coalesce(sum(amount),0) AS net"+where,*args)
+        rows=tx.all(cte+'SELECT *'+where+' ORDER BY '+ordering+' LIMIT $7 OFFSET $8',*args,page_size,(page-1)*page_size)
+    return list_result(rows if admin_projection else project_ledger(rows,current(request)),summary.pop('total'),page,page_size,summary=summary)
+
+
+@router.get('/wallet/ledger')
+def ledger(request:Request,q:str='',business:str='',kind:str='',start:str='',end:str='',page:int=1,page_size:int=10,sort_by:str='created_at',sort_dir:str='desc'):
+    return ledger_page(request,q,business,kind,start,end,page,page_size,sort_by,sort_dir)
+
+
+@router.get('/wallet/recharges')
+def recharges(request:Request,q:str='',source:str='',status:str='',page:int=1,page_size:int=10,sort_by:str='created_at',sort_dir:str='desc'):
+    pagination(page,page_size)
+    require(len(q)<=200 and source in ('','manual','redeem') and status in ('','pending','approved','rejected','cancelled'),'充值筛选无效')
+    cte=RECHARGE_QUERY.rsplit(' SELECT * FROM history',1)[0]
+    where=" FROM history WHERE ($2='' OR source=$2) AND ($3='' OR status=$3) AND ($4='' OR related ILIKE '%'||$4||'%' OR description ILIKE '%'||$4||'%')"
+    ordering=order_by(sort_by,sort_dir,{k:k for k in ('source','status','amount','available_delta','frozen_delta','balance_after','created_at')},'created_at')
+    args=(current(request)['id'],source,status,q)
+    with db.transaction() as tx:
+        tx.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        total=tx.scalar(cte+' SELECT count(*)'+where,*args)
+        rows=tx.all(cte+' SELECT *'+where+' ORDER BY '+ordering+' LIMIT $5 OFFSET $6',*args,page_size,(page-1)*page_size)
+    return list_result(rows,total,page,page_size)
+
+
 @router.post('/topups')
 async def topup(request: Request):
     v=await body(request);amount=v.get('amount');proof=v.get('proof','')
@@ -125,9 +169,13 @@ async def redeem(request: Request):
 
 
 @router.get('/keys')
-def keys(request: Request):
+def keys(request:Request,q:str='',status:str='',page:int=1,page_size:int=10,sort_by:str='created_at',sort_dir:str='desc'):
+    pagination(page,page_size);require(len(q)<=200 and status in ('','active','revoked'),'密钥筛选无效')
     user_id=current(request)['id']
-    return {'items':db.all('SELECT id,name,prefix,revoked,last_used,created_at,(secret_enc IS NOT NULL AND NOT revoked) AS copyable FROM api_keys WHERE user_id=$1 ORDER BY created_at DESC',user_id)}
+    where=" FROM api_keys WHERE user_id=$1 AND ($2='' OR name ILIKE '%'||$2||'%' OR prefix ILIKE '%'||$2||'%') AND ($3='' OR revoked=($3='revoked'))"
+    ordering=order_by(sort_by,sort_dir,{k:k for k in ('name','prefix','revoked','last_used','created_at')},'created_at')
+    rows=db.all('SELECT id,name,prefix,revoked,last_used,created_at,(secret_enc IS NOT NULL AND NOT revoked) AS copyable'+where+' ORDER BY '+ordering+' LIMIT $4 OFFSET $5',user_id,q,status,page_size,(page-1)*page_size)
+    return list_result(rows,db.scalar('SELECT count(*)'+where,user_id,q,status),page,page_size)
 
 
 @router.post('/keys')

@@ -1,3 +1,4 @@
+from .listing import page_rows
 """Managed subscription regions, with immutable per-order currency snapshots."""
 import re
 from fastapi import APIRouter, Depends, Request
@@ -75,7 +76,7 @@ def validate(value):
 
 
 @router.get('/regions')
-def listing():
+def listing(page:int=1,page_size:int|None=None,q:str='',status:str='',sort_by:str='sort',sort_dir:str='asc'):
     from . import country_pool
     cfg=country_pool.settings();current=country_pool.mode()
     pool_codes={r['code'] for r in cfg['countries']}
@@ -90,6 +91,12 @@ def listing():
         available=row['code'] in pool_codes if current=='country_pool' else manual_template or row['code'] in manual_codes
         if current=='national_pool':available=row['code'] in national_codes or 'GLOBAL' in national_codes
         rows.append(dict(row,proxy_available=available,flow_supported=supported,pool_supported=row['code'] in pool_codes))
+    if page_size is not None:
+        require(status in ('','enabled','disabled','missing','unavailable'),'地区状态无效')
+        all_index=[{'code':r['code'],'enabled':r['enabled']} for r in rows]
+        rows=[r for r in rows if (not status or (not r['currency'] if status=='missing' else not r['proxy_available'] if status=='unavailable' else r['enabled']==(status=='enabled'))) and q.strip().casefold() in (' '.join(str(r.get(k,'')) for k in ('code','name','currency'))).casefold()]
+        data=page_rows(rows,page=page,page_size=page_size,sort_by=sort_by,sort_dir=sort_dir,default='sort',columns={k:(lambda r,k=k:r.get(k)) for k in ('name','code','currency','sort','enabled','proxy_available')})
+        return dict(data,all_index=all_index,filtered_index=[{'code':r['code'],'enabled':r['enabled']} for r in rows],proxy_mode=current,currencies=sorted({r['currency'] for r in country_pool.COUNTRY_REFERENCE.values()}),flow=flow)
     return {'items':rows,'proxy_mode':current,'currencies':sorted({r['currency'] for r in country_pool.COUNTRY_REFERENCE.values()}),'flow':flow}
 
 

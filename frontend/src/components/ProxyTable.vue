@@ -6,8 +6,8 @@ import DataTable from './DataTable.vue'
 import Modal from './Modal.vue'
 import ProxyCooldown from './ProxyCooldown.vue'
 const cooldowns=ref<Row>({});let cooldownTimer:ReturnType<typeof setInterval>|undefined
-const props=defineProps<{rows:Row[];busy:boolean}>()
-const emit=defineEmits<{refresh:[];edit:[Row];remove:[Row]}>()
+const props=defineProps<{rows:Row[];sortBy?:string;sortDir?:string;busy:boolean}>()
+const emit=defineEmits<{sort:[field:string];refresh:[];edit:[Row];remove:[Row]}>()
 const modal=ref(false),title=ref(''),check=ref<Row>({}),error=ref(''),working=ref(false)
 const statusNames:Row={pass:'通过',warn:'需关注',challenge:'遇到验证',fail:'失败'}
 const stabilityNames:Row={stable:'两次出口一致',changed:'两次出口不同',unknown:'暂无法判断'}
@@ -16,7 +16,7 @@ let poll:ReturnType<typeof setTimeout>|undefined,revision=0
 const controller=new AbortController()
 onUnmounted(()=>{revision++;clearTimeout(poll);clearInterval(cooldownTimer);controller.abort()})
 watch(()=>props.rows,rows=>{cooldowns.value=Object.fromEntries(rows.map(r=>[r.id,{cooldown_until:r.cooldown_until,proxy_failures:r.proxy_failures,probe_until:r.probe_until}]))},{immediate:true})
-onMounted(()=>{cooldownTimer=setInterval(async()=>{if(document.visibilityState!=='visible'||props.busy||working.value)return;try{const d=await api('/admin/resources','GET',undefined,{},signal());cooldowns.value=Object.fromEntries(d.items.map((r:Row)=>[r.id,{cooldown_until:r.cooldown_until,proxy_failures:r.proxy_failures,probe_until:r.probe_until}]))}catch{}},15000)})
+onMounted(()=>{cooldownTimer=setInterval(async()=>{if(document.visibilityState!=='visible'||props.busy||working.value)return;try{const d=await api('/admin/resources/status?ids='+encodeURIComponent(props.rows.map(r=>r.id).join(',')),'GET',undefined,{},signal());cooldowns.value=Object.fromEntries(d.items.map((r:Row)=>[r.id,{cooldown_until:r.cooldown_until,proxy_failures:r.proxy_failures,probe_until:r.probe_until}]))}catch{}},15000)})
 const signal=()=>AbortSignal.any([controller.signal,AbortSignal.timeout(12000)])
 async function setGlobal(row:Row){
  if(working.value||props.busy)return;working.value=true
@@ -41,7 +41,7 @@ function close(){modal.value=false;revision++;clearTimeout(poll)}
 function tone(s:string){return s==='pass'?'active':s==='fail'?'failed':'review'}
 </script>
 <template>
-<div class="panel proxy-table"><DataTable :rows="rows" :columns="[{key:'name',label:'代理名称 / 用途'},{key:'endpoint',label:'代理地址'},{key:'country',label:'订阅地区'},{key:'capacity',label:'占用 / 容量'},{key:'cooldown',label:'冷却释放时间'},{key:'last_ip',label:'出口 IP / 地区'},{key:'quality',label:'质量评分'},{key:'openai',label:'OpenAI'},{key:'action',label:'操作'}]">
+<div class="panel proxy-table"><DataTable paged hide-toolbar hide-pagination :searchable="false" :sort-by="sortBy" :sort-dir="sortDir" @sort="$emit('sort',$event)" :rows="rows" :columns="[{key:'name',label:'代理名称 / 用途'},{key:'endpoint',sortKey:false as const,label:'代理地址'},{key:'country',label:'订阅地区'},{key:'capacity',label:'占用 / 容量'},{key:'cooldown',sortKey:'cooldown_until',label:'冷却释放时间'},{key:'last_ip',label:'出口 IP / 地区'},{key:'quality',sortKey:false as const,label:'质量评分'},{key:'openai',sortKey:false as const,label:'OpenAI'},{key:'action',label:'操作'}]">
  <template #name="{row}"><b>{{row.name}}</b><small>{{({iproyal:'IPRoyal',cliproxy:'Cliproxy','1024proxy':'1024','711proxy':'711',other:'其他'} as Row)[row.vendor]||'其他'}} · {{row.ip_mode==='static'?'静态':'动态'}}<template v-if="row.ip_mode==='dynamic'"> · 会话 {{row.session_minutes}} 分钟</template></small><div class="proxy-flags"><span class="badge">{{row.failover_priority?`备用 ${row.failover_priority}`:'主用'}}</span><span v-if="row.is_global" class="badge active"><Globe2 :size="12"/>全局代理</span><span v-if="!row.enabled" class="badge disabled">已停用</span><span v-else-if="!row.is_global" class="muted small">已启用</span></div></template>
  <template #endpoint="{row}"><code class="proxy-endpoint">{{row.endpoint}}</code></template>
  <template #country="{row}">{{row.ip_mode==='dynamic'?'按订单国家自动匹配':regionLabel(row.country)}}</template>

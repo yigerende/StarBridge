@@ -62,23 +62,26 @@
     {
       "path": "internal/store/refund_auto_release.go",
       "source_sha256": "8761ff33306555447f385f8f8ea450234486accd2ba9f7998564daeeb237d95a",
-      "sha256": "8761ff33306555447f385f8f8ea450234486accd2ba9f7998564daeeb237d95a"
+      "sha256": "6b6f9cc1caca7fbdfad89cdca87a9b43cbe5364acb6cd7a7815298aba98b7ccc",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
     },
     {
       "path": "internal/store/refund_diagnostics.go",
       "source_sha256": "892271dab4e19d636413203cf97bb2b17c143abd0292905ca83123c3b44558a9",
-      "sha256": "892271dab4e19d636413203cf97bb2b17c143abd0292905ca83123c3b44558a9"
+      "sha256": "dcd526701186deec99c8fb9124ea8176549bb54de5ee8e25430c3467616c315e",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
     },
     {
       "path": "internal/store/refund_execution.go",
       "source_sha256": "a4818dd74885d0221b42fe569249837d869df2a31fbed8191ebea69462901dcc",
-      "sha256": "8ef4bfed8a8c13de5ec0f3d33b8ee4f162ce148f43cffa2b0ff5af27ef06c2b1",
-      "adaptation": "Use unified users and maintenance drain; select durable child primary/backups and cooldown probes, preserve assigned retired resources and original submission checkpoints; waiting child failover cannot block mother-only completion."
+      "sha256": "8d18c5d1817d8305d750311edafc7e540925d025340235dcb4de93b50d00b508",
+      "adaptation": "Use unified users and maintenance drain; select durable child primary/backups and cooldown probes, preserve assigned retired resources and original submission checkpoints; waiting child failover cannot block mother-only completion. Shared scheduler lock excludes teams and children reserved by administrator management; original runtime protocol unchanged. Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-12 reviewed resource recovery and child proxy boundary integration"
     },
     {
       "path": "internal/store/refund_invite_recovery.go",
       "source_sha256": "1dfb621a0698badad25b9d318975ad34135ff8408306192d4ad6b108158758bf",
-      "sha256": "1dfb621a0698badad25b9d318975ad34135ff8408306192d4ad6b108158758bf"
+      "sha256": "1ac99c4dc537b9eaedbbd0f9de3876c27fdec006bf101a7f2062a07637dafc31",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
     },
     {
       "path": "internal/store/refund_login_result.go",
@@ -88,12 +91,14 @@
     {
       "path": "internal/store/refund_monitor.go",
       "source_sha256": "ca561ae87a3f0154ab0130cfc23a2ecb80678ad548e9682cbb95505b31aab81e",
-      "sha256": "ca561ae87a3f0154ab0130cfc23a2ecb80678ad548e9682cbb95505b31aab81e"
+      "sha256": "4eeb28400d5778b828e8e87d90bf4899eeb87156ba6b10dcc5c328c1974d07c9",
+      "adaptation": " Administrator paginated read model with explicit allowed ordering and 500-row limit."
     },
     {
       "path": "internal/store/refund_mother_failover.go",
       "source_sha256": "35b490721607cb1c4198c84bf9b11226890737d6144c5e093e353544fe6d9e73",
-      "sha256": "35b490721607cb1c4198c84bf9b11226890737d6144c5e093e353544fe6d9e73"
+      "sha256": "51aec611831ee3695dcde205a155670f10fc98920538d6aec0647e3a7d5c9239",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
     },
     {
       "path": "internal/store/refund_personal_plan_view.go",
@@ -103,7 +108,8 @@
     {
       "path": "internal/store/refund_plan_fallback.go",
       "source_sha256": "de1a9f1696addd24c95995bff8ac7690dac2d5447c77c14ed0f41961a6b9c54a",
-      "sha256": "de1a9f1696addd24c95995bff8ac7690dac2d5447c77c14ed0f41961a6b9c54a"
+      "sha256": "bf3515e24de07973e804f01f47cf88583b84dd1150bf5a4bd70d916b6f4945c5",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
     },
     {
       "path": "internal/store/refund_public.go",
@@ -113,19 +119,20 @@
     {
       "path": "internal/store/refund_recovery.go",
       "source_sha256": "a726c1f1912a79d0adc885df45c52d10990acea87d07b27e8da95be1b9422963",
-      "sha256": "3592d81613efa7cd1f47bc64c4b7ef5e4ee5c9beac86ef7fbed3dd3709eaed7d",
-      "adaptation": "After original lease fencing, mark explicitly attributed child transport failures for cooldown and next-attempt proxy selection; existing phase, retry budgets and unknown-submission verification remain authoritative."
+      "sha256": "73ddb31201d9c3e22f71b43df317eec5b2dc7f451903721c287780d1835170c4",
+      "adaptation": "After original lease fencing, mark explicitly attributed child transport failures for cooldown and next-attempt proxy selection; existing phase, retry budgets and unknown-submission verification remain authoritative. Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
     },
     {
       "path": "internal/store/refund_settings.go",
       "source_sha256": "0e510a8592ad24e48db15e9bf4ce6795d582e48a40548db2959839c66216bf26",
-      "sha256": "9dcacb55c6ae5e58df0ed78e9da0c49fa1679c01fb89d937f147abe1109242b6",
-      "adaptation": "Unified administrator resource deletion, mother/child eligibility, ordered child backup configuration, and readiness. Retain private assigned resource rows."
+      "sha256": "5c15bb4fbcd78fa04605c817452320ae110654100e355cdb54f7f7576bb8b3f0",
+      "adaptation": "Unified administrator resource deletion, mother/child eligibility, ordered child backup configuration, and readiness. Retain private assigned resource rows. Block conflicting credential/identity edits and mother deletion during management; clear credential refresh metadata on replacement. Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
     },
     {
       "path": "internal/store/refund_timeline.go",
       "source_sha256": "46ce9a30cb8077b4f3203aa5cd187b8a6dd46573d37faa92a95688a473bbe1a2",
-      "sha256": "46ce9a30cb8077b4f3203aa5cd187b8a6dd46573d37faa92a95688a473bbe1a2"
+      "sha256": "7c84d1977ec77d5173eaaba5e13a09add92892221f0f92154e7495bbfa8831ae",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
     },
     {
       "path": "internal/store/refund_workspace_observation.go",
@@ -146,7 +153,8 @@
     {
       "path": "runtime/diagnostics.py",
       "source_sha256": "da898b3792390743d86fecf84ca3eefcf977251398329f33a397edc328e26e0c",
-      "sha256": "da898b3792390743d86fecf84ca3eefcf977251398329f33a397edc328e26e0c"
+      "sha256": "ef49e1ca6ed0fdfbe40a22af2cee186c9c59f7b4f00239db0d2a43898096bc83",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
     },
     {
       "path": "runtime/manager_oauth/PORT.md",
@@ -161,7 +169,8 @@
     {
       "path": "runtime/manager_oauth/adapter.py",
       "source_sha256": "150de9d8d659f7da5b8ff8fb242ebf36c00d799519da58c9fa22c865251ffd3b",
-      "sha256": "150de9d8d659f7da5b8ff8fb242ebf36c00d799519da58c9fa22c865251ffd3b"
+      "sha256": "9f6b8cd53703e390482eac63471078475d43dbff9d79d8e523cc189436f68a69",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
     },
     {
       "path": "runtime/manager_oauth/bridge.py",
@@ -226,7 +235,8 @@
     {
       "path": "runtime/refund_runner.py",
       "source_sha256": "3319f0b871c973a13f140bbb07bdcf6d1a07752b4d7d6aa3edb11f6c33e9a947",
-      "sha256": "3319f0b871c973a13f140bbb07bdcf6d1a07752b4d7d6aa3edb11f6c33e9a947"
+      "sha256": "972af69b20783766b424ed588bf80d41fb2693f8e9db39c2634d2ea4ec8b9bf5",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
     },
     {
       "path": "runtime/requirements.txt",
@@ -261,7 +271,8 @@
     {
       "path": "runtime/test_member_completion.py",
       "source_sha256": "fa3730269e923cee8fcfc1531297b9c156e72d6505740b542bac0757bfed10dc",
-      "sha256": "fa3730269e923cee8fcfc1531297b9c156e72d6505740b542bac0757bfed10dc"
+      "sha256": "d687c1c75e54656cbe0e32894dd3a736a2618dc869cbe7724ce07807f71c8ad7",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
     },
     {
       "path": "runtime/test_merge_v2.py",
@@ -271,7 +282,8 @@
     {
       "path": "runtime/test_password_failure.py",
       "source_sha256": "5172e27d3513332d828a70acac0ee45bc5f22e0490971fe03b656e4122f6cc2b",
-      "sha256": "5172e27d3513332d828a70acac0ee45bc5f22e0490971fe03b656e4122f6cc2b"
+      "sha256": "e99db3052a55aa4e1cf1737858a393e694ab068af7e28a56cd254ae67879fd7b",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
     },
     {
       "path": "runtime/test_personal_plan_observation.py",
@@ -296,7 +308,8 @@
     {
       "path": "runtime/test_refund_transport.py",
       "source_sha256": "4acced7257bad4658b9d1386a3b02222a5847945ecaf5e6a1ed0ae0dc43a3c53",
-      "sha256": "4acced7257bad4658b9d1386a3b02222a5847945ecaf5e6a1ed0ae0dc43a3c53"
+      "sha256": "cd7bc0fde17357cb976896e16232e55999a0f08d10167843238431787ca12ec1",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
     },
     {
       "path": "runtime/test_resource_probe.py",
@@ -317,8 +330,8 @@
       "path": "internal/store/store.go",
       "source_path": "internal/store/store.go",
       "source_sha256": "103b019b0310cbeca74a06d30ba9d0f30a2d6c53c85ad178d9011b8944b5831f",
-      "sha256": "74666cc0f14d36534bde422cd97c75386ce80cb8be4f1f1ad220118ede4bfa1e",
-      "adaptation": "Extract refund admission/read/transaction primitives; use shared StarBridge user status, balance, ledger deltas, audit and refund idempotency table. No legacy users, wallets or notification center."
+      "sha256": "97b4df3b97b598e522b9d628a164502b410efa88e8ed37ee9950b5cb6ddc875b",
+      "adaptation": "Extract refund admission/read/transaction primitives; use shared StarBridge user status, balance, ledger deltas, audit and refund idempotency table. No legacy users, wallets or notification center. Customer paginated refund reads with owner scope, stable whitelisted ordering and 500-row limit."
     },
     {
       "path": "internal/refundprovider/account.go",
@@ -326,6 +339,48 @@
       "source_sha256": "c3087e8a50283570687cc74ac4270e83eeb11df385ffd1fe0eb1517b5db04522",
       "sha256": "b2273d51b1a6a65d07e875fd1499adf68dfc5ab1f4c4e7a9280c05a6952b3962",
       "adaptation": "Keep only the credential data type needed by the original runner; omit legacy provider HTTP service."
+    },
+    {
+      "path": "internal/store/refund_resources.go",
+      "source_sha256": null,
+      "sha256": "3506c263f6261de4a88e046b7866d1fc25175f24f4ea7b5e037e8c8637ccd770",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-12 reviewed resource recovery and child proxy boundary integration"
+    },
+    {
+      "path": "internal/store/refund_resources_test.go",
+      "source_sha256": null,
+      "sha256": "be287d60f48c26dc9c36248c6fd7ba551c461868bfdf687bd5fc80c5aeb3c75f",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-12 reviewed resource recovery and child proxy boundary integration"
+    },
+    {
+      "path": "runtime/resource_guard.py",
+      "source_sha256": null,
+      "sha256": "56584181b236d1344dbc9fb7d135a50589a15bfcd7afa29e61b977d7376e501f",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
+    },
+    {
+      "path": "runtime/test_resource_guard.py",
+      "source_sha256": null,
+      "sha256": "696aed42f169329bcf57f2bcecc9e62237c0c7d9131105243c20215e3e2dca9a",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
+    },
+    {
+      "path": "integration/runner.py",
+      "source_sha256": null,
+      "sha256": "417bc30fc406475c453ae438941c02dd5a53f6147ca9c82bb9a83f5d956843d6",
+      "adaptation": "StarBridge child transport boundary and isolated regression coverage"
+    },
+    {
+      "path": "integration/test_runner.py",
+      "source_sha256": null,
+      "sha256": "3aad709a8b38febc42be2547d2cf12a366105e995ed571ffe11424eb308cf265",
+      "adaptation": "StarBridge child transport boundary and isolated regression coverage"
+    },
+    {
+      "path": "internal/store/child_proxy_boundary_test.go",
+      "source_sha256": null,
+      "sha256": "6b9c8b9e2d6477a9ae0f0884670937ddfff43f1c524f6b098eeba1ba65fefb77",
+      "adaptation": "StarBridge child transport boundary and isolated regression coverage"
     }
   ]
 }

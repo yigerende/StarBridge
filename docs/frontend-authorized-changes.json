@@ -1,5 +1,5 @@
 {
-  "reason": "2026-11-03：保留原流程配置授权；修复排队提示、账单国家/州及邮箱来源。按用户要求参考 xupay 接入真实技术日志，展示来源、HTTP 状态、耗时、执行轮次与请求诊断；历史记录不补造。自动付款保持关闭。；2026-11-05：按用户要求增加站点功能服务端权限、邮箱注册与重置、邮件设置及管理菜单资源隔离。；2026-11-05：注册账户/用户名文案及账户单个、批量删除管理。；2026-11-05：公告默认展开、自定义菜单含角色隔离、SVG图标、排序及新窗口打开开关。；2026-11-05：品牌与服务站点图标上传、默认序付图标及浏览器标签页/站点品牌同步。；2026-11-05：提链技术日志显示原始安全错误码、Go来源及退出码。；2026-11-06：伙伴计划阶段持续奖励、登录滑动验证及安全开关、后台账户注册时间。",
+  "reason": "2026-11-03：保留原流程配置授权；修复排队提示、账单国家/州及邮箱来源。按用户要求参考 xupay 接入真实技术日志，展示来源、HTTP 状态、耗时、执行轮次与请求诊断；历史记录不补造。自动付款保持关闭。；2026-11-05：按用户要求增加站点功能服务端权限、邮箱注册与重置、邮件设置及管理菜单资源隔离。；2026-11-05：注册账户/用户名文案及账户单个、批量删除管理。；2026-11-05：公告默认展开、自定义菜单含角色隔离、SVG图标、排序及新窗口打开开关。；2026-11-05：品牌与服务站点图标上传、默认序付图标及浏览器标签页/站点品牌同步。；2026-11-05：提链技术日志显示原始安全错误码、Go来源及退出码。；2026-11-06：伙伴计划阶段持续奖励、登录滑动验证及安全开关、后台账户注册时间。；2026-11-12：用户要求全站列表真分页、筛选与表头排序，包含 RecordsTable。",
   "source_files": [
     "frontend/index.html",
     "frontend/package-lock.json",
@@ -16,6 +16,7 @@
     "frontend/src/components/AnnouncementCenter.vue",
     "frontend/src/components/ApiDocs.vue",
     "frontend/src/components/AuthForm.vue",
+    "frontend/src/components/BillingEditor.vue",
     "frontend/src/components/CheckoutLinks.vue",
     "frontend/src/components/ConfigEditor.vue",
     "frontend/src/components/CountryPool.vue",
@@ -40,6 +41,7 @@
     "frontend/src/components/ProgressTrack.vue",
     "frontend/src/components/ProxyTable.vue",
     "frontend/src/components/RechargeTable.vue",
+    "frontend/src/components/RecordsTable.vue",
     "frontend/src/components/RegionPriceSchedule.vue",
     "frontend/src/components/RenewalPage.vue",
     "frontend/src/components/RiskMonitor.vue",
@@ -63,8 +65,7 @@
     "frontend/tests/paymentTraceRows.test.mjs",
     "frontend/tests/priceReference.test.mjs",
     "frontend/tsconfig.json",
-    "frontend/vite.config.ts",
-    "frontend/src/components/BillingEditor.vue"
+    "frontend/vite.config.ts"
   ],
   "checkout_display": "2026-11-03：用户要求排查订阅办理监控中提链地址缺失。仅增加管理员已保存链接的只读投影和展示，不改变付款核心。当前快照不冒充完整分轮历史。",
   "post_payment_alignment": "2026-11-03：按用户要求对齐付款成功后的核实与关闭续费。监控区分付款成功和收尾完成，展示本单出口比对及续费查询；未修改付款前页面逻辑。",

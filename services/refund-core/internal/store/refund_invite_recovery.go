@@ -51,16 +51,12 @@ func finishInviteAuthorizationCleanup(ctx context.Context, tx pgx.Tx, j *RefundJ
 	}
 	// A read-only member probe cannot validate permission to send invitations.
 	// Pause only the exact failed resource; new credentials/proxies remain usable.
-	tag, err := tx.Exec(ctx, `UPDATE refund_mothers m SET enabled=false,updated_at=now()
- FROM refund_proxies p WHERE m.id=$1 AND p.id=m.proxy_id AND m.enabled
- AND m.id||':'||md5(m.secret)||':'||md5(p.secret)=$2`, j.Mother.ID, failedKey)
+	_, err = tx.Exec(ctx, `INSERT INTO refund_resource_health(scope,failures,blocked,next_at,reason,attempt_key)
+ SELECT m.team_id,1,true,now()+interval '300 seconds','mother_invite_auth',$2 FROM refund_mothers m JOIN refund_proxies p ON p.id=m.proxy_id
+ WHERE m.id=$1 AND (m.id||':'||md5(m.secret)||':'||md5(p.secret))=$2
+ ON CONFLICT(scope) DO UPDATE SET blocked=true,next_at=excluded.next_at,reason=excluded.reason,attempt_key=excluded.attempt_key,updated_at=now()`, j.Mother.ID, failedKey)
 	if err != nil {
 		return true, err
-	}
-	if tag.RowsAffected() == 1 {
-		if _, err = tx.Exec(ctx, "INSERT INTO refund_events(refund_id,message,internal) VALUES($1,'母号邀请授权未通过，已暂停该母号接单；成员列表查询成功不代表邀请权限恢复。',true)", j.ID); err != nil {
-			return true, err
-		}
 	}
 	// Use current switch configuration, but retain the failed attempt's version.
 	if err = tx.QueryRow(ctx, "SELECT mother_failover FROM refund_settings WHERE id").Scan(&j.Settings.MotherFailover); err != nil {

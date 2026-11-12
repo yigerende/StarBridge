@@ -15,7 +15,7 @@ test('operator overview opens full records in place; customer keeps summary',asy
   const req=route.request(),url=new URL(req.url()),p=url.pathname;requests.push(p);if(p.endsWith('/activity')){const today=new Date(Date.now()+8*3600000).toISOString().slice(0,10);assert.equal(url.searchParams.get('start'),today);assert.equal(url.searchParams.get('end'),today)}
   if(p==='/'||p.startsWith('/assets/'))return route.fulfill({path:path.join(root,p==='/'?'index.html':p.slice(1))})
   if(!p.startsWith('/api/')&&!p.startsWith('/registration/api/'))return route.fulfill({status:404,body:''})
-  if(req.method()!=='GET'){writes.push(p);return route.fulfill({json:{ok:true}})}
+  if(req.method()!=='GET'&&p!=='/api/announcements/query'){writes.push(p);return route.fulfill({json:{ok:true}})}
   let json={items:[],counts:{},maxParallel:10,available:10}
   if(p==='/api/public')json={site:{name:'星桥'},products:[],countries:[],features:{},announcements:[],registration_enabled:true}
   if(p==='/api/me'||p==='/registration/api/user/v1/me')json={...user,role,navigation:[{id:'activity',path:'/activity',label:'办理总览',group:'main'}]}
@@ -34,13 +34,13 @@ test('operator overview opens full records in place; customer keeps summary',asy
  try{
   const page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message))
   await page.goto('http://127.0.0.1:18970/#/admin/activity');await page.getByRole('button',{name:'查看',exact:true}).first().waitFor()
-  await page.getByRole('button',{name:'下一页',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.activity-records .pagination')?.textContent.includes('2 / 3'))
+  await page.getByRole('button',{name:'下一页',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.activity-records .list-pagination')?.textContent.includes('2 / 6'))
   for(const [index,title,marker] of [[0,'订单详情','已交付 1 / 1'],[1,'订单完整记录','办理阶段'],[2,'代退订单详情','办理流程'],[3,'续费任务完整记录','关闭结果已核实']]){
    await page.getByRole('button',{name:'查看',exact:true}).nth(index).click();const dialog=page.getByRole('dialog',{name:title,exact:true});await dialog.getByText(marker,{exact:false}).first().waitFor()
    if(index===2)await dialog.getByText('mother@example.test',{exact:true}).waitFor();
    assert.equal(new URL(page.url()).hash,'#/admin/activity');assert.equal(await page.getByRole('heading',{name:'订单中心',exact:true}).count(),0)
    for(const width of [1440,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await page.screenshot({path:path.join(output,`${index}-${width}.png`)})}
-   await dialog.getByRole('button',{name:/^关闭(窗口)?$/}).click();await dialog.waitFor({state:'hidden'});assert.match(await page.locator('.activity-records .pagination').innerText(),/2 \/ 3/)
+   await dialog.getByRole('button',{name:/^关闭(窗口)?$/}).click();await dialog.waitFor({state:'hidden'});assert.match(await page.locator('.activity-records .list-pagination').innerText(),/2 \/ 6/)
   }
   assert.ok(!requests.some(p=>['/api/admin/orders','/api/admin/refund/orders','/registration/api/admin/v1/orders'].includes(p)))
   missing=true;await page.getByRole('button',{name:'查看',exact:true}).nth(1).click();await page.getByRole('dialog').getByRole('alert').waitFor();await page.getByRole('dialog').getByRole('button',{name:'关闭窗口'}).click()

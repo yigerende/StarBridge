@@ -64,6 +64,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY services/refund-core/runtime/requirements.txt /tmp/refund-requirements.txt
 RUN pip install --no-cache-dir -r /tmp/refund-requirements.txt
 COPY --chown=app:app services/refund-core/runtime/ ./services/refund-core/runtime/
+COPY --chown=app:app services/refund-core/integration/ ./services/refund-core/integration/
 COPY --from=refunddeps --chown=app:app /build/runtime/manager_oauth/node_modules/ ./services/refund-core/runtime/manager_oauth/node_modules/
 COPY --from=refundcore --chown=app:app /refund-core ./bin/refund-core
 COPY --chown=app:app backend/ ./backend/

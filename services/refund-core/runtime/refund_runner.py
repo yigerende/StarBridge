@@ -21,6 +21,10 @@ class StopProtocol(BaseException):
     pass
 
 
+class TeamSelectionConflict(Exception):
+    pass
+
+
 class NeedsVerification(Exception):
     code = "extra_verification"
 
@@ -64,6 +68,9 @@ class CustomerLogin(WorkspaceObservationMixin, TeamProtocolLogin):
                 error = upstream.LoginFlowError("Login service temporarily unavailable", code="login_upstream_unavailable", status=response.status, retryable=True)
                 error.retry_after_seconds = parse_retry_after(response.headers)
                 raise error
+        if (parsed.path == "/api/accounts/workspace/select" and response.status == 409
+                and not getattr(self, "_selecting_personal_plan", False)):
+            raise TeamSelectionConflict()
         return response
 
     def _finish_chatgpt_login(self, continue_url):
@@ -77,7 +84,16 @@ class CustomerLogin(WorkspaceObservationMixin, TeamProtocolLogin):
             from personal_plan_observation import select_personal_workspace
             return select_personal_workspace(self, referer_url)
         observe(self, "before_team_select")
-        return super().submit_workspace_and_org(referer_url)
+        try:
+            return super().submit_workspace_and_org(referer_url)
+        except TeamSelectionConflict:
+            if not hasattr(self, "mother_check"):
+                raise
+            self.mother_check()
+            try:
+                return super().submit_workspace_and_org(referer_url)
+            except TeamSelectionConflict:
+                raise upstream.LoginFlowError("Team selection conflict", code="team_selection_conflict", status=409, retryable=True) from None
 
     def inspect_login_step(self, step, operation):
         # The generic login client falls back to email OTP when the next URL is
@@ -114,6 +130,7 @@ class CustomerLogin(WorkspaceObservationMixin, TeamProtocolLogin):
 
 class MotherClient:
     def __init__(self, job):
+        self.job = job
         self.mother = job["mother"]
         self.email = job["account"]["email"].casefold()
         self.child_id = job.get("child_user_id") or ""
@@ -128,7 +145,7 @@ class MotherClient:
         proxy = job.get("mother_proxy")
         if not proxy:
             raise UpstreamFailure("proxy_missing")
-        self.session = requests.Session(impersonate="chrome", proxies=upstream._cffi_proxies(proxy))
+        self.session = requests.Session(impersonate="chrome", trust_env=False, proxies=upstream._cffi_proxies(proxy))
         self.headers = {
             "Authorization": "Bearer " + self.mother["access_token"],
             "chatgpt-account-id": self.mother["team_id"],
@@ -139,13 +156,15 @@ class MotherClient:
 
     def call(self, method, suffix, body=None, timeout=60):
         operation = ("member_remove" if method == "DELETE" else "members_read") if suffix.startswith("/users") else ("invite_send" if method == "POST" else ("invite_revoke" if method == "DELETE" else "invites_read"))
+        if suffix == "/__capacity":
+            operation = "capacity"
         started = time.monotonic()
         diagnostics.request_event(operation, "start", side="mother")
         args = {"headers": self.headers, "timeout": timeout, "allow_redirects": False}
         if body is not None:
             args["json"] = body
         try:
-            response = self.session.request(method, self.base + suffix, **args)
+            response = self.session.request(method, ("https://chatgpt.com/backend-api/subscriptions?" + urlencode({"account_id": self.mother["team_id"]})) if suffix == "/__capacity" else self.base + suffix, **args)
         except Exception as exc:
             diagnostics.request_event(operation, "error", side="mother", exc=exc, started=started)
             raise UpstreamFailure("mother_network", network_code=getattr(exc,"code",0)) from None
@@ -155,10 +174,11 @@ class MotherClient:
             raise UpstreamFailure(code, response.status_code, retry_after_seconds=parse_retry_after(response.headers), operation=operation)
         return response
 
-    def find(self, collection):
+    def find(self, collection, all_rows=False):
         # A filtered search can omit a real member. Only an unfiltered, complete
         # roster can establish absence; identify the one target locally.
         offset = 0
+        collected = []
         seen_pages = set()
         # Match Space's live mother-member listing: at most 25 per request.
         page_size = 25
@@ -188,6 +208,7 @@ class MotherClient:
             if items and fingerprint in seen_pages:
                 raise UpstreamFailure("mother_pagination")
             seen_pages.add(fingerprint)
+            collected.extend(items)
             for row in items:
                 email = row.get("email") or row.get("email_address")
                 row_ids = {row[k] for k in ("id", "user_id", "chatgpt_user_id")
@@ -202,7 +223,7 @@ class MotherClient:
                         diagnostics.record({"side": "mother", "stage": "members_read" if collection == "users" else "invites_read",
                                             "event": "failure", "reason": "member_identity_missing"})
                         raise UpstreamFailure("mother_shape")
-                if email_match or id_match:
+                if (email_match or id_match) and not all_rows:
                     diagnostics.membership_result(collection, "found", page, offset + len(items),
                                                   "both" if email_match and id_match else "email" if email_match else "user_id")
                     return row
@@ -213,12 +234,19 @@ class MotherClient:
                 continue
             if has_more is False or total is not None or len(items) < page_size:
                 diagnostics.membership_result(collection, "absent", page, offset)
-                return None
+                return collected if all_rows else None
         raise UpstreamFailure("mother_pagination")
 
     def invite(self):
         # Never clear all ordinary members. Only handle the requested customer.
-        if self.find("users") or self.find("invites"):
+        cached = getattr(self, "_checked_rows", None)
+        if cached is not None:
+            from resource_guard import matches
+            existing = any(matches(self, row) for rows in cached.values() for row in rows)
+            self._checked_rows = None
+        else:
+            existing = self.find("users") or self.find("invites")
+        if existing:
             return
         self.call("POST", "/invites", {
             "email_addresses": [self.email], "flow_id": str(uuid.uuid4()),
@@ -226,12 +254,18 @@ class MotherClient:
             "seat_type": self.mother["seat_type"], "submission_id": str(uuid.uuid4()),
         })
 
-    def preflight(self):
+    def preflight(self, checkpoint=None):
         # Always before the first invitation checkpoint. This GET cannot create
         # an invitation; a failure here is safe to return to the shared queue.
         try:
-            self.find("users")
+            if checkpoint is None:
+                self.find("users")
+            else:
+                from resource_guard import check
+                check(self, checkpoint)
         except UpstreamFailure as exc:
+            if exc.code == "mother_capacity":
+                raise
             code = "mother_preflight_auth" if exc.status == 401 else "mother_preflight_failed"
             raise UpstreamFailure(code, exc.status, exc.network_code, exc.retry_after_seconds) from None
 
@@ -247,8 +281,8 @@ class MotherClient:
         self.call("DELETE", "/users/" + quote(child_id, safe=""))
 
     def confirm_removed(self):
-        if self.find("users") is not None or self.find("invites") is not None:
-            raise UpstreamFailure("cleanup_pending")
+        from resource_guard import confirm_removed
+        confirm_removed(self)
 
     def cleanup_unaccepted(self, child_id):
         row = self.find("users")
@@ -306,7 +340,7 @@ def _execute(job, checkpoint, mother_factory, login_factory, sleep):
             from refund_plan_fallback import execute as fallback
             return fallback(job, checkpoint, mother)
         if step == "assigned" and mode != "cleanup":
-            mother.preflight()
+            mother.preflight(checkpoint)
         if mode == "cleanup" and not accepted:
             checkpoint("cleanup_started")
             mother.cleanup_unaccepted(child_id)
@@ -323,6 +357,8 @@ def _execute(job, checkpoint, mother_factory, login_factory, sleep):
                 "_totp_secret": account["totp_secret"], "proxy": job["child_proxy"],
                 "credential_mode": "chatgpt_at", "configured_login_mode": "password_totp",
                 "selected_login_mode": "password_totp", "allow_sms": False,
+                "_skip_personal_plan_observation": job["settings"].get("query_personal_plan", True) is False,
+                "_transport_attempts": 1 if recovery else 3,
                 "skip_phone_verification": True, "merge_v2": {"team_id": job["mother"]["team_id"],
                     "verification_http_statuses": (job["settings"].get("recovery") or {}).get("verification_http_statuses", [404])},
             }
@@ -349,6 +385,8 @@ def _execute(job, checkpoint, mother_factory, login_factory, sleep):
                 flow = None
                 try:
                     flow = login_factory(job["id"], payload)
+                    from resource_guard import check
+                    flow.mother_check = lambda: check(mother, checkpoint, during_login=True)
                     session = flow.login()
                     if recovery and not job.get("personal_baseline"):
                         from refund_recovery import personal_snapshot, VerificationUnavailable
@@ -359,6 +397,8 @@ def _execute(job, checkpoint, mother_factory, login_factory, sleep):
                             baseline = {"id": "", "state": "unknown"}
                         checkpoint("personal_baseline", {"baseline": baseline})
                     result = flow.submit_export(session)
+                except UpstreamFailure:
+                    raise
                 except NeedsVerification as exc:
                     return {"ok": False, "code": "extra_verification", **diagnostics.failure(exc, "email_verification", flow=flow)}
                 except bridge.DeadAccountError as exc:

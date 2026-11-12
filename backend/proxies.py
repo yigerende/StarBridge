@@ -1,3 +1,4 @@
+from .listing import order_by,pagination,result as list_result
 import ipaddress
 import socket
 import time
@@ -56,13 +57,24 @@ def proxy_client(endpoint,timeout=8):
 
 
 @router.get('/resources')
-def resources():
+def resources(q:str='',status:str='',vendor:str='',page:int=1,page_size:int|None=None,sort_by:str='created_at',sort_dir:str='asc'):
     from .manual_proxy_sessions import session_minutes
-    rows=db.all('SELECT '+FIELDS+',endpoint_enc FROM resources ORDER BY created_at')
+    require(len(q)<=200 and status in ('','enabled','disabled','cooling') and vendor in ('','iproyal','cliproxy','1024proxy','711proxy','other'),'代理筛选无效')
+    where=" FROM resources WHERE ($1='' OR name ILIKE '%'||$1||'%' OR country ILIKE '%'||$1||'%') AND ($2='' OR ($2='enabled' AND enabled) OR ($2='disabled' AND NOT enabled) OR ($2='cooling' AND cooldown_until>now())) AND ($3='' OR vendor=$3)"
+    ordering=order_by(sort_by,sort_dir,{k:k for k in ('name','country','vendor','capacity','cooldown_until','last_ip','created_at','enabled','failover_priority')},'created_at')
+    if page_size is not None:pagination(page,page_size)
+    rows=db.all('SELECT '+FIELDS+',endpoint_enc'+where+' ORDER BY '+ordering+(' LIMIT $4 OFFSET $5' if page_size is not None else ''),q,status,vendor,*((page_size,(page-1)*page_size) if page_size is not None else ()))
     for row in rows:
         row['endpoint']=decrypt(row.pop('endpoint_enc'))
         row['session_minutes']=session_minutes(row,row['endpoint'])
-    return {'items':rows}
+    return list_result(rows,db.scalar('SELECT count(*)'+where,q,status,vendor),page,page_size) if page_size is not None else {'items':rows}
+
+
+@router.get('/resources/status')
+def resource_status(ids:str=''):
+    selected=ids.split(',') if ids else []
+    require(len(selected)<=500 and all(1<=len(v)<=80 for v in selected),'资源列表无效')
+    return {'items':db.all('SELECT id,cooldown_until,proxy_failures,probe_until FROM resources WHERE id=ANY($1)',selected)}
 
 
 @router.post('/resources')

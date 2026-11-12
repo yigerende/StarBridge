@@ -3,6 +3,8 @@ from . import db
 from .common import *
 from .product_ids import internal_id, public_id
 from .product_availability import visible_products, require_product_flow
+from .listing import pagination,order_by,page_rows
+from datetime import timedelta
 
 router=APIRouter(prefix='/api',dependencies=[Depends(member)])
 SPEND="""SELECT l.user_id,l.order_id,GREATEST(0,-sum(l.amount))::bigint AS spent FROM ledger l JOIN orders o ON o.id=l.order_id AND o.user_id=l.user_id WHERE o.status='succeeded' AND ((l.kind='charge' AND l.amount<0) OR (l.kind='refund' AND l.amount>0)) GROUP BY l.user_id,l.order_id"""
@@ -110,16 +112,45 @@ def me(request: Request):
     return result
 
 
-@router.get('/membership')
-@router.get('/v1/membership')
-def membership(request: Request):
-    m=membership_for(current(request)['id'])
-    products=visible_products(db.all('SELECT id,name,description,fee,enabled FROM products ORDER BY sort'),config('payment').get('subscription_flow'))
+def priced_products(m):
+    products=visible_products(db.all('SELECT id,name,description,fee,enabled FROM products ORDER BY sort,id'),config('payment').get('subscription_flow'))
     for p in products:
         p['member_fee']=fee_for(m,p['fee'],p['id']);p['saved']=p['fee']-p['member_fee'];p['price_source']=fee_source(m,p['id']);p['membership_eligible']=membership_eligible(m,p['id'])
+    return products
+
+
+@router.get('/membership/services')
+def membership_services(request: Request,q:str='',business:str='',status:str='',page:int=1,page_size:int=10,sort_by:str='business',sort_dir:str='asc'):
+    require(business in ('','registration','subscription','refund'),'业务类型无效')
+    require(status in ('','enabled','disabled'),'状态无效')
+    user=current(request);m=membership_for(user['id'])
+    rows=service_quotes(m,priced_products(m),user)
+    rows=[r for r in rows if (not business or r['business']==business) and (not status or r['enabled']==(status=='enabled'))]
+    business_order={'registration':0,'subscription':1,'refund':2}
+    columns={key:lambda r,k=key:r[k] for key in ('name','fee','member_fee','enabled','price_source')}
+    columns['business']=lambda r:business_order[r['business']]
+    return {**page_rows(rows,page=page,page_size=page_size,q=q,sort_by=sort_by,sort_dir=sort_dir,columns=columns,default='business',search=lambda r:r['name']+' '+r.get('description','')), 'discount':m['current']['discount']}
+
+
+@router.get('/membership')
+@router.get('/v1/membership')
+def membership(request: Request,q:str='',start:str='',end:str='',page:int=1,page_size:int=10,sort_by:str='updated_at',sort_dir:str='desc'):
+    pagination(page,page_size);require(len(q)<=200,'搜索内容过长')
+    begin=parsedate(start+'T00:00:00+08:00') if start else None
+    until=parsedate(end+'T00:00:00+08:00')+timedelta(days=1) if end else None
+    require(not begin or not until or until>begin,'日期范围无效')
+    m=membership_for(current(request)['id'])
+    # The website requests its quote list separately; the public API keeps its full contract.
+    include_quotes=not (request.url.path=='/api/membership' and request.query_params.get('include_quotes')=='false')
+    products=priced_products(m) if include_quotes else []
+    for p in products:
         if request.url.path.startswith('/api/v1/'):p['id']=public_id(p['id'])
-    growth=db.all('SELECT o.id,o.product_name,o.updated_at,s.spent FROM ('+SPEND+') s JOIN orders o ON o.id=s.order_id WHERE s.user_id=$1 AND o.deleted_at IS NULL ORDER BY o.updated_at DESC LIMIT 100',current(request)['id'])
-    return {'membership':m,'products':products,'services':service_quotes(m,products,current(request)),'growth':growth,'unit':'cent_R','basis':'membership_growth'}
+    where=' FROM ('+SPEND+") s JOIN orders o ON o.id=s.order_id WHERE s.user_id=$1 AND o.deleted_at IS NULL AND ($2='' OR o.id ILIKE '%'||$2||'%' OR o.product_name ILIKE '%'||$2||'%') AND ($3::timestamptz IS NULL OR o.updated_at >= $3) AND ($4::timestamptz IS NULL OR o.updated_at < $4)"
+    args=(current(request)['id'],q,begin,until)
+    ordering=order_by(sort_by,sort_dir,{'id':'o.id','product_name':'o.product_name','updated_at':'o.updated_at','spent':'s.spent'},'updated_at','o.id')
+    growth=db.all('SELECT o.id,o.product_name,o.updated_at,s.spent'+where+' ORDER BY '+ordering+' LIMIT $5 OFFSET $6',*args,page_size,(page-1)*page_size)
+    total=db.scalar('SELECT count(*)'+where,*args)
+    return {'membership':m,'products':products,'services':service_quotes(m,products,current(request)) if include_quotes else [],'growth':growth,'items':growth,'total':total,'page':page,'page_size':page_size,'has_more':page*page_size<total,'unit':'cent_R','basis':'membership_growth'}
 
 
 @router.get('/quote')

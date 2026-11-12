@@ -90,7 +90,7 @@ class RedeemCodeTests:
         result = self.ok(self.client.post('/api/admin/codes/batch', json={'ids': [code_id, code_id, 'missing-fixture'], 'action': 'export'}))
         self.assertEqual(result['codes'], []); self.assertEqual(result['changed'], 0); self.assertEqual(result['skipped'], 2)
         self.assertEqual(self.ok(self.client.post('/api/admin/codes/batch', json={'ids': [code_id], 'action': 'copy'}))['codes'], [code])
-        for params in [{'page': 0}, {'page_size': 101}, {'status': 'invalid'}]:
+        for params in [{'page': 0}, {'page_size': 501}, {'status': 'invalid'}]:
             self.assertEqual(self.client.get('/api/admin/codes', params=params).status_code, 400)
         # Remove only this fixture's rows, leaving the shared suite untouched.
         db.execute('DELETE FROM redeem_codes WHERE batch=$1', prefix)

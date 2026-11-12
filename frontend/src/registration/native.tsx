@@ -13,11 +13,11 @@ import './native.css'
 
 const Risk=lazy(()=>import('../../../services/gpt-register/web/src/portal/AdminRisk'))
 const Resources=lazy(()=>import('./AdminRegistrationResources'))
-const Accounts=lazy(()=>import('../../../services/gpt-register/web/src/portal/CustomerAccounts'))
-const Orders=lazy(()=>import('../../../services/gpt-register/web/src/portal/CustomerCenter').then(m=>({default:m.CustomerOrderCenter})))
-const Admin=lazy(()=>import('../../../services/gpt-register/web/src/portal/AdminPlatform'))
-const Suppliers=lazy(()=>import('../../../services/gpt-register/web/src/portal/AdminSuppliers'))
-const Finance=lazy(()=>import('../../../services/gpt-register/web/src/portal/AdminFinance'))
+const Accounts=lazy(()=>import('./lists/CustomerAccounts'))
+const Orders=lazy(()=>import('./lists/CustomerCenter').then(m=>({default:m.CustomerOrderCenter})))
+const Admin=lazy(()=>import('./lists/AdminPlatform'))
+const Suppliers=lazy(()=>import('./lists/AdminSuppliers'))
+const Finance=lazy(()=>import('./lists/AdminFinance'))
 type Props={route:string;search?:string;user:Row;pub:Row;financeFilter?:Row;detailId?:string;close?:()=>void;navigate:(path:string)=>void;expired:()=>void}
 const cache=new QueryClient({defaultOptions:{queries:{staleTime:30000,retry:false,refetchOnWindowFocus:false}}})
 let owner=''

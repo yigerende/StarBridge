@@ -1,3 +1,4 @@
+from .listing import order_by,pagination,result as list_result
 """Email delivery and one-time credentials. Never persist plaintext codes or mail bodies."""
 import hashlib
 import hmac
@@ -165,9 +166,12 @@ def send_code_sync(request, background, value):
 
 
 @router.get('/admin/mail/logs', dependencies=[Depends(administrator)])
-def delivery_logs(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100)):
-    return {'items': db.all('SELECT * FROM mail_deliveries ORDER BY created_at DESC,id DESC LIMIT $1 OFFSET $2', page_size, (page-1)*page_size),
-            'total': db.scalar('SELECT count(*) FROM mail_deliveries'), 'page': page, 'page_size': page_size}
+def delivery_logs(page:int=Query(1,ge=1),page_size:int=Query(10,ge=1,le=500),q:str='',purpose:str='',status:str='',sort_by:str='created_at',sort_dir:str='desc'):
+    require(len(q)<=200 and purpose in ('','register','reset','test') and status in ('','sent','pending','failed'),'邮件筛选无效')
+    where=" FROM mail_deliveries WHERE ($1='' OR recipient ILIKE '%'||$1||'%') AND ($2='' OR purpose=$2) AND ($3='' OR status=$3)"
+    ordering=order_by(sort_by,sort_dir,{k:k for k in ('created_at','recipient','purpose','status')},'created_at')
+    rows=db.all('SELECT *'+where+' ORDER BY '+ordering+' LIMIT $4 OFFSET $5',q,purpose,status,page_size,(page-1)*page_size)
+    return list_result(rows,db.scalar('SELECT count(*)'+where,q,purpose,status),page,page_size)
 
 
 @router.post('/admin/mail/test', dependencies=[Depends(administrator)])

@@ -9,7 +9,7 @@ const {
   customer,
   saveCustomer,
 } = require("./risk-store");
-const { monitor } = require("./risk-reports");
+const { monitor } = (process.env.XUFU_INTEGRATION === "1" ? require("../../integration/risk-reports") : require("./risk-reports"));
 const { scan } = require("./risk-scan");
 const adminActions = {
   "PATCH /api/admin/v1/settings": "调整站点与服务配置",

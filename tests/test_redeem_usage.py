@@ -29,7 +29,7 @@ class RedeemUsageTests:
         self.assertEqual(db.scalar('SELECT balance FROM users WHERE id=$1',user),0)
         self.assertEqual(TestClient(self.client.app).get(path).status_code,401)
         _,_,member=self.new_user();self.assertEqual(member.get(path).status_code,403)
-        for params in [{'date':'2026-02-30'},{'period':'hour'},{'q':'a'*201},{'page':0},{'page_size':101}]:
+        for params in [{'date':'2026-02-30'},{'period':'hour'},{'q':'a'*201},{'page':0},{'page_size':501}]:
             self.assertEqual(self.client.get(path,params=params).status_code,400)
         for period,date,start,end in [('week','2021-01-01','2020-12-28','2021-01-04'),('month','2024-02-29','2024-02-01','2024-03-01'),('year','2024-02-29','2024-01-01','2025-01-01')]:
             a,b=report_period(period,date)

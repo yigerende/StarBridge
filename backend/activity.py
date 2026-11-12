@@ -1,3 +1,4 @@
+from .listing import order_by, pagination, result as list_result
 """Paginated registration, subscription and refund history in one snapshot."""
 from datetime import date, datetime, time, timedelta
 from fastapi import APIRouter, Depends, Query, Request
@@ -18,10 +19,10 @@ def renewal_record(id:str):
     return {'task':row,'events':db.all('SELECT status,message,created_at FROM renewal_events WHERE task_id=$1 ORDER BY id',id)}
 
 
-def listing(user,admin=False,search='',business='',state='',start='',end='',page=1,page_size=25,include_admin=True):
+def listing(user,admin=False,search='',business='',state='',start='',end='',page=1,page_size=25,include_admin=True,sort_by='created_at',sort_dir='desc'):
     require(len(search)<=200 and business in ('','registration','subscription','refund'),'筛选条件无效')
     require(state in ('','active','completed','partial','attention','failed','cancelled'),'状态筛选无效')
-    require(1<=page<=1000000 and page_size in (10,25,50,100),'分页参数无效')
+    require(1<=page<=1000000 and 1<=page_size<=500,'分页参数无效')
     try:
         first=date.fromisoformat(start) if start else None
         last=date.fromisoformat(end) if end else None
@@ -31,6 +32,7 @@ def listing(user,admin=False,search='',business='',state='',start='',end='',page
         until=datetime.combine(last+timedelta(days=1),time(),ZONE) if last else None
     except (TypeError,ValueError):require(False,'日期格式无效')
     pattern='%'+search.strip().replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%'
+    ordering=order_by(sort_by,sort_dir,{k:k for k in ('title','business','email','owner','created_at','updated_at','state','settled','frozen')},'created_at','business,id')
     flags=capabilities(user)
     with db.transaction() as q:
         q.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
@@ -68,7 +70,7 @@ def listing(user,admin=False,search='',business='',state='',start='',end='',page
         args=(user['id'],include_admin,business,state,begin,until,pattern,page_size,(page-1)*page_size)
         result=q.one(cte+"SELECT (SELECT to_jsonb(s) FROM ("+aggregate+") s) AS summary,"+
           "(SELECT coalesce(jsonb_agg(s),'[]') FROM (SELECT business,count(*) AS total,count(*) FILTER(WHERE state='active') AS active,COALESCE(sum(settled),0) AS settled FROM enriched GROUP BY business) s) AS businesses,"+
-          "(SELECT coalesce(jsonb_agg(s),'[]') FROM (SELECT * FROM enriched ORDER BY created_at DESC,business,id DESC LIMIT $8 OFFSET $9) s) AS items",*args)
+          "(SELECT coalesce(jsonb_agg(s),'[]') FROM (SELECT * FROM enriched ORDER BY "+ordering+" LIMIT $8 OFFSET $9) s) AS items",*args)
         order_timing.activity(result['items'],q)
         for row in result['items']:
             row['href']=destination('/admin/orders' if admin else '/orders',row['business'],order_id=row['id']) if admin or flags['orders'] else None
@@ -90,11 +92,11 @@ def listing(user,admin=False,search='',business='',state='',start='',end='',page
 @router.get('/activity')
 @router.get('/v1/activity')
 def customer_activity(request:Request,q:str='',business:str='',state:str='',start:str='',end:str='',
-                      page:int=Query(1,ge=1,le=1000000),page_size:int=Query(25)):
-    return listing(current(request),search=q,business=business,state=state,start=start,end=end,page=page,page_size=page_size)
+                      page:int=Query(1,ge=1,le=1000000),page_size:int=Query(25),sort_by:str='created_at',sort_dir:str='desc'):
+    return listing(current(request),search=q,business=business,state=state,start=start,end=end,page=page,page_size=page_size,sort_by=sort_by,sort_dir=sort_dir)
 
 
 @admin_router.get('/activity')
 def admin_activity(request:Request,q:str='',business:str='',state:str='',start:str='',end:str='',
-                   page:int=Query(1,ge=1,le=1000000),page_size:int=Query(25),include_admin:bool=True):
-    return listing(current(request),admin=True,search=q,business=business,state=state,start=start,end=end,page=page,page_size=page_size,include_admin=include_admin)
+                   page:int=Query(1,ge=1,le=1000000),page_size:int=Query(25),include_admin:bool=True,sort_by:str='created_at',sort_dir:str='desc'):
+    return listing(current(request),admin=True,search=q,business=business,state=state,start=start,end=end,page=page,page_size=page_size,include_admin=include_admin,sort_by=sort_by,sort_dir=sort_dir)

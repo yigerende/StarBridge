@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import {ref,computed,onMounted,onUnmounted} from 'vue'
+import {ref,computed,onMounted,onUnmounted,watch} from 'vue'
 import {Download,RefreshCw,Activity} from 'lucide-vue-next'
 import {api,cash,type Row} from '../lib'
 import BusinessTabs from './BusinessTabs.vue'
 import DataTable from './DataTable.vue'
 import RegistrationPanel from './RegistrationPanel.vue'
+import {rememberList,toggleSort} from '../listState'
+import ListPager from './ListPager.vue'
 import CustomerFinance from './CustomerFinance.vue'
 const props=defineProps<{user:Row;pub:Row}>()
 const emit=defineEmits<{refresh:[];expired:[];navigate:[path:string]}>()
@@ -13,6 +15,11 @@ const initial={start:new Date(Date.parse(today)-29*86400000).toISOString().slice
 const draft=ref({...initial}),filter=ref({...initial}),overview=ref<Row>(),subscription=ref<Row>(),refund=ref<Row>()
 const tab=ref('overview'),customerRevision=ref(0)
 const business=ref<'subscription'|'registration'|'refund'>('registration'),loading=ref(false),error=ref('')
+const page=ref(1),size=ref(10),q=ref(''),sortBy=ref('spent'),sortDir=ref('desc')
+rememberList('admin-finance',{draft,filter,tab,business,page,size,q,sortBy,sortDir})
+function sort(field:string){toggleSort(field,sortBy,sortDir,page)}
+watch([page,size,sortBy,sortDir],()=>void load())
+watch(q,()=>{page.value=1;void load()})
 let controller:AbortController|undefined
 const query=computed(()=>'?'+new URLSearchParams(filter.value))
 const chartMax=computed(()=>Math.max(1,...(overview.value?.trend||[]).flatMap((t:Row)=>[Number(t.credited),Number(t.spent)])))
@@ -27,12 +34,25 @@ async function load(){
  try{
   if(tab.value==='customers'){customerRevision.value++;return}
   if(tab.value==='overview'){const value=await api('/admin/finance/overview'+query.value,'GET',undefined,{},current.signal);if(controller===current)overview.value=value}
-  else if(business.value!=='registration'){const value=await api('/admin/finance'+query.value+'&business='+business.value,'GET',undefined,{},current.signal);if(controller===current){if(business.value==='subscription')subscription.value=value;else refund.value=value}}
+  else if(business.value!=='registration'){
+   const value=await api('/admin/finance'+query.value+'&'+new URLSearchParams({business:business.value,page:String(page.value),page_size:String(size.value),q:q.value,sort_by:sortBy.value,sort_dir:sortDir.value}),'GET',undefined,{},current.signal)
+   if(controller===current){
+    const lastPage=Math.max(1,Math.ceil(Number(value.total||0)/size.value))
+    if(page.value>lastPage){page.value=lastPage;return}
+    if(business.value==='subscription')subscription.value=value;else refund.value=value
+   }
+  }
  }catch(e){if(controller===current&&(e as Error).name!=='AbortError')error.value=(e as Error).message}
  finally{if(controller===current)loading.value=false}
 }
-function apply(){filter.value={...draft.value};void load()}
-function select(value:'subscription'|'registration'|'refund'){business.value=value;void load()}
+function apply(){page.value=1;filter.value={...draft.value};void load()}
+function select(value:'subscription'|'registration'|'refund'){
+ if(business.value!==value){
+  business.value=value;page.value=1
+  if(value==='refund'&&!['email','name','spent','orders'].includes(sortBy.value)){sortBy.value='spent';sortDir.value='desc'}
+ }
+ void load()
+}
 function selectTab(value:string){tab.value=value;void load()}
 onMounted(load);onUnmounted(()=>controller?.abort())
 </script>
@@ -55,12 +75,12 @@ onMounted(load);onUnmounted(()=>controller?.abort())
  </template>
  <CustomerFinance v-else-if="tab==='customers'" :filter="filter" :revision="customerRevision"/>
  <section v-else class="finance-business"><div class="section-heading"><div><h2>业务明细</h2><p class="muted small">按注册、订阅、代退查看服务结算。</p></div></div><BusinessTabs :model-value="business" @update:model-value="select"/>
-  <div v-show="business==='subscription'" class="finance-subscription">
+  <div v-if="business!=='registration'" class="table-toolbar"><input v-model="q" maxlength="200" placeholder="搜索账户或称呼"/></div><div v-show="business==='subscription'" class="finance-subscription">
    <div class="finance-detail-heading"><div><h3>订阅服务消费</h3><p class="muted small">所选期间已结算服务费 <b>{{cash(subscription?.totals.spent)}} 积分</b>；银行卡上游扣款另行结算。</p></div><a class="btn secondary" :href="'/api/admin/finance/export'+query"><Download :size="16"/>导出订阅报表</a></div>
-   <div class="panel"><DataTable :rows="subscription?.users||[]" :columns="[{key:'email',label:'账户'},{key:'name',label:'称呼'},{key:'spent',label:'订阅消费（积分）'},{key:'orders',label:'订阅订单'},{key:'balance',label:'共用可用余额'},{key:'frozen',label:'共用冻结积分'},{key:'fee_override',label:'专属服务单价'}]"><template #spent="{row}">{{cash(row.spent)}}</template><template #balance="{row}">{{cash(Number(row.balance)-Number(row.frozen))}}</template><template #frozen="{row}">{{cash(row.frozen)}}</template><template #fee_override="{row}">{{row.fee_override==null?'按会员等级':cash(row.fee_override)+' 积分'}}</template></DataTable></div>
+   <div class="panel"><DataTable paged hide-toolbar hide-pagination :sort-by="sortBy" :sort-dir="sortDir" @sort="sort" :rows="subscription?.users||[]" :columns="[{key:'email',label:'账户'},{key:'name',label:'称呼'},{key:'spent',label:'订阅消费（积分）'},{key:'orders',label:'订阅订单'},{key:'balance',label:'共用可用余额'},{key:'frozen',label:'共用冻结积分'},{key:'fee_override',label:'专属服务单价'}]"><template #spent="{row}">{{cash(row.spent)}}</template><template #balance="{row}">{{cash(Number(row.balance)-Number(row.frozen))}}</template><template #frozen="{row}">{{cash(row.frozen)}}</template><template #fee_override="{row}">{{row.fee_override==null?'按会员等级':cash(row.fee_override)+' 积分'}}</template></DataTable><ListPager v-model:page="page" v-model:size="size" :total="(business==='subscription'?subscription:refund)?.total||0" :loading="loading"/></div>
    <p class="muted small finance-note">账户充值与人工调整见统一钱包总览，完整账户明细保留在导出报表中。</p>
   </div>
-  <div v-if="business==='refund'"><div class="finance-detail-heading"><div><h3>代退服务消费</h3><p class="muted small">所选期间已结算服务费 {{cash(refund?.totals.spent)}} 积分，仅计算完成服务的收费。</p></div><a class="btn secondary" :href="'/api/admin/finance/export'+query+'&business=refund'">导出代退报表</a></div><div class="panel"><DataTable :rows="refund?.users||[]" :columns="[{key:'email',label:'账户'},{key:'name',label:'称呼'},{key:'spent',label:'代退消费（积分）'},{key:'orders',label:'代退订单'}]"><template #spent="{row}">{{cash(row.spent)}}</template></DataTable></div></div>
+  <div v-if="business==='refund'"><div class="finance-detail-heading"><div><h3>代退服务消费</h3><p class="muted small">所选期间已结算服务费 {{cash(refund?.totals.spent)}} 积分，仅计算完成服务的收费。</p></div><a class="btn secondary" :href="'/api/admin/finance/export'+query+'&business=refund'">导出代退报表</a></div><div class="panel"><DataTable paged hide-toolbar hide-pagination :sort-by="sortBy" :sort-dir="sortDir" @sort="sort" :rows="refund?.users||[]" :columns="[{key:'email',label:'账户'},{key:'name',label:'称呼'},{key:'spent',label:'代退消费（积分）'},{key:'orders',label:'代退订单'}]"><template #spent="{row}">{{cash(row.spent)}}</template></DataTable><ListPager v-model:page="page" v-model:size="size" :total="refund?.total||0" :loading="loading"/></div></div>
   <RegistrationPanel v-if="business==='registration'" route="/admin/finance" :enabled="pub.registration_enabled===true" :user="props.user" :pub="props.pub" :finance-filter="filter" @refresh="emit('refresh')" @expired="emit('expired')" @navigate="emit('navigate',$event)"/>
  </section>
 </template>

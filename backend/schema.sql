@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS sessions (hash text PRIMARY KEY,user_id text REFERENC
 ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
 ALTER TABLE users DROP CONSTRAINT IF EXISTS users_email_key;
 CREATE UNIQUE INDEX IF NOT EXISTS users_live_email_unique ON users(email) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS users_live_login_name ON users(lower(btrim(name))) WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS api_keys (id text PRIMARY KEY,user_id text NOT NULL REFERENCES users(id),name text NOT NULL,hash text UNIQUE NOT NULL,prefix text NOT NULL,revoked boolean NOT NULL DEFAULT false,last_used timestamptz,created_at timestamptz DEFAULT now());
 ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS secret_enc text;

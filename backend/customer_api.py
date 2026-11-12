@@ -1,3 +1,4 @@
+from .listing import order_by
 """Stable, account-scoped API for customer integrations."""
 from fastapi import APIRouter, Depends, Query, Request
 
@@ -49,16 +50,8 @@ def page_result(items, total, page, page_size):
 
 
 @router.get('/renewals')
-def renewal_list(request: Request, status: str = '', page: int = Query(1, ge=1, le=100000),
-                 page_size: int = Query(50, ge=1, le=200)):
-    require(status in ('', 'queued', 'processing', 'checking', 'disabled', 'no_subscription', 'review'),
-            '续费任务状态无效')
-    user_id = current(request)['id']
-    where = " FROM renewal_tasks WHERE user_id=$1 AND ($2='' OR status=$2)"
-    items = db.all('SELECT ' + renewals.FIELDS + where +
-                   ' ORDER BY created_at DESC,id DESC LIMIT $3 OFFSET $4',
-                   user_id, status, page_size, (page - 1) * page_size)
-    return page_result(items, db.scalar('SELECT count(*)' + where, user_id, status), page, page_size)
+def renewal_list(request:Request,q:str='',status:str='',page:int=Query(1,ge=1,le=100000),page_size:int=Query(50,ge=1,le=500),sort_by:str='created_at',sort_dir:str='desc'):
+    return renewals.tasks(request,q,status,page,page_size,sort_by,sort_dir)
 
 
 @router.get('/renewals/{id}')
@@ -79,24 +72,21 @@ def overview(request: Request):
 
 
 @router.get('/wallet/ledger')
-def ledger(request: Request, page: int = Query(1, ge=1, le=100000),
-           page_size: int = Query(50, ge=1, le=200)):
-    query = wallet.LEDGER_QUERY.replace('LIMIT 300', 'LIMIT $2 OFFSET $3')
-    items = db.all(query, current(request)['id'], page_size, (page - 1) * page_size)
-    wallet.project_ledger(items,current(request))
-    total = db.scalar('SELECT count(*) FROM ledger WHERE user_id=$1', current(request)['id'])
-    return page_result(items, total, page, page_size)
+def ledger(request:Request,q:str='',business:str='',kind:str='',start:str='',end:str='',page:int=Query(1,ge=1,le=100000),page_size:int=Query(50,ge=1,le=500),sort_by:str='created_at',sort_dir:str='desc'):
+    return wallet.ledger_page(request,q,business,kind,start,end,page,page_size,sort_by,sort_dir)
 
 
 @router.get('/topups')
 def topups(request: Request, status: str = '', page: int = Query(1, ge=1, le=100000),
-           page_size: int = Query(50, ge=1, le=200)):
+           page_size: int = Query(50, ge=1, le=500),q:str='',sort_by:str='created_at',sort_dir:str='desc'):
     require(status in ('', 'pending', 'approved', 'rejected', 'cancelled'), '充值状态无效')
-    where = " FROM topups WHERE user_id=$1 AND ($2='' OR status=$2)"
+    require(len(q)<=200,'搜索内容过长')
+    ordering=order_by(sort_by,sort_dir,{k:k for k in ('amount','status','created_at','updated_at')},'created_at')
+    where = " FROM topups WHERE user_id=$1 AND ($2='' OR status=$2) AND ($3='' OR id ILIKE '%'||$3||'%' OR note ILIKE '%'||$3||'%')"
     items = db.all('SELECT id,amount,method,proof,status,note,created_at,updated_at' + where +
-                   ' ORDER BY created_at DESC,id DESC LIMIT $3 OFFSET $4',
-                   current(request)['id'], status, page_size, (page - 1) * page_size)
-    total = db.scalar('SELECT count(*)' + where, current(request)['id'], status)
+                   ' ORDER BY '+ordering+' LIMIT $4 OFFSET $5',
+                   current(request)['id'], status,q,page_size, (page - 1) * page_size)
+    total = db.scalar('SELECT count(*)' + where, current(request)['id'], status,q)
     return page_result(items, total, page, page_size)
 
 

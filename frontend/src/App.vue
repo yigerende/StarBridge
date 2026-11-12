@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {setSubscriptionRegions} from './lib'
+import {setListOwner} from './listState'
 import {onMounted,onUnmounted,ref,computed,defineAsyncComponent,watch} from 'vue'
 import {Wallet,LayoutDashboard,ShieldCheck,LogOut,Menu,X,ReceiptText,KeyRound,UserRound,Gift,Sparkles,Bell,Settings2,BookOpen,Check,ChevronDown,RotateCcw,Headphones,Workflow} from 'lucide-vue-next'
 import {api,action,toast,cash,notify,type Row} from './lib'
@@ -68,7 +69,7 @@ const visiblePrimary=computed(()=>customerNav.value.filter(n=>n[3]==='main'))
 const visibleTools=computed(()=>customerNav.value.filter(n=>n[3]==='tools'))
 const permitted=computed(()=>routeAllowed(user.value?.features||pub.value.features,route.value))
 const title=computed(()=>customMenus.value.find((item:Row)=>customPage.value&&item.id===customId.value)?.label||customerNav.value.find(n=>n[0]===route.value)?.[1]||'我的空间');const goProfile=()=>{if(enabled('profile'))location.hash='/profile'}
-async function refresh(){user.value=await api('/me')}
+async function refresh(){const value=await api('/me');setListOwner(value.id);user.value=value}
 async function loadPublic(){pub.value=await api('/public');setSubscriptionRegions(pub.value.countries||[]);document.title=`${pub.value.site.name} · ${pub.value.site.english_name}`;const icon=document.querySelector<HTMLLinkElement>('link[rel=icon]');if(icon)icon.href=pub.value.site.icon_url||'/site-icon'}
 async function authenticated(){await refresh();await loadPublic()}
 async function logout(){await action(async()=>{await api('/auth/logout','POST',{});clearDashboardCache();void import('./registration/native').then(m=>m.clearRegistrationCache());user.value=null;location.hash='/home'})}

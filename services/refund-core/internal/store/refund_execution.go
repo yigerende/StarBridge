@@ -47,7 +47,7 @@ func (s *Store) ClaimRefund(ctx context.Context) (*RefundJob, error) {
 		return nil, err
 	}
 	var cfg RefundSettings
-	if err = tx.QueryRow(ctx, "SELECT enabled,max_parallel,login_attempts,retry_seconds,COALESCE(child_proxy_id,''),mother_interval_seconds,recovery,mother_failover,child_proxy_backups,child_proxy_cooldown_seconds FROM refund_settings WHERE id").Scan(&cfg.Enabled, &cfg.MaxParallel, &cfg.LoginAttempts, &cfg.RetrySeconds, &cfg.ChildProxyID, &cfg.MotherIntervalSeconds, &cfg.Recovery, &cfg.MotherFailover, &cfg.ChildProxyBackups, &cfg.ChildProxyCooldownSeconds); err != nil {
+	if err = tx.QueryRow(ctx, "SELECT enabled,max_parallel,login_attempts,retry_seconds,COALESCE(child_proxy_id,''),mother_interval_seconds,recovery,mother_failover,child_proxy_backups,child_proxy_cooldown_seconds,query_personal_plan,resource_recovery FROM refund_settings WHERE id").Scan(&cfg.Enabled, &cfg.MaxParallel, &cfg.LoginAttempts, &cfg.RetrySeconds, &cfg.ChildProxyID, &cfg.MotherIntervalSeconds, &cfg.Recovery, &cfg.MotherFailover, &cfg.ChildProxyBackups, &cfg.ChildProxyCooldownSeconds, &cfg.QueryPersonalPlan, &cfg.ResourceRecovery); err != nil {
 		return nil, err
 	}
 	recoveryEnabled := cfg.Recovery != nil && cfg.Recovery.Enabled
@@ -66,7 +66,10 @@ func (s *Store) ClaimRefund(ctx context.Context) (*RefundJob, error) {
  FROM refund_execution e JOIN refunds r ON r.id=e.refund_id JOIN refund_mothers m ON m.id=e.mother_id JOIN refund_proxies p ON p.id=m.proxy_id
  WHERE NOT e.released AND (r.status IN ('processing','verifying') OR (r.status='attention' AND $2 AND e.recovery_started_at IS NULL AND e.step IN ('submitting','accepted','removing')))
  AND (e.next_attempt_at IS NULL OR e.next_attempt_at<=now()) AND (e.recovery_mode='' OR $2 OR (e.recovery_mode='cleanup' AND e.terminal_code='password_verification_failed')) AND ((e.recovery_mode<>'fallback' AND e.fallback_phase<>'reinvite') OR $3)
- AND (e.lease_until IS NULL OR e.lease_until<now()) AND m.enabled AND p.enabled
+ AND (e.lease_until IS NULL OR e.lease_until<now()) AND (m.enabled OR e.step IN ('accepted','removing') OR e.recovery_mode='cleanup') AND p.enabled
+ AND NOT EXISTS(SELECT 1 FROM refund_mother_leases l WHERE l.team_id=m.team_id AND l.expires_at>now())
+ AND NOT EXISTS(SELECT 1 FROM refund_resource_tasks t WHERE t.team_id=m.team_id AND t.lease_until>now())
+ AND (e.step IN ('accepted','removing') OR e.recovery_mode='cleanup' OR NOT EXISTS(SELECT 1 FROM refund_resource_health h WHERE h.scope='login' AND h.blocked AND (h.next_at>now() OR EXISTS(SELECT 1 FROM refund_execution probe WHERE probe.refund_id=h.probe_id AND NOT probe.released AND probe.lease_until>now()))))
  AND (e.step IN ('accepted','removing') OR e.recovery_mode='cleanup' OR e.child_proxy_switch_pending OR EXISTS(SELECT 1 FROM refund_proxies cp WHERE cp.id=COALESCE(e.child_proxy_id,NULLIF($1,'')) AND cp.enabled))
  AND (NOT e.child_proxy_switch_pending OR e.step IN ('accepted','removing') OR e.recovery_mode='cleanup'
    OR EXISTS(SELECT 1 FROM refund_proxies cp WHERE cp.id=ANY($4::text[]) AND cp.enabled AND cp.deleted_at IS NULL
@@ -138,12 +141,19 @@ func (s *Store) ClaimRefund(ctx context.Context) (*RefundJob, error) {
   SELECT m.id FROM refund_mothers m JOIN refund_proxies p ON p.id=m.proxy_id
   WHERE m.deleted_at IS NULL AND p.deleted_at IS NULL AND m.enabled AND p.enabled AND p.target IN ('both','mother') AND (m.token_expires_at IS NULL OR m.token_expires_at>now())
   AND (m.auth_failed_fingerprint IS NULL OR m.auth_failed_fingerprint<>md5(m.secret))
+  AND NOT EXISTS(SELECT 1 FROM refund_resource_health h WHERE h.scope=m.team_id AND h.blocked AND (h.attempt_key='' OR h.attempt_key=(m.id||':'||md5(m.secret)||':'||md5(p.secret))))
+  AND NOT EXISTS(SELECT 1 FROM refund_resource_tasks t WHERE t.team_id=m.team_id AND t.state IN ('cleaning','review'))
+  AND NOT EXISTS(SELECT 1 FROM refund_mother_leases l WHERE l.team_id=m.team_id AND l.expires_at>now())
+ AND NOT EXISTS(SELECT 1 FROM refund_resource_tasks t WHERE t.team_id=m.team_id AND t.lease_until>now())
   AND NOT ((m.id||':'||md5(m.secret)||':'||md5(p.secret))=ANY(COALESCE(e.failed_mothers,'{}'::text[])))
   AND NOT EXISTS(SELECT 1 FROM refund_execution busy JOIN refund_mothers previous ON previous.id=busy.mother_id WHERE previous.team_id=m.team_id AND NOT busy.released AND busy.mother_released_at IS NULL)
   AND NOT EXISTS(SELECT 1 FROM refund_execution done JOIN refund_mothers previous ON previous.id=done.mother_id WHERE previous.team_id=m.team_id AND COALESCE(done.mother_released_at,done.completed_at)>now()-($1 * interval '1 second'))
   ORDER BY CASE WHEN e.recovery_mode='mother_switch' AND m.id=e.mother_id THEN 1 ELSE 0 END,m.updated_at,m.id LIMIT 1
  ) m ON true
  WHERE r.status='queued' AND u.status='active' AND u.deleted_at IS NULL
+ AND NOT EXISTS(SELECT 1 FROM refund_resource_health h WHERE h.scope='login' AND h.blocked AND (h.next_at>now() OR EXISTS(SELECT 1 FROM refund_execution probe WHERE probe.refund_id=h.probe_id AND NOT probe.released AND probe.lease_until>now())))
+ AND NOT EXISTS(SELECT 1 FROM refund_resource_tasks t WHERE t.email=lower(r.email) AND t.state IN ('cleaning','review','watching'))
+ AND NOT EXISTS(SELECT 1 FROM refund_member_leases l WHERE l.email=lower(r.email) AND l.expires_at>now())
  AND (e.refund_id IS NULL OR ($2 AND e.released AND e.step='assigned' AND e.recovery_mode='mother_switch' AND e.next_attempt_at<=now()))
  AND EXISTS(SELECT 1 FROM refund_proxies cp WHERE cp.id=COALESCE(e.child_proxy_id,NULLIF($3,'')) AND cp.enabled AND ((cp.deleted_at IS NULL AND cp.target IN ('both','child')) OR e.child_proxy_id=cp.id))
  AND NOT EXISTS(SELECT 1 FROM refund_execution other JOIN refunds old ON old.id=other.refund_id
@@ -163,7 +173,7 @@ func (s *Store) ClaimRefund(ctx context.Context) (*RefundJob, error) {
 		}
 		job.Step = "assigned"
 		if _, err = tx.Exec(ctx, `INSERT INTO refund_execution(refund_id,mother_id,child_proxy_id) VALUES($1,$2,NULLIF($3,''))
- ON CONFLICT(refund_id) DO UPDATE SET mother_id=excluded.mother_id,released=false,recovery_mode='',next_attempt_at=NULL
+ ON CONFLICT(refund_id) DO UPDATE SET mother_id=excluded.mother_id,mother_released_at=NULL,released=false,recovery_mode='',next_attempt_at=NULL
  WHERE refund_execution.released AND refund_execution.step='assigned' AND refund_execution.recovery_mode='mother_switch'`, job.ID, job.Mother.ID, childProxyID); err != nil {
 			return nil, err
 		}
@@ -188,6 +198,11 @@ func (s *Store) ClaimRefund(ctx context.Context) (*RefundJob, error) {
 				return nil, err
 			}
 			childProxyID = next
+		}
+	}
+	if job.Step != "accepted" && job.Step != "removing" && job.RecoveryMode != "cleanup" {
+		if _, err = tx.Exec(ctx, "UPDATE refund_resource_health SET next_at=now()+interval '90 seconds',probe_id=$1 WHERE scope='login' AND blocked AND next_at<=now()", job.ID); err != nil {
+			return nil, err
 		}
 	}
 	job.ProxyAttemptStarted = time.Now().UTC()
@@ -240,6 +255,9 @@ func (s *Store) RenewRefundLease(ctx context.Context, j *RefundJob) error {
 		return ErrState
 	}
 	if err == nil {
+		_, err = s.Pool.Exec(ctx, "UPDATE refund_member_leases SET expires_at=now()+interval '90 seconds' WHERE token=$1 AND expires_at>now()", j.LeaseToken)
+	}
+	if err == nil {
 		_, err = s.Pool.Exec(ctx, "UPDATE refund_proxies SET probe_until=now()+interval '90 seconds' WHERE id=$1 AND probe_until IS NOT NULL", j.DiagnosticContext.ChildProxyID)
 	}
 	return err
@@ -249,6 +267,9 @@ type Checkpoint struct {
 	Diagnostics []RefundDiagnostic `json:"-"`
 	Diagnostic  *RefundDiagnostic  `json:"diagnostic,omitempty"`
 	Baseline    *PersonalSnapshot  `json:"baseline,omitempty"`
+	TargetEmail string             `json:"target_email"`
+	TargetID    string             `json:"target_id"`
+	TargetKind  string             `json:"target_kind"`
 	Method      string             `json:"method"`
 	TeamID      string             `json:"team_id"`
 	UserID      string             `json:"user_id"`
@@ -262,6 +283,11 @@ func (s *Store) RefundCheckpoint(ctx context.Context, j *RefundJob, c Checkpoint
 		return err
 	}
 	defer tx.Rollback(ctx)
+	if c.Method == "resource_remove" {
+		if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(718374023)"); err != nil {
+			return err
+		}
+	}
 	if _, err = tx.Exec(ctx, "SELECT id FROM users WHERE id=$1 FOR UPDATE", j.UserID); err != nil {
 		return err
 	}
@@ -285,6 +311,12 @@ func (s *Store) RefundCheckpoint(ctx context.Context, j *RefundJob, c Checkpoint
 			return err
 		}
 	}
+	if handled, e := resourceCheckpoint(ctx, tx, j, c, step); handled || e != nil {
+		if e != nil {
+			return e
+		}
+		return tx.Commit(ctx)
+	}
 	if strings.HasPrefix(c.Method, "fallback_") {
 		if err = planFallbackCheckpoint(ctx, tx, j, c, step); err != nil {
 			return err
@@ -293,6 +325,20 @@ func (s *Store) RefundCheckpoint(ctx context.Context, j *RefundJob, c Checkpoint
 	}
 	next, message := "", ""
 	switch c.Method {
+	case "child_proxy_network_failure":
+		if c.Diagnostic == nil || !childProxyNetworkFailure(*c.Diagnostic) {
+			return ErrState
+		}
+		failureJob := *j
+		if err = tx.QueryRow(ctx, "SELECT child_proxy_cooldown_seconds FROM refund_settings WHERE id").Scan(&failureJob.Settings.ChildProxyCooldownSeconds); err != nil {
+			return err
+		}
+		if err = recordChildProxyFailure(ctx, tx, &failureJob, *c.Diagnostic); err != nil {
+			return err
+		}
+		// Keep stage, lease, mother and frozen fee intact. Only the scheduler
+		// selects the next child proxy after this attempt ends or its lease dies.
+		return tx.Commit(ctx)
 	case "merge_v2_verify":
 		if step != "submitting" || c.Diagnostic == nil || c.Diagnostic.Code != "export_verification_required" || !j.Settings.Recovery.RequiresResultVerification(c.Diagnostic.HTTPStatus) {
 			return ErrState
@@ -370,7 +416,16 @@ func (s *Store) RefundCheckpoint(ctx context.Context, j *RefundJob, c Checkpoint
 		if _, err = tx.Exec(ctx, "INSERT INTO refund_events(refund_id,message,internal) VALUES($1,'本次资源已确认清理。',true)", j.ID); err != nil {
 			return err
 		}
+		if err = finishResources(ctx, tx, j, true, false, step); err != nil {
+			return err
+		}
 		if handled, e := finishInviteAuthorizationCleanup(ctx, tx, j, step); handled || e != nil {
+			if e != nil {
+				return e
+			}
+			return tx.Commit(ctx)
+		}
+		if handled, e := finishMotherResourceCleanup(ctx, tx, j, step); handled || e != nil {
 			if e != nil {
 				return e
 			}
@@ -402,6 +457,9 @@ func (s *Store) RefundCheckpoint(ctx context.Context, j *RefundJob, c Checkpoint
 		if _, err = tx.Exec(ctx, "UPDATE refund_execution SET fallback_phase='' WHERE refund_id=$1 AND fallback_phase='reinvite'", j.ID); err != nil {
 			return err
 		}
+		if err = armResource(ctx, tx, j, j.Account.Email, j.ChildUserID, "armed"); err != nil {
+			return err
+		}
 		next = "inviting"
 		message = "正在发送团队邀请。"
 	case "invited":
@@ -417,6 +475,9 @@ func (s *Store) RefundCheckpoint(ctx context.Context, j *RefundJob, c Checkpoint
 		next = "login"
 		message = "正在使用密码和 2FA 登录受邀团队。"
 	case "merge_v2_ready":
+		if _, err = tx.Exec(ctx, "DELETE FROM refund_resource_health WHERE scope='login' AND updated_at<$1", j.ProxyAttemptStarted); err != nil {
+			return err
+		}
 		if err = clearChildProxyFailure(ctx, tx, j); err != nil {
 			return err
 		}
@@ -424,6 +485,10 @@ func (s *Store) RefundCheckpoint(ctx context.Context, j *RefundJob, c Checkpoint
 			return ErrState
 		}
 		if _, err = tx.Exec(ctx, "UPDATE refund_execution SET child_user_id=$2 WHERE refund_id=$1", j.ID, c.UserID); err != nil {
+			return err
+		}
+		j.ChildUserID = c.UserID
+		if _, err = tx.Exec(ctx, "UPDATE refund_resource_tasks SET user_id=$2 WHERE refund_id=$1 AND email=lower($3)", j.ID, c.UserID, j.Account.Email); err != nil {
 			return err
 		}
 		next = "ready"
@@ -467,6 +532,12 @@ func (s *Store) RefundCheckpoint(ctx context.Context, j *RefundJob, c Checkpoint
 		}
 		next = "completed"
 		message = "退款服务已完成"
+		if err = finishResources(ctx, tx, j, true, true, step); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, "DELETE FROM refund_resource_health WHERE scope=$1 AND updated_at<$2", j.Mother.TeamID, j.ProxyAttemptStarted); err != nil {
+			return err
+		}
 		if err = transitionTx(ctx, tx, j.UserID, j.ID, "succeeded", message); err != nil {
 			return err
 		}
@@ -583,6 +654,9 @@ func (s *Store) ResumeRefund(ctx context.Context, actor, id, action, note string
 	case "fail_cleaned":
 		if accepted || step == "submitting" {
 			return invalid("本次处理尚未核实，不能直接结束失败")
+		}
+		if err = finishResources(ctx, tx, &RefundJob{ID: id}, true, false, step); err != nil {
+			return err
 		}
 		message = "本次服务未完成，冻结服务费已释放。"
 		if terminalCode == "password_verification_failed" {

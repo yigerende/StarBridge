@@ -21,11 +21,14 @@ def session_response(request, token, hours):
     return result
 
 
-def create_session(request, user_id, verified_hash, verified_email):
+def create_session(request, user_id, verified_hash, verified_email, verified_name=None):
     hours = config('risk').get('session_hours',24)
     with db.transaction() as q:
-        user=q.one('SELECT email,password_hash,status FROM users WHERE id=$1 AND deleted_at IS NULL FOR UPDATE',user_id)
+        user=q.one('SELECT email,name,password_hash,status FROM users WHERE id=$1 AND deleted_at IS NULL FOR UPDATE',user_id)
         require(user and user['status']=='active' and user['password_hash']==verified_hash and user['email']==verified_email,'登录信息已变更，请重新登录',401)
+        if verified_name is not None:
+            matches=q.all('SELECT id FROM users WHERE lower(btrim(name))=$1 AND deleted_at IS NULL LIMIT 2',verified_name)
+            require(len(matches)==1 and matches[0]['id']==user_id and user['name'].strip().lower()==verified_name,'登录信息已变更，请使用邮箱重新登录',401)
         token=insert_session(q,user_id,hours)
     return session_response(request,token,hours)
 
@@ -38,7 +41,14 @@ async def login(request: Request):
 def login_sync(request, v):
     from . import rate_limits
     require(isinstance(v.get('password'),str) and length(v['password'])<=72,'账号或密码不正确',401)
-    user = db.one('SELECT id,password_hash,status,role FROM users WHERE email=$1 AND deleted_at IS NULL',str(v.get('email','')).strip().lower())
+    identifier=str(v.get('email','')).strip().lower()
+    require(1<=length(identifier)<=254,'请填写用户名或邮箱',401)
+    user = db.one('SELECT id,email,password_hash,status,role FROM users WHERE email=$1 AND deleted_at IS NULL',identifier)
+    verified_name=None
+    if user is None:
+        matches=db.all('SELECT id,email,password_hash,status,role FROM users WHERE lower(btrim(name))=$1 AND deleted_at IS NULL LIMIT 2',identifier)
+        if len(matches)==1:
+            user=matches[0];verified_name=identifier
     dummy = '$2b$12$vuCQLWceDWoxSWQG6TLbqep2q5iYtXvwi5ok8gQ9MluCb8FH13H96'
     valid = None
     if user and user['role']=='admin' and user['status']=='active':
@@ -53,8 +63,8 @@ def login_sync(request, v):
     if valid is None:valid=password_matches(v['password'],user['password_hash'] if user else dummy)
     if not user or not valid or user['status'] != 'active':
         event(request,'login_failed','medium','账号或密码校验失败')
-        raise BusinessError('账号或密码不正确，或账户已停用',401)
-    return create_session(request,user['id'],user['password_hash'],str(v.get('email','')).strip().lower())
+        raise BusinessError('账号或密码不正确，或账户已停用；使用称呼无法登录时请改用邮箱',401)
+    return create_session(request,user['id'],user['password_hash'],user['email'],verified_name)
 
 
 @router.post('/auth/logout')

@@ -120,3 +120,28 @@ ALTER TABLE refund_settings ADD COLUMN IF NOT EXISTS child_proxy_backups TEXT[] 
 ALTER TABLE refund_settings ADD COLUMN IF NOT EXISTS child_proxy_cooldown_seconds INTEGER NOT NULL DEFAULT 300 CHECK(child_proxy_cooldown_seconds BETWEEN 30 AND 3600);
 ALTER TABLE refund_execution ADD COLUMN IF NOT EXISTS child_proxy_switch_pending BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE refund_execution ADD COLUMN IF NOT EXISTS child_proxy_switches INTEGER NOT NULL DEFAULT 0;
+
+-- Resource recovery survives order settlement; it never writes wallet entries.
+ALTER TABLE refund_settings ADD COLUMN IF NOT EXISTS query_personal_plan BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE refund_settings ADD COLUMN IF NOT EXISTS resource_recovery JSONB NOT NULL DEFAULT '{"failure_limit":3,"cooldown_seconds":300,"watch_seconds":60,"retry_seconds":30,"slow_retry_seconds":300,"fast_attempts":3,"login_failure_limit":3,"login_window_seconds":60,"login_cooldown_seconds":30}';
+CREATE TABLE IF NOT EXISTS refund_resource_health (
+ scope TEXT PRIMARY KEY, failures INTEGER NOT NULL DEFAULT 0,
+ blocked BOOLEAN NOT NULL DEFAULT false, next_at TIMESTAMPTZ,
+ reason TEXT NOT NULL DEFAULT '', updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS refund_resource_tasks (
+ id TEXT PRIMARY KEY, refund_id TEXT NOT NULL REFERENCES refunds(id),
+ mother_id TEXT NOT NULL REFERENCES refund_mothers(id), team_id TEXT NOT NULL,
+ email TEXT NOT NULL, user_id TEXT NOT NULL DEFAULT '',
+ state TEXT NOT NULL CHECK(state IN ('armed','watching','cleaning','review','done')),
+ attempts INTEGER NOT NULL DEFAULT 0, clean_checks INTEGER NOT NULL DEFAULT 0,
+ next_at TIMESTAMPTZ NOT NULL DEFAULT now(), watch_until TIMESTAMPTZ,
+ lease_token TEXT NOT NULL DEFAULT '', lease_until TIMESTAMPTZ,
+ message TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), UNIQUE(refund_id,team_id,email)
+);
+CREATE INDEX IF NOT EXISTS refund_resource_due ON refund_resource_tasks(next_at) WHERE state NOT IN ('armed','done');
+CREATE INDEX IF NOT EXISTS refund_resource_team ON refund_resource_tasks(team_id,state);
+CREATE INDEX IF NOT EXISTS refund_resource_child ON refund_resource_tasks(email,state);
+ALTER TABLE refund_resource_health ADD COLUMN IF NOT EXISTS attempt_key TEXT NOT NULL DEFAULT '';
+ALTER TABLE refund_resource_health ADD COLUMN IF NOT EXISTS probe_id TEXT NOT NULL DEFAULT '';

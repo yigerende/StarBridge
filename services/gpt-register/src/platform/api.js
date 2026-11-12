@@ -21,7 +21,7 @@ const {
   listLedger,
   search,
   option,
-} = require("./reports");
+} = (process.env.XUFU_INTEGRATION === "1" ? require("../../integration/reports") : require("./reports"));
 const paging = (r) => ({
   limit: integer(Number(r.query.limit || 50), 1, 100, "limit"),
   offset: integer(Number(r.query.offset || 0), 0, 1000000, "offset"),
@@ -31,11 +31,11 @@ const { registerMail } = require("./mail");
 const { registerAdminAccounts } = require("./admin-accounts");
 const { registerRedeemCodes, redeemTransaction } = require("./redeem-codes");
 const { oauthExport, tokenExport } = require("./account-export");
-const { registerCustomerCenter } = require("./customer-center");
+const { registerCustomerCenter } = (process.env.XUFU_INTEGRATION === "1" ? require("../../integration/customer-center") : require("./customer-center"));
 const { availableAccount } = require("./account-retention");
 const { registerAccountDevice } = require("./account-device");
 function registerApi(app, db, orders, crypt) {
-  require("./suppliers").registerSuppliers(app,db);
+  (process.env.XUFU_INTEGRATION === "1" ? require("../../integration/suppliers") : require("./suppliers")).registerSuppliers(app,db);
   registerAccountDevice(app, db, crypt);
   registerMail(app, db, crypt);
   registerAdminAccounts(app, db, crypt);

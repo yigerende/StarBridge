@@ -184,6 +184,15 @@ func projectRefundTimeline(status string, created, now time.Time, accepted, comp
 			continue
 		}
 		switch e.message {
+		case "正在检查母号席位、成员和邀请。":
+			closeQueue(e.at)
+			start("查", e.at)
+		case "母号席位不足，正在检查残留占位。":
+			if i := last("查"); i >= 0 {
+				out.Items[i].Reason = "席位不足，正在检查残留占位"
+			}
+		case "母号检查通过。":
+			finishStage("查", e.at, "已完成", "")
 		case "提交响应需核验实际结果，不重复提交。":
 			finishStage("停", e.at, "待核实", "正在核验实际结果，不重复提交")
 		case "兜底：个人套餐仍为付费，继续核验，不重新提交。":
@@ -268,7 +277,7 @@ func projectRefundTimeline(status string, created, now time.Time, accepted, comp
 			}
 		}
 	}
-	stages := []string{"提", "候", "邀", "登", "团", "停", "移", "结"}
+	stages := []string{"提", "候", "查", "邀", "登", "团", "停", "移", "结"}
 	maxStage := 0
 	for n, stage := range stages {
 		if counts[stage] > 0 && stage != "结" {

@@ -34,6 +34,9 @@ func autoReleaseRefund(ctx context.Context, tx pgx.Tx, j *RefundJob, step string
 	if err := tx.QueryRow(ctx, "SELECT terminal_code,mother_released_at IS NOT NULL,accepted_at IS NOT NULL FROM refund_execution WHERE refund_id=$1", j.ID).Scan(&terminal, &clean, &accepted); err != nil {
 		return err
 	}
+	if err := finishResources(ctx, tx, j, clean, false, step); err != nil {
+		return err
+	}
 	message := autoReleasedMessage
 	if step == "submitting" || accepted {
 		message = autoUnconfirmedMessage
@@ -51,20 +54,6 @@ func autoReleaseRefund(ctx context.Context, tx pgx.Tx, j *RefundJob, step string
 	}
 	if _, err := tx.Exec(ctx, "INSERT INTO refund_events(refund_id,message,internal) VALUES($1,'自动处理已结束，冻结服务费已释放；原始处理结果及清理证据保留。',true)", j.ID); err != nil {
 		return err
-	}
-	if !clean && motherFailure(d) && j.MotherAttemptKey != "" {
-		// Do not disable credentials/proxy replaced by the administrator while
-		// this old attempt was finishing, or a mother already released to new work.
-		tag, err := tx.Exec(ctx, `UPDATE refund_mothers m SET enabled=false,updated_at=now()
- FROM refund_proxies p WHERE m.id=$1 AND p.id=m.proxy_id AND m.enabled
- AND m.id||':'||md5(m.secret)||':'||md5(p.secret)=$2`, j.Mother.ID, j.MotherAttemptKey)
-		if err != nil {
-			return err
-		}
-		if tag.RowsAffected() == 1 {
-			_, err = tx.Exec(ctx, "INSERT INTO refund_events(refund_id,message,internal) VALUES($1,'已确认服务资源请求异常，暂停对应母号接单；其他母号继续调度。',true)", j.ID)
-			return err
-		}
 	}
 	return nil
 }

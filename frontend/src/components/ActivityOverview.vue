@@ -4,6 +4,8 @@ import {Activity,ArrowUpRight,CheckCheck,ChevronLeft,ChevronRight,Clock3,Filter,
 import {api,cash,date,orderLabel,orderTone,type Row} from '../lib'
 import {rangePresets,presetRange} from '../lib/report-period'
 import DataTable from './DataTable.vue'
+import ListPager from './ListPager.vue'
+import {rememberList,toggleSort} from '../listState'
 import Modal from './Modal.vue'
 import SubscriptionRenewal from './SubscriptionRenewal.vue'
 import OrderDuration from './OrderDuration.vue'
@@ -14,25 +16,27 @@ function openRecord(row:Row){if(props.admin)record.value=row;else detail.value=r
 const data=ref<Row>({items:[],summary:{},businesses:[],total:0,show_fees:false}),loading=ref(false),error=ref(''),detail=ref<Row|null>(null)
 const period=ref('today'),initialRange=presetRange('today')
 function selectPeriod(id:string){period.value=id;if(id!=='custom'){const range=presetRange(id);start.value=range.start;end.value=range.end;apply()}}
-const search=ref(''),business=ref(''),state=ref(''),start=ref(initialRange.start),end=ref(initialRange.end),includeAdmin=ref(true),page=ref(1),size=ref(25)
+const search=ref(''),business=ref(''),state=ref(''),start=ref(initialRange.start),end=ref(initialRange.end),includeAdmin=ref(true),page=ref(1),size=ref(10),sortBy=ref('created_at'),sortDir=ref('desc')
 const applied=ref<Row>({}),names:Row={registration:'注册',subscription:'订阅',refund:'代退'}
+rememberList((props.admin?'admin':'customer')+'-activity',{page,size,sortBy,sortDir,search,business,state,start,end,includeAdmin,period,applied})
+function changeSort(field:string){toggleSort(field,sortBy,sortDir,page);void load()}
 const states:Row={active:'进行中',completed:'已完成',partial:'部分完成',attention:'需核实',failed:'未完成',cancelled:'已取消'}
 const businesses=computed(()=>['registration','subscription','refund'].map(id=>({id,...(data.value.businesses.find((r:Row)=>r.business===id)||{total:0,active:0,settled:0})})))
 const pages=computed(()=>Math.max(1,Math.ceil(data.value.total/size.value)))
-const columns=computed(()=>[{key:'record',label:'办理项目'},...(props.admin?[{key:'owner',label:'客户'}]:[]),{key:'progress',label:'当前状态'},...(data.value.show_fees?[{key:'fees',label:'服务费'}]:[]),{key:'duration',label:'总耗时'},{key:'time',label:'办理时间'},{key:'action',label:'详情'}])
+const columns=computed(()=>[{key:'record',sortKey:'title',label:'办理项目'},...(props.admin?[{key:'owner',label:'客户'}]:[]),{key:'progress',sortKey:'state',label:'当前状态'},...(data.value.show_fees?[{key:'fees',sortKey:'settled',label:'服务费'}]:[]),{key:'duration',sortKey:false as const,label:'总耗时'},{key:'time',sortKey:'created_at',label:'办理时间'},{key:'action',label:'详情'}])
 let controller:AbortController|undefined,timer:ReturnType<typeof setInterval>|undefined
 function status(row:Row){if(row.workflow==='renewal')return ({disabled:'已关闭自动续费',no_subscription:'无可关闭订阅',checking:'核实中'} as Row)[row.status]||states[row.state];return row.business==='subscription'?orderLabel(row):row.state==='active'?({queued:'排队中',running:'办理中',processing:'办理中',verifying:'核实中'} as Row)[row.status]||states.active:states[row.state]}
 function tone(row:Row){return row.business==='subscription'&&row.workflow!=='renewal'?orderTone(row):({completed:'succeeded',partial:'review',attention:'review',failed:'failed',cancelled:'cancelled',active:'processing'} as Row)[row.state]}
 async function load(quiet=false){
  controller?.abort();const request=new AbortController();controller=request;if(!quiet)loading.value=true;error.value=''
- try{const query=new URLSearchParams({...applied.value,page:String(page.value),page_size:String(size.value)});const result=await api((props.admin?'/admin':'')+'/activity?'+query,'GET',undefined,{},request.signal);if(controller===request){data.value=result;if(page.value>pages.value){page.value=pages.value;void load()}}}
+ try{const query=new URLSearchParams({...applied.value,page:String(page.value),page_size:String(size.value),sort_by:sortBy.value,sort_dir:sortDir.value});const result=await api((props.admin?'/admin':'')+'/activity?'+query,'GET',undefined,{},request.signal);if(controller===request){data.value=result;if(page.value>pages.value){page.value=pages.value;void load()}}}
  catch(e){if((e as Error).name!=='AbortError'&&controller===request)error.value=(e as Error).message}
  finally{if(controller===request)loading.value=false}
 }
 function apply(){applied.value={q:search.value,business:business.value,state:state.value,start:start.value,end:end.value,...(props.admin?{include_admin:String(includeAdmin.value)}:{})};page.value=1;void load()}
 function reset(){period.value='today';const range=presetRange('today');search.value='';business.value='';state.value='';start.value=range.start;end.value=range.end;includeAdmin.value=true;apply()}
 function selectState(value:string){state.value=value;apply()}
-onMounted(()=>{apply();timer=setInterval(()=>{if(document.visibilityState==='visible'&&!loading.value)void load(true)},30000)})
+onMounted(()=>{applied.value={q:search.value,business:business.value,state:state.value,start:start.value,end:end.value,...(props.admin?{include_admin:String(includeAdmin.value)}:{})};void load();timer=setInterval(()=>{if(document.visibilityState==='visible'&&!loading.value)void load(true)},30000)})
 onUnmounted(()=>{controller?.abort();clearInterval(timer)})
 </script>
 <template>
@@ -58,7 +62,7 @@ onUnmounted(()=>{controller?.abort();clearInterval(timer)})
     <div class="activity-filter-actions"><button class="btn primary" :disabled="loading"><Filter :size="15"/>筛选</button><button type="button" class="btn secondary" :disabled="loading" @click="reset">重置</button></div>
    </form>
    <div class="activity-list-heading"><span>{{loading?'正在读取…':`共 ${data.total} 笔办理`}}</span><span v-if="data.show_fees">已结算 <b>{{cash(data.summary.settled)}}</b> · 冻结 <b>{{cash(data.summary.frozen)}}</b> 积分</span></div>
-   <DataTable :rows="data.items" :columns="columns" :page-size="size" hide-toolbar hide-pagination>
+   <DataTable paged :sort-by="sortBy" :sort-dir="sortDir" @sort="changeSort" :rows="data.items" :columns="columns" :page-size="size" hide-toolbar hide-pagination>
     <template #record="{row}"><div class="activity-record"><span class="activity-business-label">{{names[row.business]}}</span><div><b>{{row.title}}</b><span>{{row.email||`${row.quantity} 个账号 · 已交付 ${row.delivered} 个`}}</span><small class="mono">{{row.id}}</small></div></div></template>
     <template #owner="{row}"><span class="activity-owner">{{row.owner}}</span></template>
     <template #progress="{row}"><span class="badge" :class="tone(row)">{{status(row)}}</span><SubscriptionRenewal :order="row"/><small v-if="row.business==='registration'">已交付 {{row.delivered}} / {{row.quantity}}</small></template>
@@ -67,7 +71,7 @@ onUnmounted(()=>{controller?.abort();clearInterval(timer)})
     <template #duration="{row}"><OrderDuration :order="row"/></template>
     <template #action="{row}"><button class="text-btn" @click="openRecord(row)">查看</button></template>
    </DataTable>
-   <div class="pagination"><label>每页 <select v-model.number="size" aria-label="每页条数" @change="page=1;load()"><option v-for="n in [10,25,50,100]" :key="n" :value="n">{{n}} 条</option></select></label><div><button class="icon-btn" aria-label="上一页" :disabled="loading||page<=1" @click="page--;load()"><ChevronLeft :size="16"/></button><span>{{page}} / {{pages}}</span><button class="icon-btn" aria-label="下一页" :disabled="loading||!data.has_more" @click="page++;load()"><ChevronRight :size="16"/></button></div></div>
+   <ListPager v-model:page="page" v-model:size="size" :total="data.total" :loading="loading" @change="load()"/>
   </section>
   <AdminActivityRecord v-if="admin&&record&&user?.role==='admin'" :record="record" :user="user" :pub="pub||{}" @close="record=null" @refresh="load(true)"/>
   <Modal v-if="detail" title="办理记录" @close="detail=null"><div class="activity-detail-heading"><h3>{{detail.title}}</h3><span class="badge" :class="tone(detail)">{{status(detail)}}</span></div><SubscriptionRenewal :order="detail"/><dl class="activity-detail"><dt>订单号</dt><dd class="mono">{{detail.id}}</dd><template v-if="admin"><dt>客户</dt><dd>{{detail.owner}}</dd></template><dt>办理账号</dt><dd>{{detail.email||`${detail.quantity} 个注册账号`}}</dd><template v-if="detail.business==='registration'"><dt>交付进度</dt><dd>{{detail.delivered}} / {{detail.quantity}}</dd></template><template v-if="data.show_fees"><dt>已结算</dt><dd>{{cash(detail.settled)}} 积分</dd><dt>冻结中</dt><dd>{{cash(detail.frozen)}} 积分</dd></template><dt>总耗时</dt><dd><OrderDuration :order="detail"/></dd><dt>提交时间</dt><dd>{{date(detail.created_at)}}</dd><dt>最近更新</dt><dd>{{date(detail.updated_at)}}</dd></dl><a v-if="detail.href" :href="detail.href" class="btn primary full">查看完整记录<ArrowUpRight :size="16"/></a></Modal>

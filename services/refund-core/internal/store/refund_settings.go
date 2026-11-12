@@ -15,16 +15,18 @@ import (
 )
 
 type RefundSettings struct {
-	ChildProxyBackups         []string                `json:"child_proxy_backups"`
-	ChildProxyCooldownSeconds int                     `json:"child_proxy_cooldown_seconds"`
-	MotherFailover            *MotherFailoverSettings `json:"mother_failover"`
-	Recovery                  *RefundRecoverySettings `json:"recovery"`
-	ChildProxyID              string                  `json:"child_proxy_id"`
-	Enabled                   bool                    `json:"enabled"`
-	MaxParallel               int                     `json:"max_parallel"`
-	LoginAttempts             int                     `json:"max_attempts"`
-	RetrySeconds              int                     `json:"retry_seconds"`
-	MotherIntervalSeconds     int                     `json:"mother_interval_seconds"`
+	QueryPersonalPlan         *bool                     `json:"query_personal_plan"`
+	ResourceRecovery          *ResourceRecoverySettings `json:"resource_recovery"`
+	ChildProxyBackups         []string                  `json:"child_proxy_backups"`
+	ChildProxyCooldownSeconds int                       `json:"child_proxy_cooldown_seconds"`
+	MotherFailover            *MotherFailoverSettings   `json:"mother_failover"`
+	Recovery                  *RefundRecoverySettings   `json:"recovery"`
+	ChildProxyID              string                    `json:"child_proxy_id"`
+	Enabled                   bool                      `json:"enabled"`
+	MaxParallel               int                       `json:"max_parallel"`
+	LoginAttempts             int                       `json:"max_attempts"`
+	RetrySeconds              int                       `json:"retry_seconds"`
+	MotherIntervalSeconds     int                       `json:"mother_interval_seconds"`
 }
 type RefundProxy struct {
 	Target       string         `json:"target"`
@@ -83,7 +85,7 @@ func (s *Store) openSecret(id string, data []byte, value any) error {
 }
 func (s *Store) RefundSettings(ctx context.Context) (RefundSettings, error) {
 	var v RefundSettings
-	err := s.Pool.QueryRow(ctx, "SELECT enabled,max_parallel,login_attempts,retry_seconds,COALESCE(child_proxy_id,''),mother_interval_seconds,recovery,mother_failover,child_proxy_backups,child_proxy_cooldown_seconds FROM refund_settings WHERE id").Scan(&v.Enabled, &v.MaxParallel, &v.LoginAttempts, &v.RetrySeconds, &v.ChildProxyID, &v.MotherIntervalSeconds, &v.Recovery, &v.MotherFailover, &v.ChildProxyBackups, &v.ChildProxyCooldownSeconds)
+	err := s.Pool.QueryRow(ctx, "SELECT enabled,max_parallel,login_attempts,retry_seconds,COALESCE(child_proxy_id,''),mother_interval_seconds,recovery,mother_failover,child_proxy_backups,child_proxy_cooldown_seconds,query_personal_plan,resource_recovery FROM refund_settings WHERE id").Scan(&v.Enabled, &v.MaxParallel, &v.LoginAttempts, &v.RetrySeconds, &v.ChildProxyID, &v.MotherIntervalSeconds, &v.Recovery, &v.MotherFailover, &v.ChildProxyBackups, &v.ChildProxyCooldownSeconds, &v.QueryPersonalPlan, &v.ResourceRecovery)
 	return v, err
 }
 func (s *Store) ProviderReady(ctx context.Context) bool {
@@ -97,6 +99,11 @@ func (s *Store) ProviderReady(ctx context.Context) bool {
 func (s *Store) SetRefundRuntimeAvailable(v bool) { s.runtimeReady.Store(v) }
 func (s *Store) RefundRuntimeAvailable() bool     { return s.runtimeReady.Load() }
 func (s *Store) SaveRefundSettings(ctx context.Context, actor string, v RefundSettings) error {
+	if v.ResourceRecovery != nil {
+		if err := v.ResourceRecovery.Validate(); err != nil {
+			return err
+		}
+	}
 	if v.ChildProxyCooldownSeconds == 0 {
 		v.ChildProxyCooldownSeconds = 300
 	}
@@ -184,7 +191,7 @@ func (s *Store) SaveRefundSettings(ctx context.Context, actor string, v RefundSe
 			return invalid("请先配置并启用母号与代理")
 		}
 	}
-	_, err = tx.Exec(ctx, "UPDATE refund_settings SET enabled=$1,max_parallel=$2,login_attempts=$3,retry_seconds=$4,child_proxy_id=NULLIF($5,''),mother_interval_seconds=$6,recovery=COALESCE($7::jsonb,recovery),mother_failover=COALESCE($8::jsonb,mother_failover),child_proxy_backups=$9,child_proxy_cooldown_seconds=$10,updated_at=now() WHERE id", v.Enabled, v.MaxParallel, v.LoginAttempts, v.RetrySeconds, v.ChildProxyID, v.MotherIntervalSeconds, v.Recovery, v.MotherFailover, v.ChildProxyBackups, v.ChildProxyCooldownSeconds)
+	_, err = tx.Exec(ctx, "UPDATE refund_settings SET enabled=$1,max_parallel=$2,login_attempts=$3,retry_seconds=$4,child_proxy_id=NULLIF($5,''),mother_interval_seconds=$6,recovery=COALESCE($7::jsonb,recovery),mother_failover=COALESCE($8::jsonb,mother_failover),child_proxy_backups=$9,child_proxy_cooldown_seconds=$10,query_personal_plan=COALESCE($11,query_personal_plan),resource_recovery=COALESCE($12::jsonb,resource_recovery),updated_at=now() WHERE id", v.Enabled, v.MaxParallel, v.LoginAttempts, v.RetrySeconds, v.ChildProxyID, v.MotherIntervalSeconds, v.Recovery, v.MotherFailover, v.ChildProxyBackups, v.ChildProxyCooldownSeconds, v.QueryPersonalPlan, v.ResourceRecovery)
 	if err == nil {
 		err = audit(ctx, tx, actor, "refund.settings", "settings", v)
 	}
@@ -364,6 +371,18 @@ func (s *Store) SaveRefundMother(ctx context.Context, actor string, v RefundMoth
 		if err != nil {
 			return "", err
 		}
+		var managed bool
+		var pendingResources bool
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM refund_resource_tasks WHERE mother_id=$1 AND state<>'done')`, v.ID).Scan(&pendingResources); err != nil {
+			return "", err
+		}
+		reserved = reserved || pendingResources
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM refund_mother_leases WHERE team_id=$1 AND expires_at>now())`, team).Scan(&managed); err != nil {
+			return "", err
+		}
+		if managed && (team != v.TeamID || email != v.Email || seat != v.SeatType || proxy != v.ProxyID || v.AccessToken != "" || v.RefreshToken != "") {
+			return "", invalid("母号有管理任务，请等待操作结束再更换身份、凭据或代理")
+		}
 		if reserved && (team != v.TeamID || email != v.Email || seat != v.SeatType) {
 			return "", invalid("母号有未结束任务，不能更换身份、团队或席位")
 		}
@@ -389,6 +408,9 @@ func (s *Store) SaveRefundMother(ctx context.Context, actor string, v RefundMoth
 		if err == nil {
 			_, err = tx.Exec(ctx, "UPDATE refund_mothers SET refresh_secret=$2 WHERE id=$1", v.ID, secret)
 		}
+	}
+	if err == nil && (v.AccessToken != "" || v.RefreshToken != "") {
+		_, err = tx.Exec(ctx, "UPDATE refund_mothers SET management_json='{}',last_refreshed_at=NULL,refresh_attempt_at=NULL WHERE id=$1", v.ID)
 	}
 	if err == nil {
 		err = audit(ctx, tx, actor, "refund.mother.save", v.ID, map[string]any{"name": v.Name, "email": v.Email, "team_id": v.TeamID, "enabled": v.Enabled, "secret_changed": v.AccessToken != "" || v.RefreshToken != ""})
@@ -418,6 +440,15 @@ func (s *Store) DeleteRefundResource(ctx context.Context, actor, kind, id string
 	}
 	// Keep private references for existing work; deletion must not veto history
 	// or interrupt recovery, but new allocations must exclude this resource.
+	if kind == "mother" {
+		var managed bool
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM refund_mothers m WHERE m.id=$1 AND (EXISTS(SELECT 1 FROM refund_mother_leases l WHERE l.team_id=m.team_id AND l.expires_at>now())))`, id).Scan(&managed); err != nil {
+			return err
+		}
+		if managed {
+			return invalid("母号有管理任务，请等待操作结束再删除")
+		}
+	}
 	query := "UPDATE " + table + " SET deleted_at=COALESCE(deleted_at,now()),updated_at=now() WHERE id=$1"
 	tag, err := tx.Exec(ctx, query, id)
 	if err != nil {

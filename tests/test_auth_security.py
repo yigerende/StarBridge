@@ -9,6 +9,39 @@ from backend.common import password_hash,uid,BusinessError
 
 
 class AuthSecurityTests:
+    def test_auth_name_login_is_unique_and_email_takes_precedence(self):
+        name='Bubble-'+uid();user_id,email,_=self.new_user(name)
+        def login(value,password='Test-password-123'):
+            client=TestClient(self.client.app)
+            result=client.post('/api/auth/login',json={'email':value,'password':password})
+            return client,result
+        for value in (name,name.upper(),' '+name+' ',email):
+            client,result=login(value);self.ok(result)
+            self.assertEqual(self.ok(client.get('/api/me'))['id'],user_id)
+        self.assertEqual(login(name,'wrong')[1].status_code,401)
+        other_id,other_email,_=self.new_user(name.lower())
+        self.assertEqual(login(name)[1].status_code,401)
+        self.ok(login(email)[1]);self.ok(login(other_email)[1])
+        db.execute('UPDATE users SET name=$2 WHERE id=$1',other_id,email)
+        client,result=login(email);self.ok(result)
+        self.assertEqual(self.ok(client.get('/api/me'))['id'],user_id)
+        db.execute("UPDATE users SET status='disabled' WHERE id=$1",user_id)
+        self.assertEqual(login(name)[1].status_code,401)
+        db.execute("UPDATE users SET deleted_at=now() WHERE id=$1",user_id)
+        self.assertEqual(login(name)[1].status_code,401)
+
+    def test_auth_name_change_during_password_check_rejects_session(self):
+        name='Before-'+uid();user_id,_,_=self.new_user(name)
+        db.execute('DELETE FROM sessions WHERE user_id=$1',user_id)
+        original=auth.create_session
+        def changed(request,*args):
+            db.execute('UPDATE users SET name=$2 WHERE id=$1',user_id,'After-'+uid())
+            return original(request,*args)
+        with patch.object(auth,'create_session',side_effect=changed):
+            result=TestClient(self.client.app).post('/api/auth/login',json={'email':name,'password':'Test-password-123'})
+        self.assertEqual(result.status_code,401)
+        self.assertEqual(db.scalar('SELECT count(*) FROM sessions WHERE user_id=$1',user_id),0)
+
     def test_auth_login_rechecks_password_before_session(self):
         user_id,email,_=self.new_user()
         create=auth.create_session

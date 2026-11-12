@@ -3,11 +3,18 @@ import {ref,onMounted} from 'vue'
 import {Copy,Gift,RefreshCw} from 'lucide-vue-next'
 import {api,action,copy,cash,date,type Row} from '../lib'
 import DataTable from './DataTable.vue'
+import ListPager from './ListPager.vue'
+import {rememberList,toggleSort} from '../listState'
 const props=defineProps<{user:Row}>()
 const data=ref<Row>({items:[],stats:{},rules:{}}),page=ref(1),busy=ref(false),error=ref('')
 const inviteURL=location.origin+'/?invite='+encodeURIComponent(props.user.invite_code)
+const size=ref(10),sortBy=ref('created_at'),sortDir=ref('desc'),rewardState=ref('')
+const q=ref('')
+rememberList('customer-partners',{page,size,sortBy,sortDir,q,rewardState})
+function changeSort(field:string){toggleSort(field,sortBy,sortDir,page);void load()}
+
 const states:Row={waiting:'等待符合条件的消费',rewarded:'已结算',adjusted:'部分退回',reversed:'已撤回',recovering:'退款奖励待扣回'}
-async function load(){busy.value=true;error.value='';try{data.value=await api('/invites?page='+page.value)}catch(e){error.value=(e as Error).message}finally{busy.value=false}}
+async function load(){busy.value=true;error.value='';try{data.value=await api('/invites?'+new URLSearchParams({page:String(page.value),page_size:String(size.value),q:q.value,state:rewardState.value,sort_by:sortBy.value,sort_dir:sortDir.value}))}catch(e){error.value=(e as Error).message}finally{busy.value=false}}
 onMounted(load)
 </script>
 <template>
@@ -18,7 +25,7 @@ onMounted(load)
  <p v-if="data.stats.pending_recovery" class="alert">原服务费已退款，还有 {{cash(data.stats.pending_recovery)}} 积分奖励待扣回；可用余额充足后自动处理，冻结服务费不受影响。</p>
  <section class="panel partner-rules"><h2>奖励规则</h2><p>通过邀请链接注册即绑定关系，奖励从伙伴注册时间开始计算，阶段内每笔符合条件的消费均参与，只有直接邀请享有奖励，不设多级返利。</p><p>仅活动开启后新建的订阅与注册订单参与，历史订单不补发，已发放奖励保留。下单时锁定比例；订阅生效或注册交付且服务费结算后入账。未成功或仅生成链接不奖励。</p><p>奖励按实际服务费计算；订阅保留两位小数、注册沿用整积分向下取整，不含银行卡订阅费用。服务费退款后按比例撤回，余额不足时保留待扣回金额；积分可用于平台服务费，不支持提现。</p></section>
  <div class="section-heading"><h2>邀请与奖励明细</h2><span class="pill">{{data.total||0}} 位伙伴</span></div>
- <div class="panel"><DataTable :rows="data.items" :searchable="false" hide-pagination :page-size="25" :columns="[{key:'email',label:'伙伴邮箱'},{key:'created_at',label:'加入时间'},{key:'reward_state',label:'奖励状态'},{key:'entitled',label:'有效奖励'},{key:'rewarded_at',label:'结算时间'}]"><template #created_at="{row}">{{date(row.created_at)}}</template><template #reward_state="{row}"><span class="badge">{{states[row.reward_state]}}</span></template><template #entitled="{row}">{{row.entitled==null?'—':cash(row.entitled)+' 积分'}}</template><template #rewarded_at="{row}">{{date(row.rewarded_at)}}</template></DataTable></div>
- <div class="pagination"><span>每页 25 位</span><div><button class="btn secondary" :disabled="page===1||busy" @click="page--;load()">上一页</button><span>{{page}}</span><button class="btn secondary" :disabled="!data.has_more||busy" @click="page++;load()">下一页</button></div></div>
+ <form class="records-filters" @submit.prevent="page=1;load()"><input v-model="q" maxlength="200" placeholder="搜索邮箱" aria-label="搜索邀请记录"/><select v-model="rewardState" aria-label="奖励状态"><option value="">全部奖励状态</option><option v-for="(name,id) in states" :value="id">{{name}}</option></select><button class="btn secondary" :disabled="busy">查询</button></form><div class="panel"><DataTable paged :sort-by="sortBy" :sort-dir="sortDir" @sort="changeSort" :rows="data.items" :searchable="false" hide-pagination :page-size="25" :columns="[{key:'email',label:'伙伴邮箱'},{key:'created_at',label:'加入时间'},{key:'reward_state',label:'奖励状态'},{key:'entitled',label:'有效奖励'},{key:'rewarded_at',label:'结算时间'}]"><template #created_at="{row}">{{date(row.created_at)}}</template><template #reward_state="{row}"><span class="badge">{{states[row.reward_state]}}</span></template><template #entitled="{row}">{{row.entitled==null?'—':cash(row.entitled)+' 积分'}}</template><template #rewarded_at="{row}">{{date(row.rewarded_at)}}</template></DataTable></div>
+ <ListPager v-model:page="page" v-model:size="size" :total="data.total||0" :loading="busy" @change="load"/>
 </template>
 <style scoped>.partner-rules{padding:22px;margin:22px 0}.partner-rules h2{font-size:15px}.partner-rules p{font-size:13px;line-height:1.9;color:var(--muted,#73828f)}.invite-banner>div{min-width:0;flex:1}.copy-field input{min-width:0}@media(max-width:600px){.invite-banner{padding:22px}.invite-banner>svg{display:none}.copy-field{flex-wrap:wrap}.copy-field input{width:100%}.copy-field button{width:100%;justify-content:center}}</style>

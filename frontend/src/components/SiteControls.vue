@@ -2,8 +2,16 @@
 import {computed,onMounted,ref,watch} from 'vue'
 import {Save,Mail,Send,LoaderCircle,RefreshCw,ShieldCheck,SlidersHorizontal} from 'lucide-vue-next'
 import {api,date,notify,type Row} from '../lib'
+import {rememberList,toggleSort} from '../listState'
+import ListPager from './ListPager.vue'
+import SortHeader from './SortHeader.vue'
 const props=defineProps<{group:string;value:Row}>(),emit=defineEmits<{saved:[]}>()
 const form=ref<Row>({}),domains=ref(''),busy=ref(false),error=ref(''),testEmail=ref(''),sending=ref(false),testResult=ref(''),logs=ref<Row[]>([]),logError=ref(''),logLoading=ref(false),page=ref(1),total=ref(0)
+const size=ref(10),q=ref(''),purpose=ref(''),status=ref(''),sortBy=ref('created_at'),sortDir=ref('desc')
+rememberList('mail-logs',{page,size,q,purpose,status,sortBy,sortDir})
+function sort(field:string){toggleSort(field,sortBy,sortDir,page)}
+watch([page,size,sortBy,sortDir],()=>{if(props.group==='mail')void loadLogs()})
+watch([q,purpose,status],()=>{page.value=1;if(props.group==='mail')void loadLogs()})
 watch(()=>props.value,value=>{form.value=JSON.parse(JSON.stringify(value));domains.value=(value.email_domain_whitelist||[]).join('\n')},{immediate:true})
 const sections=[
  {id:'home',title:'工作台',description:'客户首页、业务概览与快捷入口'},
@@ -30,7 +38,7 @@ async function save(){
  try{const payload={...form.value};if(props.group==='security')payload.email_domain_whitelist=domains.value;if(props.group==='mail'){delete payload.ready;delete payload.password_configured}await api('/admin/settings/'+props.group,'PUT',payload);notify('配置已保存');emit('saved')}
  catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
-async function loadLogs(){logLoading.value=true;logError.value='';try{const result=await api('/admin/mail/logs?page='+page.value);logs.value=result.items;total.value=result.total}catch(e){logError.value=(e as Error).message}finally{logLoading.value=false}}
+async function loadLogs(){logLoading.value=true;logError.value='';try{const result=await api('/admin/mail/logs?'+new URLSearchParams({page:String(page.value),page_size:String(size.value),q:q.value,purpose:purpose.value,status:status.value,sort_by:sortBy.value,sort_dir:sortDir.value}));logs.value=result.items;total.value=result.total}catch(e){logError.value=(e as Error).message}finally{logLoading.value=false}}
 async function test(){sending.value=true;testResult.value='';error.value='';try{const result=await api('/admin/mail/test','POST',{email:testEmail.value});testResult.value=result.message}catch(e){error.value=(e as Error).message}finally{sending.value=false;await loadLogs()}}
 onMounted(()=>{if(props.group==='mail')void loadLogs()})
 </script>
@@ -61,7 +69,7 @@ onMounted(()=>{if(props.group==='mail')void loadLogs()})
   </form>
   <template v-if="group==='mail'">
    <section class="mail-test"><h3>测试发送</h3><p class="muted small">使用已保存的配置发送测试邮件，修改配置后请先保存。</p><form class="test-row" @submit.prevent="test"><label>测试收件邮箱<input v-model.trim="testEmail" type="email" required maxlength="254" placeholder="输入你的收件邮箱"/></label><button class="btn secondary" :disabled="sending||busy||!value.ready"><LoaderCircle v-if="sending" class="spinning" :size="16"/><Send v-else :size="16"/>{{sending?'发送中…':'发送测试邮件'}}</button></form><p v-if="testResult" class="callout" role="status">{{testResult}}</p></section>
-   <section class="mail-log"><div class="section-heading"><div><h3>发送记录</h3><p class="muted small">保留最近 90 天记录，不记录验证码或邮件正文。“已发送”表示邮件服务器已接受发送。</p></div><button class="icon-btn bordered" aria-label="刷新发送记录" @click="loadLogs" :disabled="logLoading"><RefreshCw :size="16" :class="{spinning:logLoading}"/></button></div><p v-if="logError" class="alert danger">{{logError}}</p><div class="mail-log-scroll"><table><thead><tr><th>发送时间</th><th>收件邮箱</th><th>用途</th><th>结果</th><th>说明</th></tr></thead><tbody><tr v-for="row in logs" :key="row.id"><td>{{date(row.created_at)}}</td><td>{{row.recipient}}</td><td>{{({register:'注册验证',reset:'密码重置',test:'测试邮件'} as Row)[row.purpose]}}</td><td><span class="badge" :class="row.status==='sent'?'succeeded':row.status==='failed'?'failed':'processing'">{{({sent:'已发送',failed:'发送失败',pending:'发送中'} as Row)[row.status]}}</span></td><td>{{row.detail||'正在发送'}}</td></tr><tr v-if="!logs.length"><td colspan="5" class="muted">{{logLoading?'加载中…':'暂无发送记录'}}</td></tr></tbody></table></div><div class="log-pager"><span class="muted small">共 {{total}} 条 · 第 {{page}} 页</span><button class="btn secondary" :disabled="page<=1||logLoading" @click="page--;loadLogs()">上一页</button><button class="btn secondary" :disabled="page*20>=total||logLoading" @click="page++;loadLogs()">下一页</button></div></section>
+   <section class="mail-log"><div class="section-heading"><div><h3>发送记录</h3><p class="muted small">保留最近 90 天记录，不记录验证码或邮件正文。“已发送”表示邮件服务器已接受发送。</p></div><button class="icon-btn bordered" aria-label="刷新发送记录" @click="loadLogs" :disabled="logLoading"><RefreshCw :size="16" :class="{spinning:logLoading}"/></button></div><p v-if="logError" class="alert danger">{{logError}}</p><div class="table-toolbar"><input v-model="q" placeholder="搜索收件邮箱" maxlength="200"/><select v-model="purpose"><option value="">全部用途</option><option value="register">注册验证</option><option value="reset">密码重置</option><option value="test">测试邮件</option></select><select v-model="status"><option value="">全部结果</option><option value="sent">已发送</option><option value="failed">发送失败</option><option value="pending">发送中</option></select></div><div class="mail-log-scroll"><table><thead><tr><SortHeader label="发送时间" field="created_at" :sort-by="sortBy" :sort-dir="sortDir" @sort="sort"/><SortHeader label="收件邮箱" field="recipient" :sort-by="sortBy" :sort-dir="sortDir" @sort="sort"/><SortHeader label="用途" field="purpose" :sort-by="sortBy" :sort-dir="sortDir" @sort="sort"/><SortHeader label="结果" field="status" :sort-by="sortBy" :sort-dir="sortDir" @sort="sort"/><th>说明</th></tr></thead><tbody><tr v-for="row in logs" :key="row.id"><td>{{date(row.created_at)}}</td><td>{{row.recipient}}</td><td>{{({register:'注册验证',reset:'密码重置',test:'测试邮件'} as Row)[row.purpose]}}</td><td><span class="badge" :class="row.status==='sent'?'succeeded':row.status==='failed'?'failed':'processing'">{{({sent:'已发送',failed:'发送失败',pending:'发送中'} as Row)[row.status]}}</span></td><td>{{row.detail||'正在发送'}}</td></tr><tr v-if="!logs.length"><td colspan="5" class="muted">{{logLoading?'加载中…':'暂无发送记录'}}</td></tr></tbody></table></div><ListPager v-model:page="page" v-model:size="size" :total="total" :loading="logLoading"/></section>
   </template>
  </div>
 </template>

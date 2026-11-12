@@ -194,7 +194,7 @@ class CountryPoolTests:
         from urllib.parse import urlsplit,unquote
         with self.pool_fixture(),self.api_fixture() as (_,client,_):
             proxy,values=self.proxy()
-            values.update(vendor='iproyal',ip_mode='dynamic',capacity=10,endpoint='geo.iproyal.com:12321:fixture:base_country-us_session-original_lifetime-15m')
+            values.update(vendor='iproyal',ip_mode='dynamic',capacity=10,session_minutes=15,endpoint='geo.iproyal.com:12321:fixture:base_country-us_session-original_lifetime-15m')
             self.ok(self.client.put('/api/admin/resources/'+proxy,json=values))
             original=db.scalar("SELECT value FROM settings WHERE key='proxy'")
             db.execute("UPDATE settings SET value=$1 WHERE key='proxy'",dict(original,mode='manual',default_id=proxy))

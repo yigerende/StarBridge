@@ -279,3 +279,14 @@ def customer_prices(request: Request):
             'fx_updated_at': stamp(fx.get('source_updated_at')), 'fx_stale': fx_stale,
             'scheduled': cfg['prices_enabled'], 'price_interval_hours': cfg['price_interval_hours']}
 
+
+
+@router.get('/subscription-prices/list', dependencies=[Depends(member)])
+def price_list(request:Request,plan:str='plus',q:str='',page:int=1,page_size:int=10,sort_by:str='amount_cny',sort_dir:str='asc'):
+    from .listing import page_rows
+    from .common import require
+    require(plan in ('plus','pro','team','team_premium'),'套餐无效')
+    data=customer_prices(request)
+    quotes={r['country']:r for r in data['rows'] if r['plan']==plan}
+    rows=[quotes.get(c['code'],dict(country=c['code'],name=c['name'],currency=c['currency'],plan=plan)) for c in data['countries']]
+    return page_rows(rows,page=page,page_size=page_size,q=q,sort_by=sort_by,sort_dir=sort_dir,default='amount_cny',search=lambda r:' '.join(str(r.get(k,'')) for k in ('name','country','currency')),columns={k:(lambda r,k=k:r.get(k)) for k in ('name','amount','amount_cny','rate_to_cny')})
