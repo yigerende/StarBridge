@@ -19,9 +19,11 @@ RANGES = {
  'proxy': {'request_timeout_seconds':(10,120),'failure_cooldown_seconds':(10,3600),'recovery_interval_seconds':(1,300)}, 'site': {'invite_rate':(0,0)}
 }
 RANGES['payment']['post_payment_delay_seconds'] = (0,MAX_SECONDS)
+RANGES['payment'].update(checkout_restart_limit=(0,5), checkout_restart_delay_seconds=(5,3600))
 from .rate_limits import RANGES as RATE_RANGES, DEFAULTS as RATE_DEFAULTS
 RANGES['risk'].update(RATE_RANGES)
 OPTIONAL = {'site': {'icon','sidebar_default_expanded','telegram_group_url'}, 'proxy': {'global_id','mode','failure_cooldown_seconds','recovery_success_count','recovery_interval_seconds'}, 'payment': {'checkout_flow','subscription_flow','checkout_type','checkout_types','network_restart_limit','post_payment_delay_seconds','cslive_go_visit_return','cslive_go_refresh_before_renewal'}}
+OPTIONAL['payment'].update(('checkout_restart_limit','checkout_restart_delay_seconds'))
 
 
 def validate_config(key, v):
@@ -174,6 +176,8 @@ def settings():
     result['proxy'].setdefault('recovery_success_count',3)
     result['proxy'].setdefault('recovery_interval_seconds',5)
     result['payment'].setdefault('post_payment_delay_seconds', DEFAULT_SECONDS)
+    for name in ('checkout_restart_limit','checkout_restart_delay_seconds'):
+        result['payment'].setdefault(name, DEFAULTS['payment'][name])
     if result['payment'].get('subscription_flow') == 'cslive_go_direct_pay':
         result['payment'].setdefault('checkout_types',dict(DEFAULTS['payment']['checkout_types'])).setdefault('promax','hosted')
     for name in ('cslive_go_visit_return','cslive_go_refresh_before_renewal'):

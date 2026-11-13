@@ -71,6 +71,23 @@ def _restart_country_pool_attempt(q, order_id):
     return True
 
 
+def _restart_checkout_attempt(q, order_id):
+    """Discard pre-payment HTTP context and release only this attempt's proxy.
+
+    A checkout rejection does not establish a network failure. Dynamic manual
+    proxies get a new sticky session without cooling the supplier resource.
+    National inventory keeps its normal per-entry cooldown on release.
+    """
+    from . import manual_proxies, national_proxies
+    refreshed = manual_proxies.restart(q, order_id)
+    if not refreshed:
+        refreshed = _restart_country_pool_attempt(q, order_id)
+    if not refreshed:
+        refreshed = national_proxies.restart_order(q, order_id)
+    q.execute("UPDATE subscription_runs SET checkout_checkpoint_enc='',checkout_url_enc='',checkout_session_id='' WHERE order_id=$1", order_id)
+    return refreshed
+
+
 def handle_failure(order_id, exc):
     """True means retained/requeued: the caller must not release funds or fail it."""
     code = trace.error_code(exc)
@@ -78,7 +95,7 @@ def handle_failure(order_id, exc):
         code = 'network_error'
     with db.transaction() as q:
         row = q.one('SELECT o.status,o.deleted_at,s.paid_at,s.payment_submit_started_at,s.network_retry_count,'
-                    's.checkout_checkpoint_enc FROM orders o JOIN subscription_runs s ON s.order_id=o.id '
+                    's.checkout_checkpoint_enc,s.checkout_restart_count FROM orders o JOIN subscription_runs s ON s.order_id=o.id '
                     'WHERE o.id=$1 FOR UPDATE OF o,s', order_id)
         if not row:
             return False
@@ -103,6 +120,26 @@ def handle_failure(order_id, exc):
             q.execute("INSERT INTO order_events(order_id,stage,message) VALUES($1,'queued','暂无空闲代理，等待资源后继续。')", order_id)
             return True
         cfg = config('payment', q)
+        # Only the typed checkout adapter's HTTP 400 is eligible. A payment
+        # exception or a string containing "400" must never enter this path.
+        if isinstance(exc, CheckoutError) and exc.code == 'http_400' and not row['payment_submit_started_at']:
+            limit = cfg.get('checkout_restart_limit', 2)
+            if row['checkout_restart_count'] >= limit:
+                manual_proxies.release(q, order_id)
+                return False
+            delay = cfg.get('checkout_restart_delay_seconds', 10)
+            count = row['checkout_restart_count'] + 1
+            fresh_proxy = _restart_checkout_attempt(q, order_id)
+            q.execute('UPDATE subscription_runs SET checkout_restart_count=$2,'
+                      "network_retry_at=now()+$3*interval '1 second',updated_at=now() WHERE order_id=$1",
+                      order_id, count, delay)
+            q.execute("UPDATE orders SET status='queued',updated_at=now() WHERE id=$1", order_id)
+            q.execute("INSERT INTO order_events(order_id,stage,message) VALUES($1,'checkout_retry',$2)", order_id,
+                      f'提链返回 HTTP 400，{delay} 秒后重新建立会话、分配代理并提链（第 {count}/{limit} 次重试）。')
+            trace.record('queue', 'waiting', 'checkout_restart_scheduled', order_id=order_id,
+                         diagnostics={'retry_number': count, 'retry_limit': limit, 'retry_delay_seconds': delay,
+                                      'checkout_reused': False, 'proxy_refresh_pending': fresh_proxy}, q=q)
+            return True
         limit = cfg.get('network_restart_limit', 2)
         initialization_retry = (isinstance(exc, CheckoutError) and exc.code == 'device_id_missing'
                                 and not row['checkout_checkpoint_enc'])

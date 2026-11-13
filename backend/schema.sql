@@ -224,6 +224,7 @@ ALTER TABLE subscription_runs ADD CONSTRAINT subscription_runs_subscription_flow
  CHECK (subscription_flow IN ('', 'gener_direct_pay', 'cslive_direct_pay', 'cslive_go_direct_pay', 'cslive_full_go'));
 ALTER TABLE subscription_runs ADD COLUMN IF NOT EXISTS checkout_checkpoint_enc text NOT NULL DEFAULT '';
 ALTER TABLE subscription_runs ADD COLUMN IF NOT EXISTS network_retry_count int NOT NULL DEFAULT 0 CHECK(network_retry_count>=0);
+ALTER TABLE subscription_runs ADD COLUMN IF NOT EXISTS checkout_restart_count int NOT NULL DEFAULT 0 CHECK(checkout_restart_count>=0);
 ALTER TABLE subscription_runs ADD COLUMN IF NOT EXISTS network_retry_at timestamptz NOT NULL DEFAULT now();
 ALTER TABLE subscription_runs ADD COLUMN IF NOT EXISTS payment_submit_started_at timestamptz;
 

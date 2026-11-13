@@ -6,6 +6,32 @@ from backend.common import now
 
 
 class PaymentDelaySettingsTests:
+    def test_checkout_restart_settings_roundtrip_validation_and_permissions(self):
+        original = db.scalar("SELECT value FROM settings WHERE key='payment'")
+        fields = ('checkout_restart_limit', 'checkout_restart_delay_seconds')
+        legacy = {k:v for k,v in original.items() if k not in fields}
+        _, _, member = self.new_user()
+        try:
+            db.execute("UPDATE settings SET value=$1 WHERE key='payment'", legacy)
+            visible = self.ok(self.client.get('/api/admin/settings'))['payment']
+            self.assertEqual([visible[k] for k in fields], [2, 10])
+            self.assertEqual(db.scalar("SELECT value FROM settings WHERE key='payment'"), legacy)
+            for limit, delay in ((0, 5), (2, 17), (5, 3600)):
+                payload = dict(legacy, checkout_restart_limit=limit, checkout_restart_delay_seconds=delay)
+                self.ok(self.client.put('/api/admin/settings/payment', json=payload))
+                visible = self.ok(self.client.get('/api/admin/settings'))['payment']
+                self.assertEqual([visible[k] for k in fields], [limit, delay])
+            self.ok(self.client.put('/api/admin/settings/payment', json=legacy))
+            self.assertEqual(self.ok(self.client.get('/api/admin/settings'))['payment']['checkout_restart_limit'], 5)
+            for key, values in ((fields[0], (-1, 6, True, 1.5, '2', None)), (fields[1], (4, 3601, False, 5.5, '10', None))):
+                for value in values:
+                    self.assertEqual(self.client.put('/api/admin/settings/payment', json=dict(visible, **{key:value})).status_code, 400)
+            self.assertEqual(member.get('/api/admin/settings').status_code, 403)
+            self.assertEqual(member.put('/api/admin/settings/payment', json=visible).status_code, 403)
+        finally:
+            member.close()
+            db.execute("UPDATE settings SET value=$1 WHERE key='payment'", original)
+
     def test_post_payment_delay_settings_defaults_validation_and_older_clients(self):
         original = db.scalar("SELECT value FROM settings WHERE key='payment'")
         legacy = {k:v for k,v in original.items() if k != 'post_payment_delay_seconds'}

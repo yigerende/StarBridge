@@ -71,6 +71,7 @@ CODES = {
     'checkout_failed': '提链失败，请查看原始错误码',
     'device_id_missing': '初始化失败：未获取到设备标识',
     'checkout_retry_scheduled': '未获取到设备标识，已按配置安排初始化重试',
+    'checkout_restart_scheduled': '提链返回 HTTP 400，已安排重新建立会话并提链',
     'checkout_existing_subscription': '账号已有订阅，无法继续提链',
     'checkout_account_unavailable': '账号不存在或不符合套餐要求',
     'checkout_verification_failed': '提链验证未通过，请查看原始错误码',

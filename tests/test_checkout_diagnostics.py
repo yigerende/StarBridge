@@ -9,6 +9,82 @@ from backend.checkout_errors import CheckoutError
 
 
 class CheckoutDiagnosticTests:
+    def install_checkout_retry_proxy(self):
+        from backend.common import encrypt, uid
+        proxy_id = uid()
+        db.execute("INSERT INTO resources(id,name,country,endpoint_enc,vendor,ip_mode,capacity) VALUES($1,'Retry fixture','PH',$2,'1024proxy','dynamic',10)",
+                   proxy_id, encrypt('http://fixture-region-US-sid-old-t-5:password@proxy.invalid:3000'))
+        db.execute("UPDATE settings SET value=value||$1::jsonb WHERE key='proxy'", {'mode':'manual','default_id':proxy_id})
+        return proxy_id
+
+    def test_checkout_400_restarts_then_charges_original_order_once(self):
+        with self.retry_fixture(flow) as job:
+            oid, owner = job['id'], job['user_id']
+            proxy_id = self.install_checkout_retry_proxy()
+            original_billing = job['billing_snapshot']
+            sessions = []
+            try:
+                db.execute('DELETE FROM order_proxy_sessions WHERE order_id=$1', oid)
+                with self.checkout_process({'error_code':'http_400'}) as (process, payment):
+                    for attempt in range(2):
+                        sessions.append(flow._acquire_order_proxy(oid, 'PH', 600))
+                        flow.run_subscription(job)
+                        self.assertEqual(db.scalar('SELECT status FROM orders WHERE id=$1', oid), 'queued')
+                        self.assertIsNone(flow.claim_subscription())
+                        self.assertEqual(db.scalar('SELECT frozen FROM users WHERE id=$1', owner), job['fee'])
+                        self.assertIsNone(db.scalar('SELECT payment_submit_started_at FROM subscription_runs WHERE order_id=$1', oid))
+                        self.assertEqual(db.scalar('SELECT checkout_restart_count FROM subscription_runs WHERE order_id=$1', oid), attempt+1)
+                        self.assertEqual(payment_trace.details(oid)[-1]['code'], 'checkout_restart_scheduled')
+                        job = self.ready_retry(flow, oid)
+                    self.assertEqual(process.call_count, 2)
+                    payment.assert_not_called()
+                sessions.append(flow._acquire_order_proxy(oid, 'PH', 600))
+                self.assertEqual(len(set(sessions)), 3)
+                with self.retry_network(flow) as (generate, stripe, followup):
+                    flow.run_subscription(job)
+                    self.assertEqual(db.scalar('SELECT status FROM orders WHERE id=$1', oid), 'succeeded')
+                    self.assertEqual(generate.call_count, 1)
+                    self.assertEqual(stripe.confirm.call_count, 1)
+                    self.assertEqual(followup.call_count, 1)
+                    flow.run_subscription(job)
+                    self.assertEqual(stripe.confirm.call_count, 1)
+                self.assertEqual(db.scalar('SELECT billing_snapshot FROM subscription_runs WHERE order_id=$1', oid), original_billing)
+                self.assertEqual(db.scalar("SELECT count(*) FROM ledger WHERE order_id=$1 AND kind='freeze'", oid), 1)
+                self.assertEqual(db.scalar("SELECT count(*) FROM ledger WHERE order_id=$1 AND kind='charge'", oid), 1)
+                self.assertEqual(db.scalar("SELECT count(*) FROM ledger WHERE order_id=$1 AND kind='unfreeze'", oid), 0)
+                self.assertEqual(db.scalar('SELECT frozen FROM users WHERE id=$1', owner), 0)
+                self.assertEqual(db.scalar('SELECT balance FROM users WHERE id=$1', owner), 1000000-job['fee'])
+                self.assertEqual(db.scalar('SELECT proxy_failures FROM resources WHERE id=$1', proxy_id), 0)
+            finally:
+                db.execute('UPDATE resources SET enabled=false WHERE id=$1', proxy_id)
+
+    def test_checkout_400_uses_own_config_and_releases_once_when_exhausted(self):
+        for limit in (0, 1, 2):
+            with self.subTest(limit=limit), self.retry_fixture(flow) as job, self.checkout_process({'error_code':'http_400'}) as (process, payment):
+                oid = job['id']
+                proxy_id = self.install_checkout_retry_proxy()
+                try:
+                    db.execute('DELETE FROM order_proxy_sessions WHERE order_id=$1', oid)
+                    db.execute("UPDATE settings SET value=value||$1::jsonb WHERE key='payment'",
+                               {'checkout_restart_limit':limit, 'checkout_restart_delay_seconds':17, 'network_restart_limit':0})
+                    for attempt in range(limit+1):
+                        flow.run_subscription(job)
+                        if attempt<limit:
+                            event = payment_trace.details(oid)[-1]
+                            self.assertEqual(event['diagnostics']['retry_delay_seconds'], 17)
+                            self.assertGreater(db.scalar('SELECT extract(epoch FROM network_retry_at-now()) FROM subscription_runs WHERE order_id=$1', oid), 10)
+                            job = self.ready_retry(flow, oid)
+                    self.assertEqual(process.call_count, limit+1)
+                    payment.assert_not_called()
+                    self.assertEqual(db.scalar('SELECT status FROM orders WHERE id=$1', oid), 'failed')
+                    self.assertEqual(db.scalar('SELECT checkout_restart_count FROM subscription_runs WHERE order_id=$1', oid), limit)
+                    self.assertEqual(db.scalar('SELECT network_retry_count FROM subscription_runs WHERE order_id=$1', oid), 0)
+                    self.assertEqual(db.scalar("SELECT count(*) FROM ledger WHERE order_id=$1 AND kind='unfreeze'", oid), 1)
+                    self.assertEqual(db.scalar("SELECT count(*) FROM ledger WHERE order_id=$1 AND kind='charge'", oid), 0)
+                    self.assertEqual(db.scalar('SELECT frozen FROM users WHERE id=$1', job['user_id']), 0)
+                finally:
+                    db.execute('UPDATE resources SET enabled=false WHERE id=$1', proxy_id)
+
     def test_checkout_device_retry_recovers_without_changing_proxy(self):
         with self.retry_fixture(flow,workflow='link') as job:
             oid=job['id'];binding=db.one('SELECT * FROM order_proxy_sessions WHERE order_id=$1',oid)

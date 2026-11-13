@@ -71,6 +71,20 @@ def acquire_order(q, order_id, country):
     return decrypt(row['endpoint_enc'])
 
 
+def restart_order(q, order_id):
+    """Retire a pre-payment attempt under the caller's order/run row locks."""
+    if not q.scalar("SELECT EXISTS(SELECT 1 FROM order_proxy_sessions WHERE order_id=$1 AND source_mode='national_pool')", order_id):
+        return False
+    q.execute('SELECT pg_advisory_xact_lock($1)', LOCK)
+    saved = q.one("DELETE FROM order_proxy_sessions WHERE order_id=$1 AND source_mode='national_pool' RETURNING resource_id", order_id)
+    if not saved:
+        return False
+    q.execute("UPDATE subscription_country_usage SET in_use=false,released_at=now(),"
+              "cooldown_until=now()+session_minutes*interval '1 minute' "
+              "WHERE id=$1 AND owner_kind='order' AND owner_id=$2 AND in_use", saved['resource_id'], order_id)
+    return True
+
+
 def ensure_order(order_id, q=None):
     if q is None:
         with db.transaction() as tx:
