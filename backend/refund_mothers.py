@@ -95,7 +95,7 @@ def refresh_locked(mother, heartbeat, force=False):
         with db.transaction() as q:
             q.execute('SELECT pg_advisory_xact_lock($1)', LOCK)
             heartbeat()
-            require(q.execute("""UPDATE refund_mothers SET secret=$2,refresh_secret=$3,token_expires_at=$4,
+            require(q.execute("""UPDATE refund_mothers SET secret=$2,refresh_secret=$3,token_expires_at=$4,session_secret=NULL,
               plan_type=$5,last_refreshed_at=now(),management_json=management_json-'refresh_pending',auth_failed_fingerprint=NULL,check_json=NULL,updated_at=now()
               WHERE id=$1 AND secret=$6 AND team_id=$7 AND deleted_at IS NULL""", mother['id'],
               seal_secret('mother:' + mother['id'], result['access_token']),
@@ -172,6 +172,7 @@ def credentials(id: str, request: Request):
     with db.transaction() as q:
         audit(q, request, 'refund.mother.credentials', id, '查看母号凭据')
     return {'email': mother['email'], 'team_id': mother['team_id'],
+            'session': open_secret('mother-session:' + id, mother['session_secret']) if mother['session_secret'] else '',
             'access_token': open_secret('mother:' + id, mother['secret']),
             'refresh_token': open_secret('mother-refresh:' + id, mother['refresh_secret']) if mother['refresh_secret'] else '',
             'expires_at': mother['token_expires_at']}
@@ -190,9 +191,11 @@ async def update_resource(id: str, request: Request):
             require(isinstance(proxy, str) and q.scalar("SELECT EXISTS(SELECT 1 FROM refund_proxies WHERE id=$1 AND deleted_at IS NULL AND enabled AND target IN ('both','mother'))", proxy), '请选择已启用的母号专属代理')
             if proxy != mother['proxy_id']:
                 require(not q.scalar("SELECT EXISTS(SELECT 1 FROM refund_mother_leases WHERE team_id=$1 AND expires_at>now()) OR EXISTS(SELECT 1 FROM refund_execution WHERE mother_id=$2 AND lease_until>now())", mother['team_id'], id), '母号正在执行请求，请等待结束再更换代理', 409)
-                q.execute('UPDATE refund_mothers SET proxy_id=$2,check_json=NULL,updated_at=now() WHERE id=$1', id, proxy)
+                q.execute('UPDATE refund_mothers SET proxy_id=$2,check_json=NULL,failure_reset_at=now(),updated_at=now() WHERE id=$1', id, proxy)
         if 'enabled' in value:
             q.execute('UPDATE refund_mothers SET enabled=$2,updated_at=now() WHERE id=$1', id, value['enabled'])
+            if value['enabled'] and not mother['enabled']:
+                q.execute("UPDATE refund_mothers SET failure_reset_at=now(),auto_disabled_reason='',auto_disabled_at=NULL WHERE id=$1", id)
         audit(q, request, 'refund.mother.resource', id, '更新母号接单状态或专属代理')
     return {'ok': True}
 

@@ -59,6 +59,24 @@ func queueMotherFailover(ctx context.Context, tx pgx.Tx, j *RefundJob, step stri
 	if cfg == nil || !cfg.Enabled || switches >= cfg.MaxSwitches {
 		return autoReleaseRefund(ctx, tx, j, step, d)
 	}
+	if !temporary {
+		// Busy/cooling resources may become available, but an order that has
+		// exhausted every configured usable identity must not queue forever.
+		var remaining bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM refund_mothers m
+ JOIN refund_proxies p ON p.id=m.proxy_id CROSS JOIN refund_execution e
+ WHERE e.refund_id=$1 AND m.deleted_at IS NULL AND p.deleted_at IS NULL
+ AND m.enabled AND p.enabled AND p.target IN ('both','mother')
+ AND (m.token_expires_at IS NULL OR m.token_expires_at>now())
+ AND (m.auth_failed_fingerprint IS NULL OR m.auth_failed_fingerprint<>md5(m.secret))
+ AND (m.id||':'||md5(m.secret)||':'||md5(p.secret))<>$2
+ AND NOT ((m.id||':'||md5(m.secret)||':'||md5(p.secret))=ANY(e.failed_mothers)))`, j.ID, j.MotherAttemptKey).Scan(&remaining); err != nil {
+			return err
+		}
+		if !remaining {
+			return autoReleaseRefund(ctx, tx, j, step, d)
+		}
+	}
 	delay := cfg.RetrySeconds
 	if temporary && d.Evidence != nil && d.Evidence.RetryAfterSeconds > delay {
 		delay = d.Evidence.RetryAfterSeconds
@@ -68,7 +86,7 @@ func queueMotherFailover(ctx context.Context, tx pgx.Tx, j *RefundJob, step stri
 	if _, err := tx.Exec(ctx, `UPDATE refunds SET status='queued',message=$2,updated_at=now() WHERE id=$1 AND fee_status='frozen'`, j.ID, publicRefundMessage("queued", "")); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE refund_execution SET step='assigned',released=true,lease_token='',lease_until=NULL,recovery_mode='mother_switch',cleanup_count=0,
+	if _, err := tx.Exec(ctx, `UPDATE refund_execution SET step='assigned',released=true,lease_token='',lease_until=NULL,recovery_mode='mother_switch',cleanup_count=0,retry_count=0,verify_count=0,personal_baseline=NULL,
  next_attempt_at=now()+($2 * interval '1 second'),mother_switch_count=mother_switch_count+1,
  failed_mothers=CASE WHEN $4 THEN failed_mothers ELSE array_append(failed_mothers,$3) END,recovery_started_at=COALESCE(recovery_started_at,now()),updated_at=now()
  WHERE refund_id=$1 AND child_user_id='' AND accepted_at IS NULL`, j.ID, delay, j.MotherAttemptKey, temporary); err != nil {

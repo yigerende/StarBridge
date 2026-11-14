@@ -424,6 +424,9 @@ func transitionTx(ctx context.Context, tx pgx.Tx, uid, id, to, message string) e
 	if _, err = tx.Exec(ctx, "INSERT INTO refund_events(refund_id,message) VALUES($1,$2)", id, message); err != nil {
 		return err
 	}
+	if err = recordAccountOrderOutcome(ctx, tx, id, to); err != nil {
+		return err
+	}
 
 	return nil
 }

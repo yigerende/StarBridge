@@ -46,7 +46,8 @@
     {
       "path": "internal/store/mother_credentials.go",
       "source_sha256": "0a9499f99d06196f4a493cfdd227e9e687bb2f87ff4a3b7c8f433813ec3e453b",
-      "sha256": "0a9499f99d06196f4a493cfdd227e9e687bb2f87ff4a3b7c8f433813ec3e453b"
+      "sha256": "07ff492f5d397ea82b2454aa3122c8830b949960a8d73b8f3dc92437c234cf14",
+      "adaptation": "; 2026-11-14 encrypted mother Session editing and confirmed-cleanup failure protection with target-email terminal-order restrictions"
     },
     {
       "path": "internal/store/mother_probe.go",
@@ -74,8 +75,8 @@
     {
       "path": "internal/store/refund_execution.go",
       "source_sha256": "a4818dd74885d0221b42fe569249837d869df2a31fbed8191ebea69462901dcc",
-      "sha256": "4b384da795a7fbedeab4f2f40c2f95b641c6dd321fe99809224efd7a43ca9945",
-      "adaptation": "Use unified users and maintenance drain; select durable child primary/backups and cooldown probes, preserve assigned retired resources and original submission checkpoints; waiting child failover cannot block mother-only completion. Shared scheduler lock excludes teams and children reserved by administrator management; original runtime protocol unchanged. Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-12 reviewed resource recovery and child proxy boundary integration; 2026-11-12 子号冷却后独立连接检测门槛、空值跳过及可配置间隔，业务执行不再恢复故障代理。"
+      "sha256": "86f15e4109a181b4eb0bd1b53da4af9b68abfcf19a7ea4637532a9995b5cfd54",
+      "adaptation": "Use unified users and maintenance drain; select durable child primary/backups and cooldown probes, preserve assigned retired resources and original submission checkpoints; waiting child failover cannot block mother-only completion. Shared scheduler lock excludes teams and children reserved by administrator management; original runtime protocol unchanged. Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-12 reviewed resource recovery and child proxy boundary integration; 2026-11-12 子号冷却后独立连接检测门槛、空值跳过及可配置间隔，业务执行不再恢复故障代理。; 2026-11-14 encrypted mother Session editing and confirmed-cleanup failure protection with target-email terminal-order restrictions"
     },
     {
       "path": "internal/store/refund_invite_recovery.go",
@@ -97,8 +98,8 @@
     {
       "path": "internal/store/refund_mother_failover.go",
       "source_sha256": "35b490721607cb1c4198c84bf9b11226890737d6144c5e093e353544fe6d9e73",
-      "sha256": "51aec611831ee3695dcde205a155670f10fc98920538d6aec0647e3a7d5c9239",
-      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
+      "sha256": "438c7dfa03cf45bd271f72e1a3f97a10fd4dcb9d2dd7bd6fc34b3b657f0dc9c0",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-14 encrypted mother Session editing and confirmed-cleanup failure protection with target-email terminal-order restrictions"
     },
     {
       "path": "internal/store/refund_personal_plan_view.go",
@@ -119,14 +120,14 @@
     {
       "path": "internal/store/refund_recovery.go",
       "source_sha256": "a726c1f1912a79d0adc885df45c52d10990acea87d07b27e8da95be1b9422963",
-      "sha256": "07d16ea95b6a9664af132aca47ac2a2cf3491f4d41a326371129d7c1fe65af83",
-      "adaptation": "After original lease fencing, mark explicitly attributed child transport failures for cooldown and next-attempt proxy selection; existing phase, retry budgets and unknown-submission verification remain authoritative. Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-12 authorized account termination admission limit/settings; execution and retry behavior preserved."
+      "sha256": "d3f90d0c0894c1edf7163c1e7d71d6d9b084e58084623fca9cf510fa86aea594",
+      "adaptation": "After original lease fencing, mark explicitly attributed child transport failures for cooldown and next-attempt proxy selection; existing phase, retry budgets and unknown-submission verification remain authoritative. Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-12 authorized account termination admission limit/settings; execution and retry behavior preserved.; 2026-11-14 encrypted mother Session editing and confirmed-cleanup failure protection with target-email terminal-order restrictions"
     },
     {
       "path": "internal/store/refund_settings.go",
       "source_sha256": "0e510a8592ad24e48db15e9bf4ce6795d582e48a40548db2959839c66216bf26",
-      "sha256": "491a70736d31f480120d37e3f055ee1b8f15b25033be0890c5bc5c1e22897fda",
-      "adaptation": "Unified administrator resource deletion, mother/child eligibility, ordered child backup configuration, and readiness. Retain private assigned resource rows. Block conflicting credential/identity edits and mother deletion during management; clear credential refresh metadata on replacement. Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-12 子号冷却后独立连接检测门槛、空值跳过及可配置间隔，业务执行不再恢复故障代理。 Also preserves the deployed account termination admission limit/settings."
+      "sha256": "2744de59870f2a6bd8768d3aa91191e38d3f3acd18708cdfe90c25649d6f76b0",
+      "adaptation": "Unified administrator resource deletion, mother/child eligibility, ordered child backup configuration, and readiness. Retain private assigned resource rows. Block conflicting credential/identity edits and mother deletion during management; clear credential refresh metadata on replacement. Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-12 子号冷却后独立连接检测门槛、空值跳过及可配置间隔，业务执行不再恢复故障代理。 Also preserves the deployed account termination admission limit/settings.; 2026-11-14 encrypted mother Session editing and confirmed-cleanup failure protection with target-email terminal-order restrictions"
     },
     {
       "path": "internal/store/refund_timeline.go",
@@ -330,8 +331,8 @@
       "path": "internal/store/store.go",
       "source_path": "internal/store/store.go",
       "source_sha256": "103b019b0310cbeca74a06d30ba9d0f30a2d6c53c85ad178d9011b8944b5831f",
-      "sha256": "74c21f841db112b41e93479ce2c5f2b912c77a596c86c3d3ad23326cd282f988",
-      "adaptation": "Extract refund admission/read/transaction primitives; use shared StarBridge user status, balance, ledger deltas, audit and refund idempotency table. No legacy users, wallets or notification center. Customer paginated refund reads with owner scope, stable whitelisted ordering and 500-row limit.; 2026-11-12 authorized account termination admission limit/settings; execution and retry behavior preserved."
+      "sha256": "eb155e9f9688a01083be5f72350d6fea0fd4e4bac3400a1d9e4e8ea31873fde7",
+      "adaptation": "Extract refund admission/read/transaction primitives; use shared StarBridge user status, balance, ledger deltas, audit and refund idempotency table. No legacy users, wallets or notification center. Customer paginated refund reads with owner scope, stable whitelisted ordering and 500-row limit.; 2026-11-12 authorized account termination admission limit/settings; execution and retry behavior preserved.; 2026-11-14 encrypted mother Session editing and confirmed-cleanup failure protection with target-email terminal-order restrictions"
     },
     {
       "path": "internal/refundprovider/account.go",
@@ -343,14 +344,14 @@
     {
       "path": "internal/store/refund_resources.go",
       "source_sha256": null,
-      "sha256": "5bbb877862ae6f3b80d21f18be758f05fa5081858dccf0139f936baf41e4aec0",
-      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-12 reviewed resource recovery and child proxy boundary integration 2026-11-13 authorized same-child target-team session retry and configurable post-login wait; original validation, submission and recovery budgets preserved. See docs/refund-team-session-retry.md."
+      "sha256": "caf96e0393f4908cfa620a7a1098a03eb6d686823f791e6e9476f1d51d1ae5e6",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-12 reviewed resource recovery and child proxy boundary integration 2026-11-13 authorized same-child target-team session retry and configurable post-login wait; original validation, submission and recovery budgets preserved. See docs/refund-team-session-retry.md.; 2026-11-14 encrypted mother Session editing and confirmed-cleanup failure protection with target-email terminal-order restrictions"
     },
     {
       "path": "internal/store/refund_resources_test.go",
       "source_sha256": null,
-      "sha256": "be287d60f48c26dc9c36248c6fd7ba551c461868bfdf687bd5fc80c5aeb3c75f",
-      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-12 reviewed resource recovery and child proxy boundary integration"
+      "sha256": "62effce7c22b4c333c267a1e67c25b97270bca6635310b1cf7d7217c26989e78",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-12 reviewed resource recovery and child proxy boundary integration; 2026-11-14 encrypted mother Session editing and confirmed-cleanup failure protection with target-email terminal-order restrictions"
     },
     {
       "path": "runtime/resource_guard.py",

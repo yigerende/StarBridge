@@ -154,7 +154,13 @@ func applyMotherCredential(v *RefundMother) error {
 			v.RefreshToken = parsed.refresh
 		}
 	}
-	v.Session = ""
+	// Retain the original Session for encrypted administrator-only retrieval.
+	// A plain AT must not be presented later as a complete Session.
+	if !strings.HasPrefix(raw, "{") && !strings.HasPrefix(raw, "[") {
+		v.Session = ""
+	} else {
+		v.Session = raw
+	}
 	v.RefreshToken = strings.TrimSpace(v.RefreshToken)
 	if len(v.RefreshToken) > 32768 || strings.ContainsAny(v.RefreshToken, "\r\n") {
 		return invalid("Refresh Token 格式无效")

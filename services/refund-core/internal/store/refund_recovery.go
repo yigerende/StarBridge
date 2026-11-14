@@ -297,6 +297,12 @@ func (s *Store) FinishRefundAttempt(ctx context.Context, j *RefundJob, d RefundD
 	if err = recordInviteAuthorizationFailure(ctx, tx, j, step, d); err != nil {
 		return err
 	}
+	if handled, e := scheduleTargetTeamRecovery(ctx, tx, j, step, d); handled || e != nil {
+		if e != nil {
+			return e
+		}
+		return tx.Commit(ctx)
+	}
 	if handled, e := scheduleMotherFailover(ctx, tx, j, step, d); handled || e != nil {
 		if e != nil {
 			return e

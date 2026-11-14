@@ -16,13 +16,13 @@ import Modal from "../refund/Modal.vue";
 
 import { parseVerificationStatuses } from "../refund/admin-verification-statuses";
 type ProxyRow = { recovery_successes?:number;recovery_required?:number|null;probe_until?:string; target?:string; failure_until?:string; failure_code?:string; check?:ResourceCheck; id:string; name:string; enabled:boolean; has_secret:boolean; url?:string };
-type Mother = { auth_blocked?:boolean; check?:ResourceCheck; id:string; name:string; email:string; team_id:string; proxy_id:string; seat_type:string; enabled:boolean; has_secret:boolean; access_token?:string; session?:string; refresh_token?:string; has_refresh?:boolean; plan_type?:string; token_expires_at?:string; active_refund?:string; active_email?:string; active_status?:string };
+type Mother = { auto_disabled_reason?:string;auto_disabled_at?:string; auth_blocked?:boolean; check?:ResourceCheck; id:string; name:string; email:string; team_id:string; proxy_id:string; seat_type:string; enabled:boolean; has_secret:boolean; access_token?:string; session?:string; refresh_token?:string; has_refresh?:boolean; plan_type?:string; token_expires_at?:string; active_refund?:string; active_email?:string; active_status?:string };
 type CredentialPreview = {email:string;team_id:string;plan_type:string;expires_at:string|null;has_refresh:boolean};
 type Recovery={verification_http_statuses?:number[];plan_fallback?:{enabled:boolean;max_cycles:number;max_attempts:number;retry_seconds:number};enabled:boolean;max_retries:number;verify_intervals:number[];cleanup_intervals:number[];alert_seconds:number;cleanup_failed:boolean};
-type Settings = { deactivated_resubmit_limit:number; child_proxy_recovery_interval_seconds:number; child_proxy_recovery_success_count:number|null|''; query_personal_plan:boolean;resource_recovery:{post_login_wait_seconds:number;failure_limit:number;cooldown_seconds:number;watch_seconds:number;retry_seconds:number;slow_retry_seconds:number;fast_attempts:number;login_failure_limit:number;login_window_seconds:number;login_cooldown_seconds:number}; child_proxy_backups:string[];child_proxy_cooldown_seconds:number; mother_failover:{enabled:boolean;max_switches:number;retry_seconds:number}; recovery:Recovery; enabled:boolean; max_parallel:number; max_attempts:number; retry_seconds:number; child_proxy_id:string; mother_interval_seconds:number };
+type Settings = { deactivated_resubmit_limit:number; child_proxy_recovery_interval_seconds:number; child_proxy_recovery_success_count:number|null|''; query_personal_plan:boolean;resource_recovery:{team_session_failure_limit:number;mother_failed_accounts:number;account_failure_limit:number;post_login_wait_seconds:number;failure_limit:number;cooldown_seconds:number;watch_seconds:number;retry_seconds:number;slow_retry_seconds:number;fast_attempts:number;login_failure_limit:number;login_window_seconds:number;login_cooldown_seconds:number}; child_proxy_backups:string[];child_proxy_cooldown_seconds:number; mother_failover:{enabled:boolean;max_switches:number;retry_seconds:number}; recovery:Recovery; enabled:boolean; max_parallel:number; max_attempts:number; retry_seconds:number; child_proxy_id:string; mother_interval_seconds:number };
 const section=ref('mothers'),runtimeReady=ref(false);
 const emit=defineEmits<{toast:[message:string]}>();
-const resourceDefaults={post_login_wait_seconds:5,failure_limit:3,cooldown_seconds:300,watch_seconds:60,retry_seconds:30,slow_retry_seconds:300,fast_attempts:3,login_failure_limit:3,login_window_seconds:60,login_cooldown_seconds:30};
+const resourceDefaults={team_session_failure_limit:3,mother_failed_accounts:2,account_failure_limit:4,post_login_wait_seconds:5,failure_limit:3,cooldown_seconds:300,watch_seconds:60,retry_seconds:30,slow_retry_seconds:300,fast_attempts:3,login_failure_limit:3,login_window_seconds:60,login_cooldown_seconds:30};
 const settingsRevision=ref(0);
 const settings=ref<Settings>({deactivated_resubmit_limit:0,child_proxy_recovery_interval_seconds:5,child_proxy_recovery_success_count:3,query_personal_plan:true,resource_recovery:{...resourceDefaults},child_proxy_backups:[],child_proxy_cooldown_seconds:300,mother_failover:{enabled:true,max_switches:3,retry_seconds:30},recovery:{plan_fallback:{enabled:true,max_cycles:2,max_attempts:3,retry_seconds:30},enabled:true,max_retries:3,verify_intervals:[30,60,120,300],cleanup_intervals:[15,30,60],alert_seconds:600,cleanup_failed:true},enabled:false,max_parallel:2,max_attempts:2,retry_seconds:30,child_proxy_id:"",mother_interval_seconds:0});
 const intervalText=(key:'verify_intervals'|'cleanup_intervals')=>computed({get:()=>settings.value.recovery[key].join(', '),set:(value:string)=>{settings.value.recovery[key]=value.split(/[,，\s]+/).filter(Boolean).map(Number)}});
@@ -56,8 +56,10 @@ const motherPreview=ref<CredentialPreview>(),parsing=ref(false),fileInput=ref<HT
 watch(()=>mother.value.session,()=>{motherPreview.value=undefined});
 watch(()=>[mother.value.session,mother.value.access_token,mother.value.team_id,mother.value.email,mother.value.proxy_id],()=>{motherCheck.value=undefined});
 watch(()=>proxy.value.url,()=>{proxyCheck.value=undefined});
-const motherInput=()=>{const {check,...value}=mother.value;return value};
-const proxyInput=()=>{const {check,...value}=proxy.value;return value};
+const savedCredential=ref(''),savedRefresh=ref(''),loadingCredential=ref(false);
+let credentialRequest=0;
+const motherInput=()=>{const m=mother.value;return {id:m.id,name:m.name,email:m.email,team_id:m.team_id,proxy_id:m.proxy_id,seat_type:m.seat_type,enabled:m.enabled,session:(m.session||'')===savedCredential.value?'':m.session||'',refresh_token:(m.refresh_token||'')===savedRefresh.value?'':m.refresh_token||''}};
+const proxyInput=()=>{const p=proxy.value;return {id:p.id,name:p.name,url:p.url||"",target:p.target,enabled:p.enabled}};
 const displayTime=(value:string)=>new Date(value).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false});
 async function load(){
  busy.value=true;error.value="";
@@ -69,14 +71,17 @@ async function saveSettings(){
  try{settings.value.recovery.verification_http_statuses=parseVerificationStatuses(verificationStatuses.value);await api("/admin/refund/settings",{method:"PUT",body:JSON.stringify({settings:{...settings.value,child_proxy_recovery_success_count:settings.value.child_proxy_recovery_success_count===''?null:settings.value.child_proxy_recovery_success_count}})});emit("toast","执行设置已保存");settingsRevision.value++;await load()}
  catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
-function editMother(row?:Mother){
+async function editMother(row?:Mother){
+ const request=++credentialRequest;loadingCredential.value=false;
+ savedCredential.value="";savedRefresh.value="";
  mother.value=row?{...row,access_token:"",session:"",refresh_token:""}:{id:"",name:"",email:"",team_id:"",proxy_id:motherProxies.value.find(p=>p.enabled)?.id||"",seat_type:"default",enabled:true,has_secret:false,access_token:"",session:"",refresh_token:""};
  if(!motherProxies.value.some(p=>p.id===mother.value.proxy_id))mother.value.proxy_id="";
  motherPreview.value=undefined;motherCheck.value=undefined;
  formError.value="";modal.value="mother";
+ if(row){loadingCredential.value=true;const id=row.id;try{const v=await api<{session:string;access_token:string;refresh_token:string}>(`/admin/refund/mother-management/${id}/credentials`);if(request===credentialRequest&&modal.value==='mother'&&mother.value.id===id){savedCredential.value=v.session||v.access_token;savedRefresh.value=v.refresh_token||'';mother.value.session=savedCredential.value;mother.value.refresh_token=savedRefresh.value}}catch(e){if(request===credentialRequest&&modal.value==='mother'&&mother.value.id===id)formError.value=(e as Error).message}finally{if(request===credentialRequest)loadingCredential.value=false}}
 }
 function editProxy(row?:ProxyRow){proxyCheck.value=undefined;proxy.value=row?{target:"both",...row,url:""}:{id:"",name:"",url:"",target:"both",enabled:true,has_secret:false};formError.value="";modal.value="proxy"}
-function close(){modal.value="";motherCheck.value=undefined;proxyCheck.value=undefined;mother.value.access_token="";mother.value.session="";mother.value.refresh_token="";motherPreview.value=undefined;proxy.value.url="";removing.value=undefined}
+function close(){credentialRequest++;loadingCredential.value=false;savedCredential.value="";savedRefresh.value="";modal.value="";motherCheck.value=undefined;proxyCheck.value=undefined;mother.value.access_token="";mother.value.session="";mother.value.refresh_token="";motherPreview.value=undefined;proxy.value.url="";removing.value=undefined}
 async function parseMother(){
  const raw=mother.value.session?.trim()||"";
  if(!raw){formError.value="请粘贴 Session JSON 或 Access Token";return false}
@@ -99,7 +104,7 @@ async function importMother(event:Event){
 async function checkMother(row?:Mother){
  busy.value=true;formError.value="";error.value="";
  try{
-  if(!row&&mother.value.session?.trim()&&!await parseMother())return;
+  if(!row&&mother.value.session?.trim()&&mother.value.session!==savedCredential.value&&!await parseMother())return;
   const result=await api<ResourceCheck>("/admin/refund/mothers/check",{method:"POST",body:JSON.stringify(row?{id:row.id}:motherInput())});
   if(row){row.check=result;await load()}else{motherCheck.value=result}
   if(result.valid)emit("toast",`${result.message} · ${result.latency_ms} ms`);
@@ -116,9 +121,10 @@ async function checkProxy(row?:ProxyRow){
  }catch(e){if(row)error.value=(e as Error).message;else formError.value=(e as Error).message}finally{busy.value=false}
 }
 async function save(){
+ if(loadingCredential.value||parsing.value)return;
  busy.value=true;formError.value="";
  try{
-  if(!removing.value&&modal.value==="mother"&&mother.value.session?.trim()&&!await parseMother())return;
+  if(!removing.value&&modal.value==="mother"&&mother.value.session?.trim()&&mother.value.session!==savedCredential.value&&!await parseMother())return;
   if(removing.value){await api(`/admin/refund/${removing.value.kind}/${removing.value.id}`,{method:"DELETE"})}
   else{await api(`/admin/refund/${modal.value==="mother"?"mothers":"proxies"}`,{method:"POST",body:JSON.stringify(modal.value==="mother"?motherInput():proxyInput())})}
   close();await load();emit("toast","配置已更新");
@@ -160,7 +166,7 @@ onUnmounted(()=>{resourcesDisposed=true;clearInterval(resourceTimer);resourceCon
     <fieldset class="recovery-settings">
      <legend>母号冷却与残留清理</legend>
      <div class="form-row">
-      <label>母号连续失败次数<input v-model.number="settings.resource_recovery.failure_limit" type="number" min="1" max="10" required/></label>
+      <label>母号故障触发暂停次数<input v-model.number="settings.resource_recovery.failure_limit" type="number" min="1" max="10" required/></label>
       <label>母号故障冷却（秒）<input v-model.number="settings.resource_recovery.cooldown_seconds" type="number" min="30" max="3600" required/></label>
       <label>异常清理后观察（秒）<input v-model.number="settings.resource_recovery.watch_seconds" type="number" min="30" max="1800" required/></label>
       <label>清理重试间隔（秒）<input v-model.number="settings.resource_recovery.retry_seconds" type="number" min="5" max="300" required/></label>
@@ -171,7 +177,7 @@ onUnmounted(()=>{resourcesDisposed=true;clearInterval(resourceTimer);resourceCon
     </fieldset>
     <fieldset class="recovery-settings">
      <legend>账号停用后的再次提交</legend>
-     <label>允许用户再次提交次数<input v-model.number="settings.deactivated_resubmit_limit" type="number" min="0" max="10" step="1" required/></label>
+     <label>上游停用账号允许再次提交次数<input v-model.number="settings.deactivated_resubmit_limit" type="number" min="0" max="10" step="1" required/></label>
      <p class="muted">首次确认账号被上游停用后，还允许重新提交多少笔订单。0 表示不允许再次提交；设为 2 表示再允许 2 笔，第 3 笔拒绝。原单自动重试、同一请求重复发送不计数。</p>
     </fieldset>
     <fieldset class="recovery-settings">
@@ -184,13 +190,22 @@ onUnmounted(()=>{resourcesDisposed=true;clearInterval(resourceTimer);resourceCon
      <p class="muted">多个账号在同一登录步骤遇到上游故障时暂停新登录，到期只放行一笔探测。密码错误、邮箱验证不触发；母号清理照常运行。</p>
     </fieldset>
     <fieldset class="recovery-settings">
+     <legend>连续失败保护</legend>
+     <div class="field-grid">
+      <label>同母号团队会话失败次数<input v-model.number="settings.resource_recovery.team_session_failure_limit" type="number" min="0" max="10" required/><small>默认 3 次。无法进入目标团队时，达到次数或原重试次数用完后，先清理再换母号。0 关闭此项。</small></label>
+      <label>母号自动停用的不同账号数<input v-model.number="settings.resource_recovery.mother_failed_accounts" type="number" min="0" max="20" required/><small>默认 2 个。连续出现母号故障或无法进入团队时停用；成功进入团队后清零。0 关闭此项。</small></label>
+      <label>代退账号连续失败订单数<input v-model.number="settings.resource_recovery.account_failure_limit" type="number" min="0" max="20" required/><small>默认 4 笔，不限失败原因。按代退账号邮箱全站累计；单内重试不计，中间成功则清零。0 关闭此项。</small></label>
+     </div>
+     <p class="muted">母号停用后需手动启用；代退账号限制可在下方解除，不影响星桥用户账户。</p>
+    </fieldset>
+    <fieldset class="recovery-settings">
      <legend>母号异常自动换号</legend>
-     <label class="checkbox-label"><input v-model="settings.mother_failover.enabled" type="checkbox"/>开始办理前母号不可用时，重新排队换母号</label>
+     <label class="checkbox-label"><input v-model="settings.mother_failover.enabled" type="checkbox"/>母号不可用或连续无法进入目标团队时，清理确认后换母号</label>
      <div class="form-row">
       <label>每笔申请最多换母号次数<input v-model.number="settings.mother_failover.max_switches" type="number" min="0" max="10" required/></label>
       <label>换母号前等待（秒）<input v-model.number="settings.mother_failover.retry_seconds" type="number" min="5" max="3600" required/></label>
      </div>
-     <p class="muted">默认开启，最多换 3 次，每次等待 30 秒。按原申请提交时间排队，遵守并行上限和同母号接单间隔；没有可用母号就继续等待，不占执行并发，也不重复冻结费用。已邀请的申请先在原母号完成清理和复查，确认没有残留后才允许换号；提交结果未知时不换号重提。</p>
+     <p class="muted">默认开启，最多换 3 次，每次等待 30 秒。按原申请提交时间排队，遵守并行上限和同母号接单间隔；其他母号忙碌时继续等待，不占并发、不重复冻结；可尝试的母号全部失效或换号次数用完时结束并释放费用。已邀请的申请先在原母号完成清理和复查，确认没有残留后才允许换号；提交结果未知时不换号重提。</p>
      <p class="muted">凭证过期或授权失效的母号不再接新单，更新凭证或校验通过后恢复。关闭此开关会暂停等待换号的申请。</p>
     </fieldset>
     <fieldset class="recovery-settings">
@@ -233,7 +248,7 @@ onUnmounted(()=>{resourcesDisposed=true;clearInterval(resourceTimer);resourceCon
     </tr></thead><tbody>
      <tr v-for="m in (motherRows as Mother[])" :key="m.id">
       <td class="mother-identity"><strong>{{m.name}}</strong><small class="block">{{m.email}}</small><button v-if="m.active_refund" class="link" @click="openOrder(m.active_refund)">{{m.active_email}} · {{statuses[m.active_status||'']||'处理中'}}</button></td>
-      <td><button class="mother-switch" role="switch" :aria-checked="m.enabled" :aria-label="m.name+' 接单状态'" :disabled="busy" @click="changeMother(m,{enabled:!m.enabled})"><i :class="{on:m.enabled}"/>{{m.enabled?'已启用':'已停用'}}</button><small v-if="m.auth_blocked" class="block form-error">授权失效，暂停接单</small><small v-else-if="m.token_expires_at&amp;&amp;new Date(m.token_expires_at).getTime()&lt;=Date.now()" class="block form-error">凭据已过期</small></td>
+      <td><button class="mother-switch" role="switch" :aria-checked="m.enabled" :aria-label="m.name+' 接单状态'" :disabled="busy" @click="changeMother(m,{enabled:!m.enabled})"><i :class="{on:m.enabled}"/>{{m.enabled?'已启用':'已停用'}}</button><small v-if="m.auto_disabled_reason" class="block form-error">{{m.auto_disabled_reason}}<br/>{{m.auto_disabled_at?displayTime(m.auto_disabled_at):''}}</small><small v-if="m.auth_blocked" class="block form-error">授权失效，暂停接单</small><small v-else-if="m.token_expires_at&amp;&amp;new Date(m.token_expires_at).getTime()&lt;=Date.now()" class="block form-error">凭据已过期</small></td>
       <td>{{snapshot(m).plan?.subscription_plan||m.plan_type||'—'}}<small class="block">{{m.seat_type==='prolite'?'高级席位':'普通席位'}}</small></td>
       <td><strong>{{snapshot(m).plan?.expires_at?displayTime(snapshot(m).plan.expires_at):'—'}}</strong><small class="block">{{snapshot(m).plan?.checked_at?'查询于 '+displayTime(snapshot(m).plan.checked_at):'未查询'}}</small></td>
       <td><strong>{{seatPrice(m)}}</strong><small class="block">125 / 30 × 剩余天数</small></td>
@@ -259,20 +274,21 @@ onUnmounted(()=>{resourcesDisposed=true;clearInterval(resourceTimer);resourceCon
    </tbody></table></div>
   <ListPager v-model:page="proxyPage" v-model:size="proxySize" :total="proxyData.total||0" :loading="proxyLoading"/></section>
  </div>
- <Modal v-if="modal" :title="modal==='mother'?'母号配置':modal==='proxy'?'代理配置':'删除配置'" :busy="busy" @close="!busy&&close()">
+ <Modal v-if="modal" :title="modal==='mother'?'母号配置':modal==='proxy'?'代理配置':'删除配置'" :busy="busy||loadingCredential||parsing" @close="!busy&&!loadingCredential&&close()">
   <form class="execution-form" @submit.prevent="save">
    <template v-if="modal==='mother'">
     <label>母号名称<input v-model="mother.name" required maxlength="100"/></label>
-    <label>Session JSON / Access Token<textarea v-model="mother.session" rows="5" autocomplete="off" spellcheck="false" :disabled="busy||parsing" :required="!mother.id" :placeholder="mother.id?'留空保留已保存凭据':'粘贴 Session JSON 或母号 AT，自动读取账号信息'"/></label>
+    <p v-if="loadingCredential" class="muted" role="status">正在读取已保存凭据…</p>
+    <label>Session JSON / Access Token<textarea v-model="mother.session" rows="5" autocomplete="off" spellcheck="false" :disabled="busy||parsing||loadingCredential" :required="!mother.id" :placeholder="mother.id?'留空保留已保存凭据':'粘贴 Session JSON 或母号 AT，自动读取账号信息'"/></label>
     <input ref="fileInput" hidden type="file" accept=".json,application/json" @change="importMother"/>
-    <div class="execution-actions"><button type="button" class="btn secondary" :disabled="busy||parsing" @click="fileInput?.click()">导入 JSON</button><button type="button" class="btn secondary" :disabled="busy||parsing" @click="parseMother">{{parsing?'解析中…':'解析凭据'}}</button><button type="button" class="btn secondary" :disabled="busy||parsing" @click="checkMother()">校验 / 刷新席位</button></div>
+    <div class="execution-actions"><button type="button" class="btn secondary" :disabled="busy||parsing||loadingCredential" @click="fileInput?.click()">导入 JSON</button><button type="button" class="btn secondary" :disabled="busy||parsing||loadingCredential" @click="parseMother">{{parsing?'解析中…':'解析凭据'}}</button><button type="button" class="btn secondary" :disabled="busy||parsing||loadingCredential" @click="checkMother()">校验 / 刷新席位</button></div>
     <ResourceCheckSummary v-if="motherCheck" :check="motherCheck" mother/>
     <p v-if="motherPreview" class="muted">{{motherPreview.email||'未读取到邮箱'}} · {{motherPreview.plan_type||'未提供计划'}}<br/>{{motherPreview.expires_at?`AT 到期：${displayTime(motherPreview.expires_at)}`:'AT 未提供到期时间'}}{{motherPreview.has_refresh?' · 已读取 RT':''}}。解析仅提取资料，校验用于确认可用性。</p>
     <label>母号邮箱<input v-model="mother.email" type="email" placeholder="解析后自动填写"/></label>
     <label>团队 ID<input v-model="mother.team_id" placeholder="自动读取，也可手工填写"/></label>
-    <label>Refresh Token（可选）<input v-model="mother.refresh_token" type="password" autocomplete="new-password" :placeholder="mother.has_refresh?'已保存，留空保留':'可从 Session JSON 自动提取'"/></label>
+    <label>Refresh Token（可选）<input :disabled="loadingCredential" v-model="mother.refresh_token" type="password" autocomplete="new-password" :placeholder="mother.has_refresh?'已保存，留空保留':'可从 Session JSON 自动提取'"/></label>
     <label>母号专属代理<select v-model="mother.proxy_id" required><option value="" disabled>请选择母号专属代理</option><option v-for="p in motherProxies" :key="p.id" :value="p.id">{{p.name}}{{p.enabled?'':'（已停用）'}}</option></select></label>
-    <p class="muted">母号的校验和业务请求均使用此专属代理，子号使用上方的全局代理。凭据加密保存，编辑时留空保留。</p>
+    <p class="muted">母号的校验和业务请求均使用此专属代理，子号使用上方的全局代理。凭据加密保存，编辑时显示已保存的 Session；原记录只有 AT 时显示 AT。</p>
     <label>席位类型<select v-model="mother.seat_type"><option value="default">标准席位（default）</option><option value="prolite">高级席位（prolite）</option></select></label>
     <label class="checkbox-label"><input v-model="mother.enabled" type="checkbox"/>启用母号</label>
    </template>
@@ -288,7 +304,7 @@ onUnmounted(()=>{resourcesDisposed=true;clearInterval(resourceTimer);resourceCon
    <p v-else-if="removing?.kind==='mothers'">确认删除“{{removing.name}}”？删除后不再分配新申请，历史记录保留，已开始的申请继续收尾。</p>
    <p v-else>确认删除“{{removing?.name}}”？删除后不再用于新申请，已开始的申请继续收尾。</p>
    <p v-if="formError" class="form-error" role="alert">{{formError}}</p>
-   <footer class="modal-actions"><button type="button" class="btn secondary" :disabled="busy||parsing" @click="close">取消</button><button class="btn primary" :disabled="busy||parsing">{{busy?'处理中…':modal==='delete'?'确认删除':'保存'}}</button></footer>
+   <footer class="modal-actions"><button type="button" class="btn secondary" :disabled="busy||parsing||loadingCredential" @click="close">取消</button><button class="btn primary" :disabled="busy||parsing||loadingCredential">{{busy?'处理中…':modal==='delete'?'确认删除':'保存'}}</button></footer>
   </form>
  </Modal>
  

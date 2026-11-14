@@ -8,19 +8,25 @@ import (
 )
 
 type ResourceRecoverySettings struct {
-	PostLoginWaitSeconds int `json:"post_login_wait_seconds"`
-	FailureLimit         int `json:"failure_limit"`
-	CooldownSeconds      int `json:"cooldown_seconds"`
-	WatchSeconds         int `json:"watch_seconds"`
-	RetrySeconds         int `json:"retry_seconds"`
-	SlowRetrySeconds     int `json:"slow_retry_seconds"`
-	FastAttempts         int `json:"fast_attempts"`
-	LoginFailureLimit    int `json:"login_failure_limit"`
-	LoginWindowSeconds   int `json:"login_window_seconds"`
-	LoginCooldownSeconds int `json:"login_cooldown_seconds"`
+	TeamSessionFailureLimit int `json:"team_session_failure_limit"`
+	MotherFailedAccounts    int `json:"mother_failed_accounts"`
+	AccountFailureLimit     int `json:"account_failure_limit"`
+	PostLoginWaitSeconds    int `json:"post_login_wait_seconds"`
+	FailureLimit            int `json:"failure_limit"`
+	CooldownSeconds         int `json:"cooldown_seconds"`
+	WatchSeconds            int `json:"watch_seconds"`
+	RetrySeconds            int `json:"retry_seconds"`
+	SlowRetrySeconds        int `json:"slow_retry_seconds"`
+	FastAttempts            int `json:"fast_attempts"`
+	LoginFailureLimit       int `json:"login_failure_limit"`
+	LoginWindowSeconds      int `json:"login_window_seconds"`
+	LoginCooldownSeconds    int `json:"login_cooldown_seconds"`
 }
 
 func (v ResourceRecoverySettings) Validate() error {
+	if v.TeamSessionFailureLimit < 0 || v.TeamSessionFailureLimit > 10 || v.MotherFailedAccounts < 0 || v.MotherFailedAccounts > 20 || v.AccountFailureLimit < 0 || v.AccountFailureLimit > 20 {
+		return invalid("团队会话失败次数须为 0～10，其余连续失败次数须为 0～20；0 关闭对应保护")
+	}
 	if v.PostLoginWaitSeconds < 0 || v.PostLoginWaitSeconds > 60 {
 		return invalid("登录后等待须为 0～60 秒")
 	}
@@ -115,6 +121,9 @@ func recordResourceFailure(ctx context.Context, tx pgx.Tx, j *RefundJob, step st
 		return err
 	}
 	if d.Code == "mother_capacity" || motherFailure(d) {
+		if err := recordMotherAccountFailure(ctx, tx, j, d.Code); err != nil {
+			return err
+		}
 		_, err := tx.Exec(ctx, `INSERT INTO refund_resource_health(scope,failures,blocked,next_at,reason,attempt_key)
  SELECT m.team_id,1,$2 OR $5=1,now()+$3*interval '1 second',$4,$6 FROM refund_mothers m JOIN refund_proxies p ON p.id=m.proxy_id
  WHERE m.id=$1 AND (m.id||':'||md5(m.secret)||':'||md5(p.secret))=$6
@@ -159,12 +168,13 @@ func recordResourceFailure(ctx context.Context, tx pgx.Tx, j *RefundJob, step st
 func finishMotherResourceCleanup(ctx context.Context, tx pgx.Tx, j *RefundJob, step string) (bool, error) {
 	var raw []byte
 	var key string
-	err := tx.QueryRow(ctx, `SELECT d.diagnostic,d.diagnostic->>'failed_mother_attempt' FROM refund_execution_diagnostics d
+	var avoid bool
+	err := tx.QueryRow(ctx, `SELECT d.diagnostic,d.diagnostic->>'failed_mother_attempt',COALESCE((d.diagnostic->>'avoid_failed_mother')::bool,false) FROM refund_execution_diagnostics d
  JOIN refund_execution e ON e.refund_id=d.refund_id WHERE e.refund_id=$1 AND d.diagnostic->>'resource_switch_cause'='true'
  AND d.diagnostic->>'failed_mother_id'=e.mother_id AND e.accepted_at IS NULL AND e.terminal_code=''
  AND NOT e.verification_only AND e.fallback_phase='' AND e.recovery_mode='cleanup'
  AND d.created_at >= (SELECT max(created_at) FROM refund_events WHERE refund_id=$1 AND internal AND message='正在发送团队邀请。')
- ORDER BY d.id DESC LIMIT 1`, j.ID).Scan(&raw, &key)
+ ORDER BY d.id DESC LIMIT 1`, j.ID).Scan(&raw, &key, &avoid)
 	if err == pgx.ErrNoRows {
 		return false, nil
 	}
@@ -183,5 +193,5 @@ func finishMotherResourceCleanup(ctx context.Context, tx pgx.Tx, j *RefundJob, s
 	}
 	copyJob := *j
 	copyJob.MotherAttemptKey = key
-	return true, queueMotherFailover(ctx, tx, &copyJob, step, d, true)
+	return true, queueMotherFailover(ctx, tx, &copyJob, step, d, !avoid)
 }

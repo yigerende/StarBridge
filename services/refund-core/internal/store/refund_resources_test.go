@@ -110,6 +110,8 @@ func TestResourceCooldownDoesNotDisableMotherAndNewCredentialsRecover(t *testing
 	cfg, _ := s.RefundSettings(testctx)
 	cfg.MotherFailover.Enabled = false
 	cfg.Recovery.Enabled = false
+	// Isolate recoverable cooldown from the separately configured auto-disable policy.
+	cfg.ResourceRecovery.MotherFailedAccounts = 0
 	if err := s.SaveRefundSettings(testctx, a, cfg); err != nil {
 		t.Fatal(err)
 	}

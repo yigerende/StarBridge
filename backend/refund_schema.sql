@@ -146,6 +146,19 @@ CREATE TABLE IF NOT EXISTS refund_resource_tasks (
 CREATE INDEX IF NOT EXISTS refund_resource_due ON refund_resource_tasks(next_at) WHERE state NOT IN ('armed','done');
 CREATE INDEX IF NOT EXISTS refund_resource_team ON refund_resource_tasks(team_id,state);
 CREATE INDEX IF NOT EXISTS refund_resource_child ON refund_resource_tasks(email,state);
+-- Preserve imported Session JSON privately; list responses never include it.
+ALTER TABLE refund_mothers ADD COLUMN IF NOT EXISTS session_secret BYTEA;
+ALTER TABLE refund_mothers ADD COLUMN IF NOT EXISTS failure_reset_at TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE refund_mothers ADD COLUMN IF NOT EXISTS auto_disabled_reason TEXT NOT NULL DEFAULT '';
+ALTER TABLE refund_mothers ADD COLUMN IF NOT EXISTS auto_disabled_at TIMESTAMPTZ;
+CREATE TABLE IF NOT EXISTS refund_mother_failure_accounts (
+ refund_id TEXT NOT NULL REFERENCES refunds(id), mother_id TEXT NOT NULL REFERENCES refund_mothers(id),
+ attempt_key TEXT NOT NULL, email TEXT NOT NULL, reason TEXT NOT NULL,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(refund_id,mother_id,attempt_key)
+);
+CREATE INDEX IF NOT EXISTS refund_mother_failure_window ON refund_mother_failure_accounts(mother_id,created_at);
+UPDATE refund_settings SET resource_recovery='{"team_session_failure_limit":3,"mother_failed_accounts":2,"account_failure_limit":4}'::jsonb||resource_recovery
+ WHERE NOT (resource_recovery ?& ARRAY['team_session_failure_limit','mother_failed_accounts','account_failure_limit']);
 ALTER TABLE refund_resource_health ADD COLUMN IF NOT EXISTS attempt_key TEXT NOT NULL DEFAULT '';
 ALTER TABLE refund_resource_health ADD COLUMN IF NOT EXISTS probe_id TEXT NOT NULL DEFAULT '';
 
@@ -187,3 +200,4 @@ SELECT e.email,e.reason,e.created_at,(SELECT max(created_at) FROM evidence x WHE
 FROM first_failure e ON CONFLICT(email) DO NOTHING;
 END IF;
 END $account_limits$;
+ALTER TABLE refund_account_restrictions ADD COLUMN IF NOT EXISTS failure_count INTEGER NOT NULL DEFAULT 0;

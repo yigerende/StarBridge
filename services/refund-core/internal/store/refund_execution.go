@@ -476,6 +476,9 @@ func (s *Store) RefundCheckpoint(ctx context.Context, j *RefundJob, c Checkpoint
 		if (step != "login" && step != "ready") || c.TeamID != j.Mother.TeamID || strings.TrimSpace(c.UserID) == "" || len(c.UserID) > 150 {
 			return ErrState
 		}
+		if err = resetMotherAccountFailures(ctx, tx, j); err != nil {
+			return err
+		}
 		if _, err = tx.Exec(ctx, "UPDATE refund_execution SET child_user_id=$2 WHERE refund_id=$1", j.ID, c.UserID); err != nil {
 			return err
 		}

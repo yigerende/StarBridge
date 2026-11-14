@@ -11,6 +11,7 @@ REASONS = {
     'account_banned': '上游账号已封禁',
     'account_disabled': '上游账号已禁用',
     'account_suspended': '上游账号已暂停',
+    'consecutive_failures': '连续办理失败',
 }
 
 
@@ -19,19 +20,20 @@ def listing(page: int=1, page_size: int=10, q: str='', status: str='', sort_by: 
     pagination(page, page_size)
     require(len(q) <= 200 and status in ('', 'blocked', 'allowed', 'cleared'), '筛选条件无效')
     ordering = order_by(sort_by, sort_dir,
-                        {k: 'b.'+k for k in ('email', 'first_seen_at', 'last_seen_at', 'resubmissions', 'cleared_at')},
+                        {k: 'b.'+k for k in ('email', 'first_seen_at', 'last_seen_at', 'resubmissions', 'failure_count', 'cleared_at')},
                         'first_seen_at', 'b.email')
-    source = ''' FROM refund_account_restrictions b CROSS JOIN refund_settings s
+    blocked = "((COALESCE((s.resource_recovery->>'account_failure_limit')::int,4)>0 AND b.failure_count>=COALESCE((s.resource_recovery->>'account_failure_limit')::int,4)) OR (b.reason<>'consecutive_failures' AND b.resubmissions>=s.deactivated_resubmit_limit))"
+    source = f''' FROM refund_account_restrictions b CROSS JOIN refund_settings s
       WHERE s.id AND ($1='' OR strpos(b.email,lower($1))>0)
       AND ($2='' OR ($2='cleared' AND b.cleared_at IS NOT NULL)
-      OR ($2='blocked' AND b.cleared_at IS NULL AND b.resubmissions>=s.deactivated_resubmit_limit)
-      OR ($2='allowed' AND b.cleared_at IS NULL AND b.resubmissions<s.deactivated_resubmit_limit))'''
+      OR ($2='blocked' AND b.cleared_at IS NULL AND {blocked})
+      OR ($2='allowed' AND b.cleared_at IS NULL AND NOT {blocked}))'''
     with db.transaction() as query:
         total = query.scalar('SELECT count(*)'+source, q.strip(), status)
-        items = query.all('''SELECT b.email,b.reason,b.first_seen_at,b.last_seen_at,b.resubmissions,b.cleared_at,
-          s.deactivated_resubmit_limit,
+        items = query.all(f'''SELECT b.email,b.reason,b.first_seen_at,b.last_seen_at,b.resubmissions,b.cleared_at,
+          s.deactivated_resubmit_limit,b.failure_count,COALESCE((s.resource_recovery->>'account_failure_limit')::int,4) failure_limit,
           CASE WHEN b.cleared_at IS NOT NULL THEN 'cleared'
-            WHEN b.resubmissions>=s.deactivated_resubmit_limit THEN 'blocked' ELSE 'allowed' END status'''
+            WHEN {blocked} THEN 'blocked' ELSE 'allowed' END status'''
           +source+' ORDER BY '+ordering+' LIMIT $3 OFFSET $4', q.strip(), status, page_size, (page-1)*page_size)
     for item in items:
         item['reason_label'] = REASONS.get(item['reason'], '上游账号不可用')
@@ -50,7 +52,7 @@ def clear(email: str, request: Request):
         row = q.one('SELECT * FROM refund_account_restrictions WHERE email=$1 FOR UPDATE', email.strip().lower())
         require(row, '记录不存在', 404)
         if row['cleared_at'] is None:
-            q.execute('''UPDATE refund_account_restrictions SET cleared_at=clock_timestamp(),cleared_by=$2,resubmissions=0
+            q.execute('''UPDATE refund_account_restrictions SET cleared_at=clock_timestamp(),cleared_by=$2,resubmissions=0,failure_count=0
               WHERE email=$1''', row['email'], request.state.user['id'])
             audit(q, request, 'refund.account.clear', row['email'],
                   {'reason': row['reason'], 'first_seen_at': row['first_seen_at'].isoformat(), 'resubmissions': row['resubmissions']})

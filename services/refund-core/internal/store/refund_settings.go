@@ -46,25 +46,27 @@ type RefundProxy struct {
 	URL               string         `json:"url,omitempty"`
 }
 type RefundMother struct {
-	AuthBlocked    bool           `json:"auth_blocked"`
-	Check          *ResourceCheck `json:"check,omitempty"`
-	ID             string         `json:"id"`
-	Name           string         `json:"name"`
-	Email          string         `json:"email"`
-	TeamID         string         `json:"team_id"`
-	ProxyID        string         `json:"proxy_id"`
-	SeatType       string         `json:"seat_type"`
-	Enabled        bool           `json:"enabled"`
-	HasSecret      bool           `json:"has_secret"`
-	AccessToken    string         `json:"access_token,omitempty"`
-	Session        string         `json:"session,omitempty"`
-	RefreshToken   string         `json:"refresh_token,omitempty"`
-	HasRefresh     bool           `json:"has_refresh"`
-	PlanType       string         `json:"plan_type"`
-	TokenExpiresAt *time.Time     `json:"token_expires_at"`
-	ActiveRefund   string         `json:"active_refund"`
-	ActiveEmail    string         `json:"active_email"`
-	ActiveStatus   string         `json:"active_status"`
+	AutoDisabledReason string         `json:"auto_disabled_reason"`
+	AutoDisabledAt     *time.Time     `json:"auto_disabled_at"`
+	AuthBlocked        bool           `json:"auth_blocked"`
+	Check              *ResourceCheck `json:"check,omitempty"`
+	ID                 string         `json:"id"`
+	Name               string         `json:"name"`
+	Email              string         `json:"email"`
+	TeamID             string         `json:"team_id"`
+	ProxyID            string         `json:"proxy_id"`
+	SeatType           string         `json:"seat_type"`
+	Enabled            bool           `json:"enabled"`
+	HasSecret          bool           `json:"has_secret"`
+	AccessToken        string         `json:"access_token,omitempty"`
+	Session            string         `json:"session,omitempty"`
+	RefreshToken       string         `json:"refresh_token,omitempty"`
+	HasRefresh         bool           `json:"has_refresh"`
+	PlanType           string         `json:"plan_type"`
+	TokenExpiresAt     *time.Time     `json:"token_expires_at"`
+	ActiveRefund       string         `json:"active_refund"`
+	ActiveEmail        string         `json:"active_email"`
+	ActiveStatus       string         `json:"active_status"`
 }
 
 func (s *Store) sealSecret(id string, value any) ([]byte, error) {
@@ -237,7 +239,7 @@ func (s *Store) RefundProxies(ctx context.Context) ([]RefundProxy, error) {
 	return out, rows.Err()
 }
 func (s *Store) RefundMothers(ctx context.Context) ([]RefundMother, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT m.id,m.name,m.email,m.team_id,m.proxy_id,m.seat_type,m.enabled,COALESCE(e.refund_id,''),COALESCE(r.email,''),COALESCE(r.status,''),m.refresh_secret IS NOT NULL,m.plan_type,m.token_expires_at,m.check_json,COALESCE(m.auth_failed_fingerprint=md5(m.secret),false) FROM refund_mothers m LEFT JOIN refund_execution e ON e.mother_id=m.id AND NOT e.released AND e.mother_released_at IS NULL LEFT JOIN refunds r ON r.id=e.refund_id WHERE m.deleted_at IS NULL ORDER BY m.name,m.id`)
+	rows, err := s.Pool.Query(ctx, `SELECT m.id,m.name,m.email,m.team_id,m.proxy_id,m.seat_type,m.enabled,COALESCE(e.refund_id,''),COALESCE(r.email,''),COALESCE(r.status,''),m.refresh_secret IS NOT NULL,m.plan_type,m.token_expires_at,m.check_json,COALESCE(m.auth_failed_fingerprint=md5(m.secret),false),m.auto_disabled_reason,m.auto_disabled_at FROM refund_mothers m LEFT JOIN refund_execution e ON e.mother_id=m.id AND NOT e.released AND e.mother_released_at IS NULL LEFT JOIN refunds r ON r.id=e.refund_id WHERE m.deleted_at IS NULL ORDER BY m.name,m.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +248,7 @@ func (s *Store) RefundMothers(ctx context.Context) ([]RefundMother, error) {
 	for rows.Next() {
 		var v RefundMother
 		v.HasSecret = true
-		if err = rows.Scan(&v.ID, &v.Name, &v.Email, &v.TeamID, &v.ProxyID, &v.SeatType, &v.Enabled, &v.ActiveRefund, &v.ActiveEmail, &v.ActiveStatus, &v.HasRefresh, &v.PlanType, &v.TokenExpiresAt, &v.Check, &v.AuthBlocked); err != nil {
+		if err = rows.Scan(&v.ID, &v.Name, &v.Email, &v.TeamID, &v.ProxyID, &v.SeatType, &v.Enabled, &v.ActiveRefund, &v.ActiveEmail, &v.ActiveStatus, &v.HasRefresh, &v.PlanType, &v.TokenExpiresAt, &v.Check, &v.AuthBlocked, &v.AutoDisabledReason, &v.AutoDisabledAt); err != nil {
 			return nil, err
 		}
 		out = append(out, v)
@@ -375,6 +377,7 @@ func (s *Store) SaveRefundMother(ctx context.Context, actor string, v RefundMoth
 		return "", invalid("请选择可用的母号专属代理")
 	}
 	fresh := v.ID == ""
+	resetFailures := fresh
 	if fresh {
 		v.ID = ID()
 		if v.AccessToken == "" {
@@ -382,14 +385,15 @@ func (s *Store) SaveRefundMother(ctx context.Context, actor string, v RefundMoth
 		}
 	} else {
 		var team, email, proxy, seat string
-		var reserved, running bool
-		err = tx.QueryRow(ctx, `SELECT team_id,email,proxy_id,seat_type,EXISTS(SELECT 1 FROM refund_execution WHERE mother_id=$1 AND NOT released),EXISTS(SELECT 1 FROM refund_execution WHERE mother_id=$1 AND lease_until>now()) FROM refund_mothers WHERE id=$1 AND deleted_at IS NULL`, v.ID).Scan(&team, &email, &proxy, &seat, &reserved, &running)
+		var reserved, running, wasEnabled bool
+		err = tx.QueryRow(ctx, `SELECT enabled,team_id,email,proxy_id,seat_type,EXISTS(SELECT 1 FROM refund_execution WHERE mother_id=$1 AND NOT released),EXISTS(SELECT 1 FROM refund_execution WHERE mother_id=$1 AND lease_until>now()) FROM refund_mothers WHERE id=$1 AND deleted_at IS NULL`, v.ID).Scan(&wasEnabled, &team, &email, &proxy, &seat, &reserved, &running)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", ErrNotFound
 		}
 		if err != nil {
 			return "", err
 		}
+		resetFailures = (!wasEnabled && v.Enabled) || proxy != v.ProxyID || v.AccessToken != ""
 		var managed bool
 		var pendingResources bool
 		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM refund_resource_tasks WHERE mother_id=$1 AND state<>'done')`, v.ID).Scan(&pendingResources); err != nil {
@@ -420,6 +424,18 @@ func (s *Store) SaveRefundMother(ctx context.Context, actor string, v RefundMoth
 	}
 	if err == nil && v.AccessToken != "" {
 		_, err = tx.Exec(ctx, "UPDATE refund_mothers SET plan_type=$2,token_expires_at=$3 WHERE id=$1", v.ID, v.PlanType, v.TokenExpiresAt)
+	}
+	if err == nil && v.AccessToken != "" {
+		var saved []byte
+		if v.Session != "" {
+			saved, err = s.sealSecret("mother-session:"+v.ID, v.Session)
+		}
+		if err == nil {
+			_, err = tx.Exec(ctx, "UPDATE refund_mothers SET session_secret=$2 WHERE id=$1", v.ID, saved)
+		}
+	}
+	if err == nil && resetFailures {
+		_, err = tx.Exec(ctx, "UPDATE refund_mothers SET failure_reset_at=now(),auto_disabled_reason='',auto_disabled_at=NULL WHERE id=$1", v.ID)
 	}
 	if err == nil && v.RefreshToken != "" {
 		var secret []byte
