@@ -32,6 +32,9 @@ type RefundSettings struct {
 	MotherIntervalSeconds             int                       `json:"mother_interval_seconds"`
 }
 type RefundProxy struct {
+	Vendor            string         `json:"vendor"`
+	Country           string         `json:"country"`
+	SessionMinutes    int            `json:"session_minutes"`
 	RecoverySuccesses int            `json:"recovery_successes"`
 	RecoveryRequired  *int           `json:"recovery_required"`
 	ProbeUntil        *time.Time     `json:"probe_until"`
@@ -222,7 +225,7 @@ func (s *Store) SaveRefundSettings(ctx context.Context, actor string, v RefundSe
 	return tx.Commit(ctx)
 }
 func (s *Store) RefundProxies(ctx context.Context) ([]RefundProxy, error) {
-	rows, err := s.Pool.Query(ctx, "SELECT id,name,enabled,check_json,target,failure_until,failure_code,recovery_successes,probe_until,(SELECT child_proxy_recovery_success_count FROM refund_settings WHERE id) FROM refund_proxies WHERE deleted_at IS NULL ORDER BY name,id")
+	rows, err := s.Pool.Query(ctx, "SELECT id,name,enabled,check_json,target,failure_until,failure_code,recovery_successes,probe_until,vendor,country,session_minutes,(SELECT child_proxy_recovery_success_count FROM refund_settings WHERE id) FROM refund_proxies WHERE deleted_at IS NULL ORDER BY name,id")
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +234,7 @@ func (s *Store) RefundProxies(ctx context.Context) ([]RefundProxy, error) {
 	for rows.Next() {
 		var v RefundProxy
 		v.HasSecret = true
-		if err = rows.Scan(&v.ID, &v.Name, &v.Enabled, &v.Check, &v.Target, &v.FailureUntil, &v.FailureCode, &v.RecoverySuccesses, &v.ProbeUntil, &v.RecoveryRequired); err != nil {
+		if err = rows.Scan(&v.ID, &v.Name, &v.Enabled, &v.Check, &v.Target, &v.FailureUntil, &v.FailureCode, &v.RecoverySuccesses, &v.ProbeUntil, &v.Vendor, &v.Country, &v.SessionMinutes, &v.RecoveryRequired); err != nil {
 			return nil, err
 		}
 		out = append(out, v)
@@ -317,14 +320,41 @@ func (s *Store) SaveRefundProxy(ctx context.Context, actor string, v RefundProxy
 			return "", invalid("代理正在执行任务，待当前任务结束后再修改地址")
 		}
 	}
+	var saved RefundProxy
+	var source string
+	if !fresh {
+		var secret []byte
+		if err = tx.QueryRow(ctx, "SELECT vendor,country,session_minutes,secret FROM refund_proxies WHERE id=$1", v.ID).Scan(&saved.Vendor, &saved.Country, &saved.SessionMinutes, &secret); err != nil {
+			return "", err
+		}
+		if err = s.openSecret("proxy:"+v.ID, secret, &source); err != nil {
+			return "", err
+		}
+		if v.Vendor == "" {
+			v.Vendor = saved.Vendor
+		}
+		if v.Country == "" {
+			v.Country = saved.Country
+		}
+		if v.SessionMinutes == 0 {
+			v.SessionMinutes = saved.SessionMinutes
+		}
+	}
+	v.sessionDefaults()
+	if v.URL != "" {
+		source = v.URL
+	}
+	if _, err = childSessionEndpoint(v, source, "12345678"); err != nil {
+		return "", err
+	}
 	if fresh || v.URL != "" {
 		secret, e := s.sealSecret("proxy:"+v.ID, v.URL)
 		if e != nil {
 			return "", e
 		}
-		_, err = tx.Exec(ctx, `INSERT INTO refund_proxies(id,name,secret,enabled,target) VALUES($1,$2,$3,$4,$5) ON CONFLICT(id) DO UPDATE SET name=excluded.name,secret=excluded.secret,enabled=excluded.enabled,target=excluded.target,failure_until=NULL,failure_at=NULL,failure_code='',probe_until=NULL,recovery_token='',recovery_successes=0,recovery_checked_at=NULL,check_json=NULL,updated_at=now()`, v.ID, v.Name, secret, v.Enabled, v.Target)
+		_, err = tx.Exec(ctx, `INSERT INTO refund_proxies(id,name,secret,enabled,target,vendor,country,session_minutes) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(id) DO UPDATE SET name=excluded.name,secret=excluded.secret,enabled=excluded.enabled,target=excluded.target,vendor=excluded.vendor,country=excluded.country,session_minutes=excluded.session_minutes,failure_until=NULL,failure_at=NULL,failure_code='',probe_until=NULL,recovery_token='',recovery_successes=0,recovery_checked_at=NULL,check_json=NULL,updated_at=now()`, v.ID, v.Name, secret, v.Enabled, v.Target, v.Vendor, v.Country, v.SessionMinutes)
 	} else {
-		_, err = tx.Exec(ctx, "UPDATE refund_proxies SET name=$2,enabled=$3,target=$4,check_json=NULL,recovery_token='',recovery_successes=0,probe_until=NULL,updated_at=now() WHERE id=$1", v.ID, v.Name, v.Enabled, v.Target)
+		_, err = tx.Exec(ctx, "UPDATE refund_proxies SET name=$2,enabled=$3,target=$4,vendor=$5,country=$6,session_minutes=$7,check_json=NULL,recovery_token='',recovery_successes=0,probe_until=NULL,updated_at=now() WHERE id=$1", v.ID, v.Name, v.Enabled, v.Target, v.Vendor, v.Country, v.SessionMinutes)
 	}
 	if err == nil && v.Target == "mother" {
 		_, err = tx.Exec(ctx, "UPDATE refund_settings SET child_proxy_id=CASE WHEN child_proxy_id=$1 THEN NULL ELSE child_proxy_id END,child_proxy_backups=array_remove(child_proxy_backups,$1) WHERE id", v.ID)
@@ -333,7 +363,7 @@ func (s *Store) SaveRefundProxy(ctx context.Context, actor string, v RefundProxy
 		_, err = tx.Exec(ctx, "UPDATE refund_mothers SET check_json=NULL WHERE proxy_id=$1", v.ID)
 	}
 	if err == nil {
-		err = audit(ctx, tx, actor, "refund.proxy.save", v.ID, map[string]any{"name": v.Name, "enabled": v.Enabled, "secret_changed": v.URL != "", "target": v.Target})
+		err = audit(ctx, tx, actor, "refund.proxy.save", v.ID, map[string]any{"name": v.Name, "enabled": v.Enabled, "secret_changed": v.URL != "", "target": v.Target, "vendor": v.Vendor, "country": v.Country, "session_minutes": v.SessionMinutes})
 	}
 	if err != nil {
 		return "", settingError(err)

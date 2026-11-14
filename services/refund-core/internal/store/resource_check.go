@@ -47,7 +47,20 @@ func (s *Store) PrepareProxyProbe(ctx context.Context, actor string, v RefundPro
 	url := strings.TrimSpace(v.URL)
 	if url == "" && v.ID != "" {
 		var secret []byte
-		err = tx.QueryRow(ctx, "SELECT secret FROM refund_proxies WHERE id=$1 AND deleted_at IS NULL", v.ID).Scan(&secret)
+		var saved RefundProxy
+		err = tx.QueryRow(ctx, "SELECT secret,vendor,country,session_minutes,target FROM refund_proxies WHERE id=$1 AND deleted_at IS NULL", v.ID).Scan(&secret, &saved.Vendor, &saved.Country, &saved.SessionMinutes, &saved.Target)
+		if v.Vendor == "" {
+			v.Vendor = saved.Vendor
+		}
+		if v.Country == "" {
+			v.Country = saved.Country
+		}
+		if v.SessionMinutes == 0 {
+			v.SessionMinutes = saved.SessionMinutes
+		}
+		if v.Target == "" {
+			v.Target = saved.Target
+		}
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", ErrNotFound
 		}
@@ -61,6 +74,17 @@ func (s *Store) PrepareProxyProbe(ctx context.Context, actor string, v RefundPro
 	url, err = normalizeProxyURL(url)
 	if err != nil {
 		return "", err
+	}
+	if v.Target != "mother" {
+		v.sessionDefaults()
+		ref, e := childSessionRef(v.Vendor)
+		if e != nil {
+			return "", e
+		}
+		url, err = childSessionEndpoint(v, url, ref)
+		if err != nil {
+			return "", err
+		}
 	}
 	return url, tx.Commit(ctx)
 }

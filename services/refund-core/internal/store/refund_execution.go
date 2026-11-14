@@ -181,6 +181,7 @@ func (s *Store) ClaimRefund(ctx context.Context) (*RefundJob, error) {
 	if childProxyID == "" {
 		childProxyID = cfg.ChildProxyID
 	}
+	replaceChildSession := false
 	if existing && job.Step != "accepted" && job.Step != "removing" && job.RecoveryMode != "cleanup" {
 		var pending bool
 		if err = tx.QueryRow(ctx, "SELECT child_proxy_switch_pending FROM refund_execution WHERE refund_id=$1", job.ID).Scan(&pending); err != nil {
@@ -197,6 +198,7 @@ func (s *Store) ClaimRefund(ctx context.Context) (*RefundJob, error) {
 			if err = setChildProxy(ctx, tx, job, childProxyID, next); err != nil {
 				return nil, err
 			}
+			replaceChildSession = true
 			childProxyID = next
 		}
 	}
@@ -206,16 +208,8 @@ func (s *Store) ClaimRefund(ctx context.Context) (*RefundJob, error) {
 		}
 	}
 	job.ProxyAttemptStarted = time.Now().UTC()
-	var childProxySecret []byte
 	if job.Step != "accepted" && job.Step != "removing" && job.RecoveryMode != "cleanup" {
-		err = tx.QueryRow(ctx, "SELECT secret FROM refund_proxies WHERE id=$1 AND enabled", childProxyID).Scan(&childProxySecret)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil
-		}
-		if err != nil {
-			return nil, err
-		}
-		if err = s.openSecret("proxy:"+childProxyID, childProxySecret, &job.ChildProxy); err != nil {
+		if err = s.bindChildSession(ctx, tx, job, childProxyID, replaceChildSession); err != nil {
 			return nil, err
 		}
 	}

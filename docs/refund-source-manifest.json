@@ -75,8 +75,8 @@
     {
       "path": "internal/store/refund_execution.go",
       "source_sha256": "a4818dd74885d0221b42fe569249837d869df2a31fbed8191ebea69462901dcc",
-      "sha256": "86f15e4109a181b4eb0bd1b53da4af9b68abfcf19a7ea4637532a9995b5cfd54",
-      "adaptation": "Use unified users and maintenance drain; select durable child primary/backups and cooldown probes, preserve assigned retired resources and original submission checkpoints; waiting child failover cannot block mother-only completion. Shared scheduler lock excludes teams and children reserved by administrator management; original runtime protocol unchanged. Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-12 reviewed resource recovery and child proxy boundary integration; 2026-11-12 子号冷却后独立连接检测门槛、空值跳过及可配置间隔，业务执行不再恢复故障代理。; 2026-11-14 encrypted mother Session editing and confirmed-cleanup failure protection with target-email terminal-order restrictions"
+      "sha256": "18fea0b924f2f94069a9e1af2bfd44433af46e22812a339446d52bfa2db70ccf",
+      "adaptation": "Use unified users and maintenance drain; select durable child primary/backups and cooldown probes, preserve assigned retired resources and original submission checkpoints; waiting child failover cannot block mother-only completion. Shared scheduler lock excludes teams and children reserved by administrator management; original runtime protocol unchanged. Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-12 reviewed resource recovery and child proxy boundary integration; 2026-11-12 子号冷却后独立连接检测门槛、空值跳过及可配置间隔，业务执行不再恢复故障代理。; 2026-11-14 encrypted mother Session editing and confirmed-cleanup failure protection with target-email terminal-order restrictions; 2026-11-14 per-order encrypted child proxy sessions, backup session persistence, supplier-aware probes and admin timeline reasons"
     },
     {
       "path": "internal/store/refund_invite_recovery.go",
@@ -126,14 +126,14 @@
     {
       "path": "internal/store/refund_settings.go",
       "source_sha256": "0e510a8592ad24e48db15e9bf4ce6795d582e48a40548db2959839c66216bf26",
-      "sha256": "2744de59870f2a6bd8768d3aa91191e38d3f3acd18708cdfe90c25649d6f76b0",
-      "adaptation": "Unified administrator resource deletion, mother/child eligibility, ordered child backup configuration, and readiness. Retain private assigned resource rows. Block conflicting credential/identity edits and mother deletion during management; clear credential refresh metadata on replacement. Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-12 子号冷却后独立连接检测门槛、空值跳过及可配置间隔，业务执行不再恢复故障代理。 Also preserves the deployed account termination admission limit/settings.; 2026-11-14 encrypted mother Session editing and confirmed-cleanup failure protection with target-email terminal-order restrictions"
+      "sha256": "76a55c41ae53be1a007ab93f0b5af8eb331ad10c7ba6e72b6a0f2fe1a6539653",
+      "adaptation": "Unified administrator resource deletion, mother/child eligibility, ordered child backup configuration, and readiness. Retain private assigned resource rows. Block conflicting credential/identity edits and mother deletion during management; clear credential refresh metadata on replacement. Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-12 子号冷却后独立连接检测门槛、空值跳过及可配置间隔，业务执行不再恢复故障代理。 Also preserves the deployed account termination admission limit/settings.; 2026-11-14 encrypted mother Session editing and confirmed-cleanup failure protection with target-email terminal-order restrictions; 2026-11-14 per-order encrypted child proxy sessions, backup session persistence, supplier-aware probes and admin timeline reasons"
     },
     {
       "path": "internal/store/refund_timeline.go",
       "source_sha256": "46ce9a30cb8077b4f3203aa5cd187b8a6dd46573d37faa92a95688a473bbe1a2",
-      "sha256": "7c84d1977ec77d5173eaaba5e13a09add92892221f0f92154e7495bbfa8831ae",
-      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md."
+      "sha256": "396ee4f38475c4531df9cc273a47b7b6000e38184bb9efdb20980bdaa73294ee",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-14 per-order encrypted child proxy sessions, backup session persistence, supplier-aware probes and admin timeline reasons"
     },
     {
       "path": "internal/store/refund_workspace_observation.go",
@@ -143,8 +143,8 @@
     {
       "path": "internal/store/resource_check.go",
       "source_sha256": "0b7a0af0f0770c91fdbba7a5d854d7d5f976d7f7f3a0af5d4492935f9f299e91",
-      "sha256": "2503bb536d501db59ded89638e405b2407dfcd8a002de2a94f721d8eaccbca33",
-      "adaptation": "A successful administrator probe clears only older child proxy failures.; 2026-11-12 子号冷却后独立连接检测门槛、空值跳过及可配置间隔，业务执行不再恢复故障代理。"
+      "sha256": "5ece73863aff8415c10424050be4fc6cf6381f5175dd223b0bc67402e91919c8",
+      "adaptation": "A successful administrator probe clears only older child proxy failures.; 2026-11-12 子号冷却后独立连接检测门槛、空值跳过及可配置间隔，业务执行不再恢复故障代理。; 2026-11-14 per-order encrypted child proxy sessions, backup session persistence, supplier-aware probes and admin timeline reasons"
     },
     {
       "path": "runtime/README.md",

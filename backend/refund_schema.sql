@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS refund_mothers (
  seat_type TEXT NOT NULL DEFAULT 'default' CHECK(seat_type IN ('default','prolite')),
  enabled BOOLEAN NOT NULL DEFAULT true, updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE refund_proxies ADD COLUMN IF NOT EXISTS vendor TEXT NOT NULL DEFAULT 'other';
+ALTER TABLE refund_proxies ADD COLUMN IF NOT EXISTS country TEXT NOT NULL DEFAULT 'PH';
+ALTER TABLE refund_proxies ADD COLUMN IF NOT EXISTS session_minutes INTEGER NOT NULL DEFAULT 60;
 -- Retired proxies remain private for already assigned orders and their recovery.
 ALTER TABLE refund_proxies ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
 CREATE TABLE IF NOT EXISTS refund_execution (
@@ -47,6 +50,17 @@ CREATE TABLE IF NOT EXISTS refund_execution (
  lease_token TEXT NOT NULL DEFAULT '', lease_until TIMESTAMPTZ,
  released BOOLEAN NOT NULL DEFAULT false, updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Each order pins its child endpoint. Network failover creates a new binding;
+-- retries, restarts and fallback checks reuse the most recent encrypted one.
+CREATE TABLE IF NOT EXISTS refund_child_proxy_sessions (
+ refund_id TEXT NOT NULL REFERENCES refunds(id), generation INTEGER NOT NULL,
+ proxy_id TEXT NOT NULL REFERENCES refund_proxies(id), endpoint_secret BYTEA NOT NULL,
+ vendor TEXT NOT NULL, country TEXT NOT NULL, session_minutes INTEGER NOT NULL,
+ session_ref TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ expires_at TIMESTAMPTZ NOT NULL, PRIMARY KEY(refund_id,generation)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS refund_child_proxy_session_reference
+ ON refund_child_proxy_sessions(session_ref) WHERE session_ref<>'';
 -- Removing a mother hides configuration without deleting historical execution
 -- references or credentials still needed by its reserved task to finish cleanup.
 ALTER TABLE refund_mothers ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;

@@ -71,6 +71,9 @@ func (s *Store) AdminRefundTimeline(ctx context.Context, id string) (*RefundTime
 	if err = readTimelinePersonalPlans(ctx, tx, id, out); err != nil {
 		return nil, err
 	}
+	if err = readTimelineFailures(ctx, tx, id, out); err != nil {
+		return nil, err
+	}
 	out.Recovery, err = readRefundRecovery(ctx, tx, id)
 	if err != nil {
 		return nil, err

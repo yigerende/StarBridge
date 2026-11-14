@@ -15,7 +15,7 @@ import type { ResourceCheck } from "../refund/resource-check";
 import Modal from "../refund/Modal.vue";
 
 import { parseVerificationStatuses } from "../refund/admin-verification-statuses";
-type ProxyRow = { recovery_successes?:number;recovery_required?:number|null;probe_until?:string; target?:string; failure_until?:string; failure_code?:string; check?:ResourceCheck; id:string; name:string; enabled:boolean; has_secret:boolean; url?:string };
+type ProxyRow = { vendor?:string;country?:string;session_minutes?:number; recovery_successes?:number;recovery_required?:number|null;probe_until?:string; target?:string; failure_until?:string; failure_code?:string; check?:ResourceCheck; id:string; name:string; enabled:boolean; has_secret:boolean; url?:string };
 type Mother = { auto_disabled_reason?:string;auto_disabled_at?:string; auth_blocked?:boolean; check?:ResourceCheck; id:string; name:string; email:string; team_id:string; proxy_id:string; seat_type:string; enabled:boolean; has_secret:boolean; access_token?:string; session?:string; refresh_token?:string; has_refresh?:boolean; plan_type?:string; token_expires_at?:string; active_refund?:string; active_email?:string; active_status?:string };
 type CredentialPreview = {email:string;team_id:string;plan_type:string;expires_at:string|null;has_refresh:boolean};
 type Recovery={verification_http_statuses?:number[];plan_fallback?:{enabled:boolean;max_cycles:number;max_attempts:number;retry_seconds:number};enabled:boolean;max_retries:number;verify_intervals:number[];cleanup_intervals:number[];alert_seconds:number;cleanup_failed:boolean};
@@ -37,7 +37,8 @@ const proxyList=useRemoteList('refund-proxies',()=>section.value==='proxies'?'/a
 const {page:motherPage,size:motherSize,sortBy:motherSort,sortDir:motherDir,data:motherData,rows:motherRows,loading:motherLoading,error:motherError}=motherList
 const {page:proxyPage,size:proxySize,sortBy:proxySort,sortDir:proxyDir,data:proxyData,rows:proxyRows,loading:proxyLoading,error:proxyError}=proxyList
 const mother=ref<Mother>({id:"",name:"",email:"",team_id:"",proxy_id:"",seat_type:"default",enabled:true,has_secret:false,access_token:""});
-const proxy=ref<ProxyRow>({id:"",name:"",url:"",target:"both",enabled:true,has_secret:false});
+const proxyVendors:Record<string,string>={iproyal:"IPRoyal（皇冠）",cliproxy:"CLI", "1024proxy":"1024", "711proxy":"711",other:"其他（原地址）"};
+const proxy=ref<ProxyRow>({vendor:"other",country:"PH",session_minutes:60,id:"",name:"",url:"",target:"both",enabled:true,has_secret:false});
 const motherProxies=computed(()=>proxies.value.filter(p=>p.target!=='child'));
 const childProxies=computed(()=>proxies.value.filter(p=>p.target!=='mother'));
 const targetName=(p:ProxyRow)=>p.target==='mother'?'母号':p.target==='child'?'子号':'母号 / 子号';
@@ -55,11 +56,11 @@ const motherCheck=ref<ResourceCheck>(),proxyCheck=ref<ResourceCheck>();
 const motherPreview=ref<CredentialPreview>(),parsing=ref(false),fileInput=ref<HTMLInputElement>();
 watch(()=>mother.value.session,()=>{motherPreview.value=undefined});
 watch(()=>[mother.value.session,mother.value.access_token,mother.value.team_id,mother.value.email,mother.value.proxy_id],()=>{motherCheck.value=undefined});
-watch(()=>proxy.value.url,()=>{proxyCheck.value=undefined});
+watch(()=>[proxy.value.url,proxy.value.vendor,proxy.value.country,proxy.value.session_minutes,proxy.value.target],()=>{proxyCheck.value=undefined});
 const savedCredential=ref(''),savedRefresh=ref(''),loadingCredential=ref(false);
 let credentialRequest=0;
 const motherInput=()=>{const m=mother.value;return {id:m.id,name:m.name,email:m.email,team_id:m.team_id,proxy_id:m.proxy_id,seat_type:m.seat_type,enabled:m.enabled,session:(m.session||'')===savedCredential.value?'':m.session||'',refresh_token:(m.refresh_token||'')===savedRefresh.value?'':m.refresh_token||''}};
-const proxyInput=()=>{const p=proxy.value;return {id:p.id,name:p.name,url:p.url||"",target:p.target,enabled:p.enabled}};
+const proxyInput=()=>{const p=proxy.value;return {id:p.id,name:p.name,url:p.url||"",target:p.target,enabled:p.enabled,vendor:p.vendor,country:p.country,session_minutes:p.session_minutes}};
 const displayTime=(value:string)=>new Date(value).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false});
 async function load(){
  busy.value=true;error.value="";
@@ -80,7 +81,7 @@ async function editMother(row?:Mother){
  formError.value="";modal.value="mother";
  if(row){loadingCredential.value=true;const id=row.id;try{const v=await api<{session:string;access_token:string;refresh_token:string}>(`/admin/refund/mother-management/${id}/credentials`);if(request===credentialRequest&&modal.value==='mother'&&mother.value.id===id){savedCredential.value=v.session||v.access_token;savedRefresh.value=v.refresh_token||'';mother.value.session=savedCredential.value;mother.value.refresh_token=savedRefresh.value}}catch(e){if(request===credentialRequest&&modal.value==='mother'&&mother.value.id===id)formError.value=(e as Error).message}finally{if(request===credentialRequest)loadingCredential.value=false}}
 }
-function editProxy(row?:ProxyRow){proxyCheck.value=undefined;proxy.value=row?{target:"both",...row,url:""}:{id:"",name:"",url:"",target:"both",enabled:true,has_secret:false};formError.value="";modal.value="proxy"}
+function editProxy(row?:ProxyRow){proxyCheck.value=undefined;proxy.value=row?{vendor:"other",country:"PH",session_minutes:60,target:"both",...row,url:""}:{id:"",name:"",url:"",vendor:"other",country:"PH",session_minutes:60,target:"child",enabled:true,has_secret:false};formError.value="";modal.value="proxy"}
 function close(){credentialRequest++;loadingCredential.value=false;savedCredential.value="";savedRefresh.value="";modal.value="";motherCheck.value=undefined;proxyCheck.value=undefined;mother.value.access_token="";mother.value.session="";mother.value.refresh_token="";motherPreview.value=undefined;proxy.value.url="";removing.value=undefined}
 async function parseMother(){
  const raw=mother.value.session?.trim()||"";
@@ -268,9 +269,9 @@ onUnmounted(()=>{resourcesDisposed=true;clearInterval(resourceTimer);resourceCon
     </tbody></table></div>
   <ListPager v-model:page="motherPage" v-model:size="motherSize" :total="motherData.total||0" :loading="motherLoading"/></section>
   <section v-show="section==='proxies'" id="refund-resource-proxies" role="tabpanel" class="panel">
-   <div class="section-title"><div><h2>代退代理</h2><p>连接信息加密保管，列表只展示名称与可用状态。</p></div><button class="btn primary" :disabled="busy" @click="editProxy()">录入代理</button></div>
+   <div class="section-title"><div><h2>代退代理</h2><p>配置主备代理、国家与子号会话时长。</p></div><button class="btn primary" :disabled="busy" @click="editProxy()">录入代理</button></div>
    <div class="table-toolbar"><input v-model="proxyQuery" type="search" placeholder="搜索资源名称或账号" maxlength="200"/><select v-model="proxyStatus"><option value="">全部状态</option><option value="enabled">启用</option><option value="disabled">停用</option><option value="cooling">冷却中</option></select><select v-model="proxyTarget"><option value="">全部适用对象</option><option value="mother">母号可用</option><option value="child">子号可用</option></select></div><p v-if="proxyError" class="alert danger">{{proxyError}}</p><div class="table-scroll"><table><thead><tr><SortHeader label="名称" field="name" :sort-by="proxySort" :sort-dir="proxyDir" @sort="proxyList.sort"/><SortHeader label="适用对象" field="target" :sort-by="proxySort" :sort-dir="proxyDir" @sort="proxyList.sort"/><SortHeader label="状态" field="enabled" :sort-by="proxySort" :sort-dir="proxyDir" @sort="proxyList.sort"/><th>配置</th><SortHeader label="冷却释放时间" field="failure_until" :sort-by="proxySort" :sort-dir="proxyDir" @sort="proxyList.sort"/><th>连接测试</th><th>操作</th></tr></thead><tbody>
-    <tr v-for="p in (proxyRows as ProxyRow[])" :key="p.id"><td>{{p.name}}</td><td>{{targetName(p)}}</td><td><span class="badge" :class="p.enabled?'green':'gray'">{{p.enabled?'启用':'停用'}}</span></td><td>{{settings.child_proxy_id===p.id?'子号主用':settings.child_proxy_backups.includes(p.id)?'子号备用 '+(settings.child_proxy_backups.indexOf(p.id)+1):'连接信息已保存'}}</td><td><ProxyCooldown :until="p.failure_until" :failures="p.failure_until?1:0" :probe-until="p.probe_until" :successes="p.recovery_successes" :required="p.recovery_required"/></td><td><ResourceCheckSummary :check="p.check"/></td><td><div class="execution-actions"><button class="btn secondary" :disabled="busy" @click="checkProxy(p)">测试代理</button><button class="btn secondary" :disabled="busy" @click="editProxy(p)">编辑</button><button class="btn secondary danger" :disabled="busy" @click="removing={kind:'proxies',id:p.id,name:p.name};modal='delete';formError=''">删除</button></div></td></tr>
+    <tr v-for="p in (proxyRows as ProxyRow[])" :key="p.id"><td>{{p.name}}<small class="proxy-session-summary">{{proxyVendors[p.vendor||"other"]}}<template v-if="p.vendor!=='other' && p.target!=='mother'"> · {{p.country==='PH'?'菲律宾':p.country}} · {{p.session_minutes}} 分钟</template></small></td><td>{{targetName(p)}}</td><td><span class="badge" :class="p.enabled?'green':'gray'">{{p.enabled?'启用':'停用'}}</span></td><td>{{settings.child_proxy_id===p.id?'子号主用':settings.child_proxy_backups.includes(p.id)?'子号备用 '+(settings.child_proxy_backups.indexOf(p.id)+1):'连接信息已保存'}}</td><td><ProxyCooldown :until="p.failure_until" :failures="p.failure_until?1:0" :probe-until="p.probe_until" :successes="p.recovery_successes" :required="p.recovery_required"/></td><td><ResourceCheckSummary :check="p.check"/></td><td><div class="execution-actions"><button class="btn secondary" :disabled="busy" @click="checkProxy(p)">测试代理</button><button class="btn secondary" :disabled="busy" @click="editProxy(p)">编辑</button><button class="btn secondary danger" :disabled="busy" @click="removing={kind:'proxies',id:p.id,name:p.name};modal='delete';formError=''">删除</button></div></td></tr>
     <tr v-if="!proxyRows.length"><td colspan="7" class="empty-state">还没有网络出口配置。</td></tr>
    </tbody></table></div>
   <ListPager v-model:page="proxyPage" v-model:size="proxySize" :total="proxyData.total||0" :loading="proxyLoading"/></section>
@@ -296,8 +297,14 @@ onUnmounted(()=>{resourcesDisposed=true;clearInterval(resourceTimer);resourceCon
    <template v-else-if="modal==='proxy'">
     <label>代理名称<input v-model="proxy.name" required maxlength="100"/></label>
     <label>适用对象<select v-model="proxy.target"><option value="both">母号 / 子号通用</option><option value="mother">仅母号</option><option value="child">仅子号</option></select></label>
+    <label>代理厂商<select v-model="proxy.vendor"><option v-for="(name,key) in proxyVendors" :key="key" :value="key">{{name}}</option></select></label>
+    <div v-if="proxy.target!=='mother'" class="form-row">
+     <label>国家 / 地区<input v-model="proxy.country" maxlength="2" minlength="2" pattern="[A-Za-z]{2}" placeholder="PH" required style="text-transform:uppercase"/><small>默认 PH（菲律宾），填写两位国家代码。</small></label>
+     <label>粘性会话（分钟）<input v-model.number="proxy.session_minutes" type="number" :min="proxy.vendor==='711proxy'?5:1" :max="['cliproxy','1024proxy'].includes(proxy.vendor||'')?120:proxy.vendor==='711proxy'?180:10080" step="1" required/><small>默认 60 分钟。</small></label>
+    </div>
+    <p v-if="proxy.target!=='mother'" class="muted">每笔订单使用独立会话，登录、重试与套餐核验共用。网络故障切到备用后，继续使用备用会话。会话到期后的出口由代理商决定。其他厂商按原地址使用。</p>
     <label>代理地址<input v-model="proxy.url" type="password" autocomplete="new-password" :required="!proxy.id" :placeholder="proxy.id?'留空保留原地址':'IP:端口:用户名:密码'"/></label>
-    <p class="muted">支持 IP:端口:用户名:密码，默认 HTTP；也支持完整 HTTP、HTTPS、SOCKS5、SOCKS5H 地址。使用固定出口，任务运行中不能修改地址。</p>
+    <p class="muted">支持 IP:端口:用户名:密码，默认 HTTP；也支持完整 HTTP、HTTPS、SOCKS5、SOCKS5H 地址。任务运行中不能修改地址。</p>
     <button type="button" class="btn secondary" :disabled="busy" @click="checkProxy()">测试代理</button>
     <ResourceCheckSummary v-if="proxyCheck" :check="proxyCheck"/>
     <label class="checkbox-label"><input v-model="proxy.enabled" type="checkbox"/>启用代理</label>
@@ -312,6 +319,7 @@ onUnmounted(()=>{resourcesDisposed=true;clearInterval(resourceTimer);resourceCon
 </template>
 
 <style scoped>
+.proxy-session-summary{display:block;margin-top:6px;color:var(--muted);font-size:11px;white-space:nowrap}
 .refund-resource-overview{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-bottom:28px}.refund-resource-overview article{padding:22px}.refund-resource-overview span{display:block;font-size:11px;color:var(--muted);margin-bottom:15px}.refund-resource-overview b{display:block;font-size:28px}.refund-resource-overview small{font-size:11px;font-weight:400;color:var(--muted)}.refund-resource-overview b.queue-state{font-size:16px;margin-bottom:10px}.refund-resource-tabs{margin-bottom:22px}.refund-resource-tabs button{padding:13px 22px}@media(max-width:650px){.refund-resource-overview{grid-template-columns:1fr 1fr;gap:10px}.refund-resource-overview article{padding:17px}.refund-resource-overview article:last-child{grid-column:1/-1}.refund-resource-tabs button{padding:12px 16px}}
 
 .mother-resource-scroll{overflow:auto;max-height:680px}.execution-settings .mother-resource-table{min-width:2200px;table-layout:auto}.mother-resource-table th{white-space:nowrap;position:sticky;top:0;z-index:1;background:var(--surface)}.mother-resource-table td{padding:18px 14px;font-size:12px}.mother-resource-table small{font-size:11px;color:var(--muted);margin-top:7px}.mother-identity{min-width:190px}.mother-team{max-width:130px;overflow-wrap:anywhere;font-family:monospace}.mother-proxy-select{min-width:145px}.mother-row-actions{display:grid;gap:10px;white-space:nowrap}.mother-row-actions .link{text-align:left}.mother-switch{display:flex;align-items:center;gap:7px;background:none;border:0;white-space:nowrap;color:var(--text);font-size:12px}.mother-switch i{display:block;width:26px;height:15px;border-radius:12px;background:#b9c3c6;position:relative}.mother-switch i:after{content:'';position:absolute;top:3px;left:3px;width:9px;height:9px;border-radius:50%;background:white}.mother-switch i.on{background:#0f8b78}.mother-switch i.on:after{left:14px}.execution-settings{display:grid;gap:22px}.panel{padding:24px;min-width:0;overflow:auto}.section-title,.execution-actions{display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap}.section-title p{color:var(--muted);font-size:12px;margin:8px 0 20px}.execution-form{display:grid;gap:16px}.execution-form label{display:grid;gap:8px;font-size:12px}.execution-form .checkbox-label{display:flex;align-items:center;gap:10px}.checkbox-label input{width:auto}.form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px}.muted{font-size:12px;line-height:1.8;margin:0}.recovery-settings{border:1px solid var(--line);border-radius:12px;padding:20px;display:grid;gap:16px}.recovery-settings legend{padding:0 8px;font-weight:600}.error-banner,.form-error{color:#b4423c;padding:10px}.execution-form .btn{justify-self:start}.execution-settings table{width:100%;min-width:700px}.execution-settings td{vertical-align:top}.execution-actions .btn{padding:7px 12px}.modal-actions{display:flex;justify-content:flex-end;gap:12px}.execution-form input,.execution-form select,.execution-form textarea{max-width:100%;min-width:0} @media(max-width:600px){.panel{padding:16px}.recovery-settings{padding:14px}}

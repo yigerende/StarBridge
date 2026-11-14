@@ -41,11 +41,12 @@ func (s *Store) ClaimChildProxyRecovery(ctx context.Context) (*ChildProxyRecover
 	}
 	j := &ChildProxyRecovery{Required: *required, Token: Token()}
 	var secret []byte
-	err = tx.QueryRow(ctx, `SELECT id,secret,updated_at,failure_at FROM refund_proxies
+	var v RefundProxy
+	err = tx.QueryRow(ctx, `SELECT id,secret,updated_at,failure_at,vendor,country,session_minutes FROM refund_proxies
   WHERE id=ANY($1) AND enabled AND deleted_at IS NULL AND target IN ('child','both')
   AND failure_at IS NOT NULL AND failure_until<=now() AND (probe_until IS NULL OR probe_until<=now())
   AND (recovery_checked_at IS NULL OR recovery_checked_at<now()-$2*interval '1 second')
-  ORDER BY recovery_checked_at NULLS FIRST,id LIMIT 1 FOR UPDATE`, ids, interval).Scan(&j.ID, &secret, &j.UpdatedAt, &j.FailureAt)
+  ORDER BY recovery_checked_at NULLS FIRST,id LIMIT 1 FOR UPDATE`, ids, interval).Scan(&j.ID, &secret, &j.UpdatedAt, &j.FailureAt, &v.Vendor, &v.Country, &v.SessionMinutes)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -54,6 +55,14 @@ func (s *Store) ClaimChildProxyRecovery(ctx context.Context) (*ChildProxyRecover
 	}
 	if err = s.openSecret("proxy:"+j.ID, secret, &j.URL); err != nil {
 		return nil, err
+	}
+	ref, e := childSessionRef(v.Vendor)
+	if e != nil {
+		return nil, e
+	}
+	j.URL, e = childSessionEndpoint(v, j.URL, ref)
+	if e != nil {
+		return nil, e
 	}
 	_, err = tx.Exec(ctx, "UPDATE refund_proxies SET recovery_token=$2,probe_until=now()+interval '60 seconds',recovery_checked_at=now() WHERE id=$1", j.ID, j.Token)
 	if err != nil {
