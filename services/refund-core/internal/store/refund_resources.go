@@ -12,6 +12,7 @@ type ResourceRecoverySettings struct {
 	MotherFailedAccounts    int `json:"mother_failed_accounts"`
 	AccountFailureLimit     int `json:"account_failure_limit"`
 	PostLoginWaitSeconds    int `json:"post_login_wait_seconds"`
+	FallbackPlanWaitSeconds int `json:"fallback_plan_wait_seconds"`
 	FailureLimit            int `json:"failure_limit"`
 	CooldownSeconds         int `json:"cooldown_seconds"`
 	WatchSeconds            int `json:"watch_seconds"`
@@ -29,6 +30,9 @@ func (v ResourceRecoverySettings) Validate() error {
 	}
 	if v.PostLoginWaitSeconds < 0 || v.PostLoginWaitSeconds > 60 {
 		return invalid("登录后等待须为 0～60 秒")
+	}
+	if v.FallbackPlanWaitSeconds < 0 || v.FallbackPlanWaitSeconds > 60 {
+		return invalid("兜底登录后套餐核验等待须为 0～60 秒")
 	}
 	if v.FailureLimit < 1 || v.FailureLimit > 10 || v.CooldownSeconds < 30 || v.CooldownSeconds > 3600 || v.WatchSeconds < 30 || v.WatchSeconds > 1800 || v.RetrySeconds < 5 || v.RetrySeconds > 300 || v.SlowRetrySeconds < 60 || v.SlowRetrySeconds > 3600 || v.FastAttempts < 1 || v.FastAttempts > 10 || v.SlowRetrySeconds < v.RetrySeconds || v.LoginFailureLimit < 2 || v.LoginFailureLimit > 20 || v.LoginWindowSeconds < 10 || v.LoginWindowSeconds > 600 || v.LoginCooldownSeconds < 5 || v.LoginCooldownSeconds > 3600 {
 		return invalid("资源恢复次数或间隔超出范围")

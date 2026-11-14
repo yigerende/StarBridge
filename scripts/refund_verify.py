@@ -9,6 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # files retain their original hash. See docs/refund-resource-recovery.md.
 RESOURCE_RECOVERY_ADAPTATIONS = {
     'runtime/refund_runner.py', 'runtime/manager_oauth/adapter.py',
+    # 2026-11-14: user-authorized fallback wait and private matching evidence.
+    'runtime/refund_plan_fallback.py', 'runtime/test_refund_plan_fallback.py',
     'runtime/diagnostics.py', 'runtime/resource_guard.py',
     'runtime/test_member_completion.py', 'runtime/test_password_failure.py',
     'runtime/test_refund_transport.py', 'runtime/test_resource_guard.py',

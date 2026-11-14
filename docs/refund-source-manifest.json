@@ -69,8 +69,8 @@
     {
       "path": "internal/store/refund_diagnostics.go",
       "source_sha256": "892271dab4e19d636413203cf97bb2b17c143abd0292905ca83123c3b44558a9",
-      "sha256": "76de6757e7afe1eaee618008a85599b978eb870250b7ff43651d719cc5ea5ab6",
-      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md. 2026-11-12 retain mfa_state_conflict in sanitized diagnostic evidence; scheduler and wallet behavior unchanged. See docs/refund-mfa-conflict.md. 2026-11-13 authorized same-child target-team session retry and configurable post-login wait; original validation, submission and recovery budgets preserved. See docs/refund-team-session-retry.md."
+      "sha256": "ac4e4e12afb112f38f8bb5b2e0a3a652e4d875b145802ac6e0249421e0535743",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md. 2026-11-12 retain mfa_state_conflict in sanitized diagnostic evidence; scheduler and wallet behavior unchanged. See docs/refund-mfa-conflict.md. 2026-11-13 authorized same-child target-team session retry and configurable post-login wait; original validation, submission and recovery budgets preserved. See docs/refund-team-session-retry.md.; 2026-11-14 user-authorized fallback login wait and bounded private account/plan comparison evidence"
     },
     {
       "path": "internal/store/refund_execution.go",
@@ -154,8 +154,8 @@
     {
       "path": "runtime/diagnostics.py",
       "source_sha256": "da898b3792390743d86fecf84ca3eefcf977251398329f33a397edc328e26e0c",
-      "sha256": "82ab9566da9f656c5efb73820b1aacfe4884f9a9a24e27bba10e5008c0921291",
-      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md. 2026-11-12 preserve bounded mfa_state_conflict evidence for the existing login retry path. See docs/refund-mfa-conflict.md. 2026-11-13 authorized same-child target-team session retry and configurable post-login wait; original validation, submission and recovery budgets preserved. See docs/refund-team-session-retry.md."
+      "sha256": "064d0624d758d9221e72b22ac0bb931f115b777bcb2718137e796eb84c1b8559",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md. 2026-11-12 preserve bounded mfa_state_conflict evidence for the existing login retry path. See docs/refund-mfa-conflict.md. 2026-11-13 authorized same-child target-team session retry and configurable post-login wait; original validation, submission and recovery budgets preserved. See docs/refund-team-session-retry.md.; 2026-11-14 user-authorized fallback login wait and bounded private account/plan comparison evidence"
     },
     {
       "path": "runtime/manager_oauth/PORT.md",
@@ -226,7 +226,8 @@
     {
       "path": "runtime/refund_plan_fallback.py",
       "source_sha256": "cdbc9eb9c82b74ad71031b25d8ab6c19d69d31c24710c81917ba5c2c25f79abc",
-      "sha256": "cdbc9eb9c82b74ad71031b25d8ab6c19d69d31c24710c81917ba5c2c25f79abc"
+      "sha256": "101f2e80c425aaf7c8c0735297b60c2d27903f8aa5df50dd06470ef494886f09",
+      "adaptation": "; 2026-11-14 user-authorized fallback login wait and bounded private account/plan comparison evidence"
     },
     {
       "path": "runtime/refund_recovery.py",
@@ -294,7 +295,8 @@
     {
       "path": "runtime/test_refund_plan_fallback.py",
       "source_sha256": "3830468ae9b26661759eedf1f7b8db6b33e518176775396787415720e51de9d1",
-      "sha256": "3830468ae9b26661759eedf1f7b8db6b33e518176775396787415720e51de9d1"
+      "sha256": "923f61b613161a3981c49bc8c666181518009294dce00568e91944f89d6c3fdb",
+      "adaptation": "; 2026-11-14 user-authorized fallback login wait and bounded private account/plan comparison evidence"
     },
     {
       "path": "runtime/test_refund_recovery.py",
@@ -344,8 +346,8 @@
     {
       "path": "internal/store/refund_resources.go",
       "source_sha256": null,
-      "sha256": "caf96e0393f4908cfa620a7a1098a03eb6d686823f791e6e9476f1d51d1ae5e6",
-      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-12 reviewed resource recovery and child proxy boundary integration 2026-11-13 authorized same-child target-team session retry and configurable post-login wait; original validation, submission and recovery budgets preserved. See docs/refund-team-session-retry.md.; 2026-11-14 encrypted mother Session editing and confirmed-cleanup failure protection with target-email terminal-order restrictions"
+      "sha256": "1c9d6f04e1102af2574a5671f777c81198031a62261c715e85db1dcc1342a528",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md.; 2026-11-12 reviewed resource recovery and child proxy boundary integration 2026-11-13 authorized same-child target-team session retry and configurable post-login wait; original validation, submission and recovery budgets preserved. See docs/refund-team-session-retry.md.; 2026-11-14 encrypted mother Session editing and confirmed-cleanup failure protection with target-email terminal-order restrictions; 2026-11-14 user-authorized fallback login wait and bounded private account/plan comparison evidence"
     },
     {
       "path": "internal/store/refund_resources_test.go",

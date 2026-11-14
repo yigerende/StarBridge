@@ -3,6 +3,7 @@ import time
 from urllib.parse import urljoin
 
 import diagnostics
+import fallback_plan_evidence
 from manager_oauth import bridge, upstream
 from manager_oauth.adapter import ProjectProtocolLogin
 from manager_oauth.merge_v2 import TeamProtocolLogin
@@ -110,8 +111,10 @@ def parse_plan(data, account_id):
 
 def check_plan(flow, session, job):
     token, account_id = identity(session, job)
+    status = 0
     headers = {"Authorization": "Bearer " + token, "Accept": "application/json", "Origin": "https://chatgpt.com", "Referer": "https://chatgpt.com/", "oai-language": "zh-CN", "oai-device-id": flow.device_id}
     def get(path):
+        nonlocal status
         started = time.monotonic()
         diagnostics.request_event("fallback_plan", "start")
         try:
@@ -120,13 +123,27 @@ def check_plan(flow, session, job):
             diagnostics.request_event("fallback_plan", "error", exc=exc, started=started)
             raise
         diagnostics.request_event("fallback_plan", "response", response=response, started=started)
+        status = response.status_code
         if response.status_code != 200:
             raise RuntimeError("plan query failed")
         return response.json()
-    me = get("/me")
-    if not isinstance(me, dict) or not isinstance(me.get("email"), str) or me["email"].casefold() != job["account"]["email"].casefold():
-        raise RuntimeError("live identity mismatch")
-    return parse_plan(get("/accounts/check/v4-2023-04-27?timezone_offset_min=-480"), account_id)
+    me, data, phase, status = fallback_plan_evidence.MISSING, fallback_plan_evidence.MISSING, "me", 0
+    try:
+        me = get("/me")
+        status = 200
+        if not isinstance(me, dict) or not isinstance(me.get("email"), str) or me["email"].casefold() != job["account"]["email"].casefold():
+            raise RuntimeError("live identity mismatch")
+        phase, status = "accounts", 0
+        data = get("/accounts/check/v4-2023-04-27?timezone_offset_min=-480")
+        status = 200
+        result = parse_plan(data, account_id)
+    except Exception as exc:
+        fallback_plan_evidence.record(session, job, phase=phase, result="rejected", error=exc,
+                                      me=me, data=data, http_status=status)
+        raise
+    fallback_plan_evidence.record(session, job, phase=phase, result=result,
+                                  me=me, data=data, http_status=status)
+    return result
 
 
 def execute(job, checkpoint, mother, login_factory=PersonalLogin):
@@ -151,7 +168,19 @@ def execute(job, checkpoint, mother, login_factory=PersonalLogin):
         bridge.configure(payload, lambda *_: (_ for _ in ()).throw(RuntimeError("unexpected checkpoint")))
         flow = login_factory(job["id"], payload)
         session = flow.login()
-        identity(session, job)
+        try:
+            identity(session, job)
+        except Exception as exc:
+            fallback_plan_evidence.record(session, job, phase="session", result="rejected", error=exc)
+            raise
+        wait = (job.get("settings", {}).get("resource_recovery") or {}).get("fallback_plan_wait_seconds", 5)
+        wait = wait if type(wait) is int and 0 <= wait <= 60 else 5
+        started = time.monotonic()
+        fallback_plan_evidence.record(session, job, phase="wait", result="waiting", wait_seconds=wait)
+        if wait:
+            time.sleep(wait)
+        fallback_plan_evidence.record(session, job, phase="session", wait_seconds=wait,
+                                      elapsed_ms=(time.monotonic() - started) * 1000)
         checkpoint("fallback_plan_started", {"user_id": job["child_user_id"]})
         stage = "fallback_plan"
         result = check_plan(flow, session, job)

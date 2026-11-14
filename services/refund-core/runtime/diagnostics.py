@@ -83,7 +83,7 @@ def _record(evidence, **numbers):
     global _count, _workspace_count, _sequence
     if _sink is None:
         return
-    if evidence.get("stage") == "workspace_observation":
+    if evidence.get("stage") == "workspace_observation" or evidence.get("plan_check") is not None:
         # Reserve a separate small budget so verbose OAuth requests cannot use
         # up the requested before-selection observations before they happen.
         if _workspace_count >= 16:

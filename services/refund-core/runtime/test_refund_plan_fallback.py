@@ -53,6 +53,7 @@ class FallbackTests(unittest.TestCase):
         job = test_refund_runner.RunnerTests().job("submitting")
         job.update(recovery_mode="fallback", fallback_phase="", child_user_id="child-user")
         job["settings"]["recovery"] = {"enabled": True}
+        job["settings"]["resource_recovery"] = {"fallback_plan_wait_seconds": 0}
         return job
 
     def test_plan_requires_exact_live_personal_identity_and_explicit_value(self):

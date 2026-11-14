@@ -31,6 +31,7 @@ type RefundEvidence struct {
 
 	Workspaces *RefundWorkspaceObservation `json:"workspaces,omitempty"`
 	Membership *RefundMembershipEvidence   `json:"membership,omitempty"`
+	PlanCheck  *RefundPlanEvidence         `json:"plan_check,omitempty"`
 }
 
 // Bounded lookup facts only; never persist the roster or customer identifiers.
@@ -72,6 +73,11 @@ func (v RefundEvidence) Sanitized() *RefundEvidence {
 		v.Workspaces = nil
 	}
 	v.Side = evidenceEnum(v.Side, "child mother worker")
+	if v.PlanCheck != nil && v.Stage == "fallback_plan" && v.Side == "child" {
+		v.PlanCheck = v.PlanCheck.sanitized()
+	} else {
+		v.PlanCheck = nil
+	}
 	if v.Membership != nil && v.Side == "mother" && (v.Stage == "members_read" || v.Stage == "invites_read") {
 		m := *v.Membership
 		m.Scope = evidenceEnum(m.Scope, "full")

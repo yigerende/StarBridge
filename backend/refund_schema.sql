@@ -127,6 +127,8 @@ ALTER TABLE refund_settings ADD COLUMN IF NOT EXISTS resource_recovery JSONB NOT
 -- Add only the new wait setting; preserve existing resource/retry policy.
 UPDATE refund_settings SET resource_recovery=resource_recovery||'{"post_login_wait_seconds":5}'::jsonb
  WHERE NOT (resource_recovery ? 'post_login_wait_seconds');
+UPDATE refund_settings SET resource_recovery=resource_recovery||'{"fallback_plan_wait_seconds":5}'::jsonb
+ WHERE NOT (resource_recovery ? 'fallback_plan_wait_seconds');
 CREATE TABLE IF NOT EXISTS refund_resource_health (
  scope TEXT PRIMARY KEY, failures INTEGER NOT NULL DEFAULT 0,
  blocked BOOLEAN NOT NULL DEFAULT false, next_at TIMESTAMPTZ,
