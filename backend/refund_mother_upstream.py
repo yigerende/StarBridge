@@ -171,6 +171,24 @@ class TeamClient:
                 'billing_period': entitlement.get('billing_period'), 'billing_currency': entitlement.get('billing_currency'),
                 'checked_at': now().isoformat()}
 
+    def renewal(self, email):
+        claims = identity(self.token)
+        require(claims['team_id'] == self.team and claims['email'] == email.lower(),
+                '母号凭据与当前团队不一致，请重新录入凭据', 409)
+        me = self.request('GET', '/me')
+        require(str(me.get('email') or '').lower() == email.lower(), '上游账号身份不匹配', 502)
+        data = self.request('GET', '/subscriptions?' + urlencode({'account_id': self.team}))
+        require(not data.get('account_id') or data['account_id'] == self.team,
+                '上游返回了其他团队的订阅，未执行操作', 502)
+        active = data.get('is_active', data.get('has_active_subscription'))
+        renew = data.get('will_renew')
+        require(type(active) is bool and (not active or type(renew) is bool),
+                '上游未返回明确的续费状态，请稍后查询', 502)
+        expiry = data.get('active_until') or data.get('expires_at')
+        return {'team_id': self.team, 'active': active, 'will_renew': active and renew is True,
+                'active_until': expiry if isinstance(expiry, str) else None,
+                'checked_at': now().isoformat()}
+
     def refresh(self, refresh_token):
         if self.heartbeat:
             self.heartbeat()

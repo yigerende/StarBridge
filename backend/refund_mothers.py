@@ -1,4 +1,5 @@
 """Mother management on StarBridge's existing identity, database and encryption."""
+import asyncio
 import json
 import subprocess
 import sys
@@ -227,6 +228,21 @@ def capacity(id: str):
 @router.post('/{id}/plan')
 def plan(id: str):
     return read_snapshot(id, 'plan')
+
+
+@router.post('/{id}/renewal/check')
+def check_renewal(id: str, request: Request):
+    from .refund_mother_renewal import operate
+    return operate(id, request)
+
+
+@router.post('/{id}/renewal/cancel')
+async def cancel_renewal(id: str, request: Request):
+    from .refund_mother_renewal import operate
+    value = await body(request)
+    require(isinstance(value, dict) and set(value) == {'team_id'} and isinstance(value['team_id'], str),
+            '请确认要取消续费的母号团队')
+    return await asyncio.to_thread(operate, id, request, True, value['team_id'])
 
 
 def protected(mother, row):

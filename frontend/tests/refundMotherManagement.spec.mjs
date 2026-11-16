@@ -13,6 +13,8 @@ test('mother resources, credentials, members and inline controls',async()=>{
  const capacity={standard:{total:2,remaining:1,held:0},premium:{total:3,remaining:1,held:2},checked_at:'2026-11-12T02:00:00Z'}
  const summary={...mother,handled:20,completed:18,settled:18000,management_json:{capacity,plan:{subscription_plan:'Team',expires_at:'2026-12-10T00:00:00Z',checked_at:'2026-11-12T02:00:00Z'}}}
  const settings={auto_refresh:true}
+ let renewalStatus='enabled'
+ const renewal=()=>({team_id:mother.team_id,active:true,will_renew:renewalStatus!=='disabled',status:renewalStatus,pending:renewalStatus==='checking',active_until:'2026-12-10T10:19:27Z',checked_at:'2026-11-16T06:00:00Z',message:renewalStatus==='disabled'?'自动续费已取消，当前套餐保留到期。':renewalStatus==='checking'?'取消结果尚未确认，请稍后查询状态。':'自动续费已开启。'})
  const resources={runtime_ready:true,resource_summary:{mothers:{total:1,enabled:1},proxies:{total:1,enabled:1}},settings:{enabled:false,max_parallel:2,max_attempts:2,retry_seconds:30,mother_interval_seconds:0,child_proxy_id:'proxy',child_proxy_backups:[],child_proxy_cooldown_seconds:300,mother_failover:{enabled:true,max_switches:3,retry_seconds:30},recovery:{enabled:true,max_retries:3,verify_intervals:[30],cleanup_intervals:[15],alert_seconds:600,cleanup_failed:true}},proxies:[{id:'proxy',name:'测试代理',target:'both',enabled:true}],mothers:[mother]}
  const members=Array.from({length:525},(_,i)=>({id:'child-'+i,email:`child${String(i).padStart(3,'0')}@example.test`,name:'成员 '+i,role:'standard-user',seat_type:'prolite',created_time:'2026-11-01T00:00:00Z',active:true,can_kick:i>0,can_leave:i>0}))
  function paging(rows,url){const p=url.searchParams,page=Number(p.get('page')||1),size=Number(p.get('page_size')||10),sort=p.get('sort_by')||'email',dir=p.get('sort_dir')||'asc',q=p.get('q')||'';rows=rows.filter(r=>JSON.stringify([r.email,r.name,r.mother_name,r.message]).includes(q));rows=[...rows].sort((a,b)=>String(a[sort]||a.id).localeCompare(String(b[sort]||b.id))*(dir==='asc'?1:-1));return {items:rows.slice((page-1)*size,page*size),total:rows.length,page,page_size:size,has_more:page*size<rows.length}}
@@ -32,6 +34,8 @@ test('mother resources, credentials, members and inline controls',async()=>{
   if(p.endsWith('/mother/credentials'))json={access_token:'fixture-private-access',refresh_token:'fixture-private-refresh',expires_at:mother.token_expires_at}
   if(p.endsWith('/mother/members'))json=paging(members,url)
   if(p.endsWith('/mother/members/remove'))json={ok:true}
+  if(p.endsWith('/mother/renewal/check')){if(renewalStatus==='checking')renewalStatus='disabled';json=renewal();summary.management_json.renewal=json}
+  if(p.endsWith('/mother/renewal/cancel')){renewalStatus='checking';json=renewal();summary.management_json.renewal=json}
   if(p.endsWith('/logs'))json=paging([{id:1,stage:'check',created_at:'2026-11-12T00:00:00Z',message:'凭据检查完成'}],url)
   return route.fulfill({json})
  })
@@ -65,6 +69,28 @@ test('mother resources, credentials, members and inline controls',async()=>{
   await section.getByRole('button',{name:'刷新全部套餐',exact:true}).click()
   assert.equal(calls.filter(([m,p])=>p.endsWith('/mother/capacity')).length,1)
   assert.equal(calls.filter(([m,p])=>p.endsWith('/mother/plan')).length,1)
+  await section.getByRole('button',{name:'取消自动续费',exact:true}).click()
+  dialog=page.getByRole('dialog')
+  await dialog.getByRole('heading',{name:'已开启',exact:true}).waitFor()
+  await dialog.getByRole('button',{name:'取消自动续费',exact:true}).click()
+  await dialog.getByText('取消“母号 A”的自动续费？',{exact:true}).waitFor()
+  assert.ok(!writes.some(r=>r.p.endsWith('/renewal/cancel')))
+  await page.screenshot({path:path.join(out,'renewal-confirm-desktop.png'),fullPage:true})
+  await dialog.getByRole('button',{name:'返回',exact:true}).click()
+  await page.setViewportSize({width:390,height:900})
+  await dialog.getByRole('button',{name:'取消自动续费',exact:true}).click()
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false)
+  await page.screenshot({path:path.join(out,'renewal-confirm-mobile.png'),fullPage:true})
+  await dialog.getByRole('button',{name:'确认取消自动续费',exact:true}).click()
+  await dialog.getByRole('heading',{name:'待核实',exact:true}).waitFor()
+  assert.equal(await dialog.getByRole('button',{name:'取消自动续费',exact:true}).count(),0)
+  assert.equal(writes.filter(r=>r.p.endsWith('/renewal/cancel')).length,1)
+  assert.deepEqual(writes.find(r=>r.p.endsWith('/renewal/cancel')).body,{team_id:'team-fixture'})
+  await dialog.getByRole('button',{name:'查询续费状态',exact:true}).click()
+  await dialog.getByRole('heading',{name:'已取消',exact:true}).waitFor()
+  await page.screenshot({path:path.join(out,'renewal-disabled-mobile.png'),fullPage:true})
+  await dialog.getByRole('button',{name:'关闭',exact:true}).click()
+  await section.getByText('自动续费已取消',{exact:true}).waitFor()
   for(const width of [1440,390]){await page.setViewportSize({width,height:1000});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false);await page.screenshot({path:path.join(out,`resources-${width}.png`),fullPage:true})}
   assert.deepEqual(errors,[])
   assert.ok(calls.some(([m,p,q])=>p.endsWith('/members')&&q.page_size==='500'&&q.page==='2'))

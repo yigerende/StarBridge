@@ -47,6 +47,7 @@ function moveBackup(id:string,by:number){const a=[...settings.value.child_proxy_
 watch(()=>settings.value.child_proxy_id,id=>{settings.value.child_proxy_backups=settings.value.child_proxy_backups.filter(x=>x!==id)});
 const managedMother=ref<Mother|null>(null),motherSnapshots=ref<Record<string,any>>({}),managedTab=ref('details'),motherTools=ref<InstanceType<typeof RefundMotherTools>>();
 const snapshot=(m:Mother)=>motherSnapshots.value[m.id]?.management_json||{};
+function renewalLabel(m:Mother){const r=snapshot(m).renewal;return r?.team_id===m.team_id?({enabled:'自动续费已开启',disabled:'自动续费已取消',no_subscription:'无有效订阅',checking:'取消续费待核实',failed:'取消续费未完成'} as Record<string,string>)[r.status]||'':'续费状态未查询'}
 function seats(m:Mother,key:string){const value=snapshot(m).capacity,check=m.check;return value&&(!check?.checked_at||Date.parse(value.checked_at)>=Date.parse(check.checked_at))?value[key]:check?.seats?.[key as 'standard'|'premium']}
 function seatPrice(m:Mother){const expiry=Date.parse(snapshot(m).plan?.expires_at||'');if(!Number.isFinite(expiry))return '—';const days=Math.max(0,Math.floor((expiry+28800000)/86400000)-Math.floor((Date.now()+28800000)/86400000));return '$'+(125/30*days).toFixed(2)}
 function manage(m:Mother,tab='details'){managedTab.value=tab;managedMother.value=m}
@@ -251,7 +252,7 @@ onUnmounted(()=>{resourcesDisposed=true;clearInterval(resourceTimer);resourceCon
      <tr v-for="m in (motherRows as Mother[])" :key="m.id">
       <td class="mother-identity"><strong>{{m.name}}</strong><small class="block">{{m.email}}</small><button v-if="m.active_refund" class="link" @click="openOrder(m.active_refund)">{{m.active_email}} · {{statuses[m.active_status||'']||'处理中'}}</button></td>
       <td><button class="mother-switch" role="switch" :aria-checked="m.enabled" :aria-label="m.name+' 接单状态'" :disabled="busy" @click="changeMother(m,{enabled:!m.enabled})"><i :class="{on:m.enabled}"/>{{m.enabled?'已启用':'已停用'}}</button><small v-if="m.auto_disabled_reason" class="block form-error">{{m.auto_disabled_reason}}<br/>{{m.auto_disabled_at?displayTime(m.auto_disabled_at):''}}</small><small v-if="m.auth_blocked" class="block form-error">授权失效，暂停接单</small><small v-else-if="m.token_expires_at&amp;&amp;new Date(m.token_expires_at).getTime()&lt;=Date.now()" class="block form-error">凭据已过期</small></td>
-      <td>{{snapshot(m).plan?.subscription_plan||m.plan_type||'—'}}<small class="block">{{m.seat_type==='prolite'?'高级席位':'普通席位'}}</small></td>
+      <td>{{snapshot(m).plan?.subscription_plan||m.plan_type||'—'}}<small class="block">{{m.seat_type==='prolite'?'高级席位':'普通席位'}}</small><small class="block">{{renewalLabel(m)}}</small></td>
       <td><strong>{{snapshot(m).plan?.expires_at?displayTime(snapshot(m).plan.expires_at):'—'}}</strong><small class="block">{{snapshot(m).plan?.checked_at?'查询于 '+displayTime(snapshot(m).plan.checked_at):'未查询'}}</small></td>
       <td><strong>{{seatPrice(m)}}</strong><small class="block">125 / 30 × 剩余天数</small></td>
       <td class="mother-team" :title="m.team_id">{{m.team_id}}</td>
@@ -263,7 +264,7 @@ onUnmounted(()=>{resourcesDisposed=true;clearInterval(resourceTimer);resourceCon
       <td><strong>{{cash(motherSnapshots[m.id]?.settled)}} 积分</strong><small class="block">已结算</small></td>
       <td><span class="badge" :class="m.has_refresh?'green':'gray'">{{m.has_refresh?'已保存 RT':'无 RT'}}</span><small class="block">AT {{m.token_expires_at?displayTime(m.token_expires_at):'未提供到期时间'}}</small></td>
       <td><ResourceCheckSummary :check="m.check"/></td>
-      <td><div class="mother-row-actions"><button class="link" :disabled="busy" @click="checkMother(m)">校验 / 刷新席位</button><button class="link" :disabled="busy" @click="manage(m)">套餐 / 成员 / 凭据</button><button class="link" :disabled="busy" @click="editMother(m)">编辑</button><button class="link danger" :disabled="busy" @click="removing={kind:'mothers',id:m.id,name:m.name};modal='delete';formError=''">删除</button></div></td>
+      <td><div class="mother-row-actions"><button class="link" :disabled="busy" @click="checkMother(m)">校验 / 刷新席位</button><button class="link" :disabled="busy" @click="manage(m)">套餐 / 成员 / 凭据</button><button class="link" :disabled="busy" @click="manage(m,'renewal')">取消自动续费</button><button class="link" :disabled="busy" @click="editMother(m)">编辑</button><button class="link danger" :disabled="busy" @click="removing={kind:'mothers',id:m.id,name:m.name};modal='delete';formError=''">删除</button></div></td>
      </tr>
      <tr v-if="!motherRows.length"><td colspan="16" class="empty-state">{{motherLoading?'正在加载…':motherQuery||motherStatus?'没有符合条件的母号':'请先录入网络出口，再录入母号资源'}}</td></tr>
     </tbody></table></div>
