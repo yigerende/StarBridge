@@ -41,11 +41,6 @@ class RenewalRequest(Payload):
     accepted: Literal[True]
 
 
-class TopupRequest(Payload):
-    amount: int = Field(ge=100)
-    proof: str = Field(default='', max_length=500)
-
-
 def prepare(request, model, payload):
     key = request.headers.get('Idempotency-Key', '')
     require(8 <= len(key) <= 120 and key.isascii() and key.isprintable(),

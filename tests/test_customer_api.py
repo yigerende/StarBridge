@@ -109,30 +109,15 @@ class CustomerApiTests:
             db.execute("UPDATE settings SET value=$1 WHERE key='payment'",dict(cfg,enabled=False))
             self.assertEqual(client.post('/api/v1/renewals',json=payload,headers={'Idempotency-Key':uid()}).status_code,403)
 
-    def test_api_topup_pagination_and_permissions(self):
+    def test_api_wallet_permissions(self):
         with self.api_fixture() as (owner,client,other):
-            payload={'amount':10000,'proof':'fixture'};headers={'Idempotency-Key':uid()}
-            with ThreadPoolExecutor(max_workers=3) as pool:
-                results=[self.ok(r) for r in pool.map(lambda _:client.post('/api/v1/topups',json=payload,headers=headers),range(3))]
-            self.assertEqual(len({r['id'] for r in results}),1);topup=results[0]['id']
-            self.assertEqual(client.post('/api/v1/topups',json=dict(payload,amount=20000),headers=headers).status_code,409)
-            self.assertEqual(other.post('/api/v1/topups/'+topup+'/cancel').status_code,404)
-            for _ in range(2):self.ok(client.post('/api/v1/topups/'+topup+'/cancel'))
-            for _ in range(2):self.ok(client.post('/api/v1/topups',json=payload,headers={'Idempotency-Key':uid()}))
-            first=self.ok(client.get('/api/v1/topups?page_size=1'));second=self.ok(client.get('/api/v1/topups?page_size=1&page=2'))
-            self.assertEqual(first['total'],3);self.assertTrue(first['has_more'])
-            self.assertNotEqual(first['items'][0]['id'],second['items'][0]['id'])
-            self.assertNotIn('reviewed_by',first['items'][0])
-            db.execute("UPDATE topups SET status='approved' WHERE id=$1",first['items'][0]['id'])
-            self.assertEqual(client.post('/api/v1/topups/'+first['items'][0]['id']+'/cancel').status_code,409)
-            self.assertEqual(self.ok(other.get('/api/v1/topups'))['total'],0)
             self.assertEqual(self.ok(client.get('/api/v1/me'))['id'],owner)
             overview=self.ok(client.get('/api/v1/overview'))
             self.assertEqual(overview['wallet']['available'],db.scalar('SELECT balance-frozen FROM users WHERE id=$1',owner))
             self.assertGreater(self.ok(client.get('/api/v1/wallet/ledger'))['total'],0)
             self.assertEqual(self.ok(other.get('/api/v1/wallet/ledger'))['total'],0)
             self.assertEqual(client.get('/api/admin/settings').status_code,403)
-            for path in ('orders','renewals','topups','wallet/ledger'):
+            for path in ('orders','renewals','wallet/ledger'):
                 self.assertEqual(client.get('/api/v1/'+path+'?page_size=0').status_code,400)
 
     def test_api_order_pages_and_unauthenticated_routes(self):

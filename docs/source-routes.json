@@ -81,10 +81,6 @@
   ],
   [
     "GET",
-    "/api/admin/topups"
-  ],
-  [
-    "GET",
     "/api/admin/users"
   ],
   [
@@ -229,10 +225,6 @@
   ],
   [
     "POST",
-    "/api/admin/topups/{id}/review"
-  ],
-  [
-    "POST",
     "/api/admin/users"
   ],
   [
@@ -274,14 +266,6 @@
   [
     "POST",
     "/api/session/inspect"
-  ],
-  [
-    "POST",
-    "/api/topups"
-  ],
-  [
-    "POST",
-    "/api/topups/{id}/cancel"
   ],
   [
     "POST",

@@ -4,7 +4,6 @@ from fastapi import APIRouter,Depends,Request
 from starlette.concurrency import run_in_threadpool
 from . import db
 from .common import *
-from . import customer_contract
 from .listing import order_by, pagination, result as list_result
 
 router=APIRouter(prefix='/api',dependencies=[Depends(member)])
@@ -48,12 +47,12 @@ def wallet(request: Request, summary_only: bool=False):
     ledger=db.all(LEDGER_QUERY,user['id'])
     ledger.sort(key=lambda row:row['created_at'],reverse=True)
     project_ledger(ledger,user)
-    return {'balance':user['balance'],'frozen':user['frozen'],'ledger':ledger,'topups':db.all('SELECT * FROM topups WHERE user_id=$1 ORDER BY created_at DESC LIMIT 200',user['id']),
+    return {'balance':user['balance'],'frozen':user['frozen'],'ledger':ledger,
             'recharges':db.all(RECHARGE_QUERY,user['id'])}
 
 
 # A read-only projection of existing credits; redeeming never creates a second
-# accounting entry or an artificial manual topup. Keep /v1/topups unchanged.
+# accounting entry. Historical manual recharge records remain read-only.
 RECHARGE_QUERY="""WITH credits AS (
  SELECT id,kind,amount,balance_after,frozen_after,reference,description,created_at,
  lag(balance_after-frozen_after) OVER (ORDER BY id) AS previous_available,
@@ -133,31 +132,6 @@ def recharges(request:Request,q:str='',source:str='',status:str='',page:int=1,pa
         total=tx.scalar(cte+' SELECT count(*)'+where,*args)
         rows=tx.all(cte+' SELECT *'+where+' ORDER BY '+ordering+' LIMIT $5 OFFSET $6',*args,page_size,(page-1)*page_size)
     return list_result(rows,total,page,page_size)
-
-
-@router.post('/topups')
-async def topup(request: Request):
-    v=await body(request);amount=v.get('amount');proof=v.get('proof','')
-    integer(amount,100,config('risk').get('max_topup',10000000),'充值金额或备注超出范围')
-    require(0<=length(proof)<=500,'充值金额或备注超出范围')
-    user_id=current(request)['id']
-    with db.transaction() as q:
-        api_request=hasattr(request.state,'customer_hash')
-        if api_request:
-            old=customer_contract.replay(q,request,'topup',lock=True)
-            if old:return old
-        q.one('SELECT id FROM users WHERE id=$1 FOR UPDATE',user_id)
-        require(q.scalar("SELECT count(*) FROM topups WHERE user_id=$1 AND status='pending'",user_id)<3,'已有 3 笔待审核充值，请先等待审核')
-        id=uid();q.execute('INSERT INTO topups(id,user_id,amount,proof) VALUES($1,$2,$3,$4)',id,user_id,amount,proof)
-        if api_request:customer_contract.remember(q,request,'topup',{'id':id})
-    return {'id':id}
-
-
-@router.post('/topups/{id}/cancel')
-def cancel_topup(id: str,request: Request):
-    n=db.execute("UPDATE topups SET status='cancelled',updated_at=now() WHERE id=$1 AND user_id=$2 AND status='pending'",id,current(request)['id'])
-    require(n==1,'充值已处理或不存在',409)
-    return {'ok':True}
 
 
 @router.post('/wallet/redeem')

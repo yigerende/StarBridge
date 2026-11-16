@@ -7,7 +7,7 @@ from .listing import pagination,order_by,page_rows
 from datetime import timedelta
 
 router=APIRouter(prefix='/api',dependencies=[Depends(member)])
-SPEND="""SELECT l.user_id,l.order_id,GREATEST(0,-sum(l.amount))::bigint AS spent FROM ledger l JOIN orders o ON o.id=l.order_id AND o.user_id=l.user_id WHERE o.status='succeeded' AND ((l.kind='charge' AND l.amount<0) OR (l.kind='refund' AND l.amount>0)) GROUP BY l.user_id,l.order_id"""
+SPEND="SELECT user_id,order_id,business,spent,updated_at FROM membership_order_spend"
 
 
 def membership_from(user,spent,q=None,*,tiers=None,at=None):
@@ -145,11 +145,20 @@ def membership(request: Request,q:str='',start:str='',end:str='',page:int=1,page
     products=priced_products(m) if include_quotes else []
     for p in products:
         if request.url.path.startswith('/api/v1/'):p['id']=public_id(p['id'])
-    where=' FROM ('+SPEND+") s JOIN orders o ON o.id=s.order_id WHERE s.user_id=$1 AND o.deleted_at IS NULL AND ($2='' OR o.id ILIKE '%'||$2||'%' OR o.product_name ILIKE '%'||$2||'%') AND ($3::timestamptz IS NULL OR o.updated_at >= $3) AND ($4::timestamptz IS NULL OR o.updated_at < $4)"
+    cte="""WITH growth AS (
+      SELECT s.order_id AS id,s.user_id,s.business,s.spent,s.updated_at,
+        CASE s.business WHEN 'registration' THEN '注册办理' WHEN 'refund' THEN '代退办理'
+          ELSE COALESCE(o.product_name,'订阅办理') END AS product_name
+      FROM membership_order_spend s LEFT JOIN orders o
+        ON s.business='subscription' AND o.id=s.order_id AND o.user_id=s.user_id
+    ) """
+    where=" FROM growth WHERE user_id=$1 AND ($2='' OR id ILIKE '%'||$2||'%' OR product_name ILIKE '%'||$2||'%') AND ($3::timestamptz IS NULL OR updated_at >= $3) AND ($4::timestamptz IS NULL OR updated_at < $4)"
     args=(current(request)['id'],q,begin,until)
-    ordering=order_by(sort_by,sort_dir,{'id':'o.id','product_name':'o.product_name','updated_at':'o.updated_at','spent':'s.spent'},'updated_at','o.id')
-    growth=db.all('SELECT o.id,o.product_name,o.updated_at,s.spent'+where+' ORDER BY '+ordering+' LIMIT $5 OFFSET $6',*args,page_size,(page-1)*page_size)
-    total=db.scalar('SELECT count(*)'+where,*args)
+    ordering=order_by(sort_by,sort_dir,{k:k for k in ('id','business','product_name','updated_at','spent')},'updated_at','business,id')
+    with db.transaction() as tx:
+        tx.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+        growth=tx.all(cte+'SELECT id,business,product_name,updated_at,spent'+where+' ORDER BY '+ordering+' LIMIT $5 OFFSET $6',*args,page_size,(page-1)*page_size)
+        total=tx.scalar(cte+'SELECT count(*)'+where,*args)
     return {'membership':m,'products':products,'services':service_quotes(m,products,current(request)) if include_quotes else [],'growth':growth,'items':growth,'total':total,'page':page,'page_size':page_size,'has_more':page*page_size<total,'unit':'cent_R','basis':'membership_growth'}
 
 

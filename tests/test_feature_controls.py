@@ -100,7 +100,7 @@ class FeatureControlTests(unittest.TestCase):
         member,key,admin=self.clients()
         try:
             self.flags(renewal=False,wallet=False,register=False,accounts=False,refund=False,profile=False,support=False)
-            for path in ('renewals','wallet','wallet/ledger','topups','refund/quote'):
+            for path in ('renewals','wallet','wallet/ledger','refund/quote'):
                 self.assertEqual(key.get('/api/v1/'+path).status_code,403,path)
             self.assertEqual(key.post('/api/v1/renewals',json={}).status_code,403)
             self.assertEqual(key.post('/api/v1/wallet/redeem',json={}).status_code,403)

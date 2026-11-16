@@ -156,7 +156,7 @@ class BackendTests(LaunchAuditTests,SubscriptionRecoveryTests,SubscriptionPaymen
         self.assertEqual(self.client.get('/api/not-present').status_code,404)
 
     def test_02_read_interfaces_and_settings(self):
-        for path in ['/health/live','/health/ready','/api/public','/api/me','/api/overview','/api/wallet','/api/invites','/api/keys','/api/membership','/api/orders','/api/renewals','/api/v1/catalog','/api/v1/wallet','/api/v1/membership','/api/v1/orders','/api/openapi.json']+['/api/admin/'+p for p in ['users','overview','settings','membership','topups','codes','orders','resources','billing-profiles','products','announcements','risk','audit','finance']]:
+        for path in ['/health/live','/health/ready','/api/public','/api/me','/api/overview','/api/wallet','/api/invites','/api/keys','/api/membership','/api/orders','/api/renewals','/api/v1/catalog','/api/v1/wallet','/api/v1/membership','/api/v1/orders','/api/openapi.json']+['/api/admin/'+p for p in ['users','overview','settings','membership','codes','orders','resources','billing-profiles','products','announcements','risk','audit','finance']]:
             with self.subTest(path=path):self.ok(self.client.get(path))
         settings=self.ok(self.client.get('/api/admin/settings'))
         for key,value in settings.items():self.ok(self.client.put('/api/admin/settings/'+key,json=value))
@@ -166,17 +166,18 @@ class BackendTests(LaunchAuditTests,SubscriptionRecoveryTests,SubscriptionPaymen
         catalog=self.ok(self.client.get('/api/v1/catalog'))
         self.assertIn('items',catalog);self.assertEqual(catalog['countries'][0]['code'],'PH');self.assertFalse(catalog['payment_connected'])
 
-    def test_03_topup_exact_once_and_wallet_delta(self):
-        id,email,user=self.new_user();topup=self.ok(user.post('/api/topups',json={'amount':10000,'proof':'线下入账'}))['id']
-        self.assertEqual(user.post('/api/admin/topups/'+topup+'/review',json={'action':'approve','note':'核实'}).status_code,403)
-        for _ in range(2):self.ok(self.client.post('/api/admin/topups/'+topup+'/review',json={'action':'approve','note':'核实已到账'}))
-        self.assertEqual(self.client.post('/api/admin/topups/'+topup+'/review',json={'action':'reject','note':'错误重试'}).status_code,409)
-        wallet=self.ok(user.get('/api/wallet'));self.assertEqual(wallet['balance'],10000);self.assertEqual(len(wallet['ledger']),1)
-        self.assertEqual(wallet['ledger'][0]['available_delta'],10000);self.assertEqual(wallet['ledger'][0]['frozen_delta'],0)
-        self.assertEqual(self.ok(user.get('/api/membership'))['membership']['spent'],0)
-        topup2=self.ok(user.post('/api/topups',json={'amount':100,'proof':''}))['id'];self.ok(user.post('/api/topups/'+topup2+'/cancel',json={}))
-        self.assertEqual(user.post('/api/topups/'+topup2+'/cancel',json={}).status_code,409)
-        for bad in [True,100.5,-100]:self.assertEqual(user.post('/api/topups',json={'amount':bad}).status_code,400)
+    def test_03_topup_endpoints_removed_without_wallet_changes(self):
+        owner,_,user=self.new_user()
+        before=db.one('SELECT balance,frozen FROM users WHERE id=$1',owner)
+        count=db.scalar('SELECT count(*) FROM ledger')
+        for client in (user,self.client):
+            for method,path in [('POST','/api/topups'),('POST','/api/topups/old/cancel'),('GET','/api/v1/topups'),('POST','/api/v1/topups'),('POST','/api/v1/topups/old/cancel'),('GET','/api/admin/topups'),('POST','/api/admin/topups/old/review')]:
+                self.assertEqual(client.request(method,path,json={'amount':10000,'action':'approve','note':'fixture'}).status_code,404,path)
+        self.assertEqual(db.one('SELECT balance,frozen FROM users WHERE id=$1',owner),before)
+        self.assertEqual(db.scalar('SELECT count(*) FROM ledger'),count)
+        self.assertNotIn('topups',self.ok(user.get('/api/wallet')))
+        self.assertNotIn('max_topup',self.ok(self.client.get('/api/admin/settings'))['risk'])
+        self.assertFalse(any('/topups' in path for path in self.ok(user.get('/api/openapi.json'))['paths']))
 
     def test_04_concurrent_adjustment_and_replay_conflict(self):
         id,email,user=self.new_user();key=uid();path='/api/admin/users/'+id+'/balance'
@@ -1203,7 +1204,7 @@ class BackendTests(LaunchAuditTests,SubscriptionRecoveryTests,SubscriptionPaymen
         actual={(path,method) for path,operations in app.openapi()['paths'].items() if path.startswith('/api/v1/') for method in operations}
         documented={(path,method) for path,operations in spec['paths'].items() for method in operations}
         self.assertEqual(documented,actual)
-        self.assertEqual(len(documented),24)
+        self.assertEqual(len(documented),21)
         user_id,_,user=self.new_user()
         try:
             key=self.ok(user.post('/api/keys',json={'name':'contract test'}))['key']

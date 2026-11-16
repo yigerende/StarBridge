@@ -25,9 +25,10 @@ class ExperienceTests:
         self.assertEqual((row['source'],row['amount'],row['available_delta'],row['frozen_delta'],row['balance_after']),('redeem',100000,100000,0,100000))
         self.assertNotIn(code,json.dumps(wallet));self.assertEqual(db.scalar('SELECT count(*) FROM ledger WHERE user_id=$1',owner),1)
         self.assertFalse(self.ok(outsider.get('/api/wallet'))['recharges'])
-        tid=self.ok(user.post('/api/topups',json={'amount':200,'proof':'fixture'}))['id']
-        self.assertEqual(next(r for r in self.ok(user.get('/api/wallet'))['recharges'] if r['topup_id']==tid)['balance_after'],None)
-        self.ok(self.client.post('/api/admin/topups/'+tid+'/review',json={'action':'approve','note':'已核实测试到账'}))
+        tid=uid()
+        db.execute("INSERT INTO topups(id,user_id,amount,status) VALUES($1,$2,200,'approved')",tid,owner)
+        db.execute("INSERT INTO ledger(user_id,kind,amount,balance_after,frozen_after,reference,description) VALUES($1,'topup',200,100200,0,$2,'historical recharge')",owner,'topup:'+tid)
+        db.execute('UPDATE users SET balance=100200 WHERE id=$1',owner)
         r=next(r for r in self.ok(user.get('/api/wallet'))['recharges'] if r['topup_id']==tid)
         self.assertEqual((r['available_delta'],r['frozen_delta'],r['balance_after']),(200,0,100200))
         # Realistic freeze/settlement history: total decreases only at settlement.

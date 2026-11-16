@@ -46,7 +46,7 @@ class ListPaginationTests(unittest.TestCase):
             self.assertEqual(len(last['items']),25);self.assertEqual(len({str(x['id']) for x in first['items']+last['items']}),525)
             self.assertEqual(self.get(self.other,path,page_size=500)['total'],0)
             self.assertEqual(self.user.get(path,params={'sort_by':'id;DROP TABLE users'}).status_code,400)
-        for path in ('/api/admin/orders','/api/admin/topups','/api/admin/audit','/api/admin/announcements','/api/admin/mail/logs'):
+        for path in ('/api/admin/orders','/api/admin/audit','/api/admin/announcements','/api/admin/mail/logs'):
             with self.subTest(path=path):
                 d=self.get(self.admin_client,path,page_size=500);self.assertEqual(d['total'],525);self.assertEqual(len(d['items']),500)
                 self.assertEqual(self.user.get(path).status_code,403)
@@ -62,7 +62,6 @@ class ListPaginationTests(unittest.TestCase):
         checks={
           '/api/admin/users':['account','balance','used_balance','membership','orders'],
           '/api/keys':['name','prefix','revoked','last_used'],
-          '/api/admin/topups':['email','amount','status','created_at'],
           '/api/admin/audit':['actor','action','target','ip'],
           '/api/admin/risk':['severity','category','email','ip','last_seen','occurrences','resolved'],
           '/api/admin/finance/customers':['email','credited','adjusted','registration','subscription','refund','settled','available'],

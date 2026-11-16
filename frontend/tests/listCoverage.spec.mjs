@@ -38,7 +38,7 @@ async function harness(browser,admin){
   if(p==='/api/admin/refund/settings')json={runtime_ready:true,resource_summary:{mothers:{total:525,enabled:525},proxies:{total:525,enabled:525}},settings:{enabled:false,max_parallel:2,max_attempts:2,retry_seconds:30,mother_interval_seconds:0,child_proxy_id:'',child_proxy_backups:[],child_proxy_cooldown_seconds:300,mother_failover:{enabled:true,max_switches:3,retry_seconds:30},recovery:{enabled:true,max_retries:3,verify_intervals:[30],cleanup_intervals:[15],alert_seconds:600,cleanup_failed:true}},proxies:[],mothers:[]}
   if(p==='/api/admin/refund/mother-management/summary')json={items:[]}
   if(p==='/api/admin/refund/mother-management/settings')json={auto_refresh:false}
-  if(p==='/api/wallet')json={balance:1000,frozen:0,items:[],ledger:[],topups:[],rules:{}}
+  if(p==='/api/wallet')json={balance:1000,frozen:0,items:[],ledger:[],rules:{}}
   if(p==='/api/order-updates')return route.fulfill({status:200,contentType:'text/event-stream',body:''})
   return route.fulfill({json})
  })
@@ -58,7 +58,6 @@ const pages=[
  ['operator refund orders','/admin/orders?business=refund','/api/admin/refund/orders',true],
  ['operator activity','/admin/activity','/api/admin/activity',true],
  ['accounts','/admin/users','/api/admin/users',true],
- ['recharges','/admin/topups','/api/admin/topups',true],
  ['redeem codes','/admin/codes','/api/admin/codes',true],
  ['audit','/admin/audit','/api/admin/audit',true],
  ['operator invitations','/admin/invites','/api/admin/invites',true],

@@ -287,33 +287,6 @@ async def set_membership(id: str,request: Request):
     return {'ok':True}
 
 
-@router.get('/topups')
-def topups(status:str='',include_admin:bool=True,q:str='',page:int=1,page_size:int=10,sort_by:str='created_at',sort_dir:str='desc'):
-    pagination(page,page_size);require(len(q)<=200,'搜索内容过长')
-    require(status in ('','pending','approved','rejected','cancelled'),'充值状态无效')
-    source=" FROM topups t JOIN users u ON u.id=t.user_id WHERE ($1='' OR t.status=$1) AND ($2::bool OR u.role<>'admin') AND ($3='' OR t.id ILIKE '%'||$3||'%' OR u.email ILIKE '%'||$3||'%' OR t.proof ILIKE '%'||$3||'%')"
-    ordering=order_by(sort_by,sort_dir,{'email':'u.email','amount':'t.amount','method':'t.method','status':'t.status','created_at':'t.created_at','updated_at':'t.updated_at'},'created_at','t.id')
-    rows=db.all('SELECT t.*,u.email'+source+' ORDER BY '+ordering+' LIMIT $4 OFFSET $5',status,include_admin,q,page_size,(page-1)*page_size)
-    summary=db.one("SELECT count(*) AS total,count(*) FILTER(WHERE t.status='pending') AS pending"+source,status,include_admin,q)
-    return list_result(rows,summary['total'],page,page_size,summary=summary)
-
-
-@router.post('/topups/{id}/review')
-async def review_topup(id: str,request: Request):
-    v=await body(request);action=v.get('action');note=v.get('note','')
-    require(action in ('approve','reject') and 2<=length(note)<=300,'请选择审核结果并填写审核依据')
-    desired='approved' if action=='approve' else 'rejected'
-    with db.transaction() as q:
-        row=q.one('SELECT user_id,status,amount FROM topups WHERE id=$1 FOR UPDATE',id)
-        require(row is not None,'申请不存在')
-        if row['status']==desired:return {'ok':True,'replayed':True}
-        require(row['status']=='pending','此申请已处理',409)
-        if desired=='approved':credit(q,request,row['user_id'],'topup','topup:'+id,'人工核实充值到账',row['amount'])
-        q.execute('UPDATE topups SET status=$2,note=$3,reviewed_by=$4,updated_at=now() WHERE id=$1',id,desired,note,current(request)['id'])
-        audit(q,request,'topup.'+desired,id,note)
-    return {'ok':True}
-
-
 @router.get('/codes')
 def codes(page: int=1,page_size: int=10,q: str='',status: str='',sort_by:str='created_at',sort_dir:str='desc'):
     return redeem_codes.listing(page,page_size,q,status,sort_by,sort_dir)

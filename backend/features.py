@@ -40,7 +40,7 @@ def enforce(request, user):
     for prefix in ('/api/cslive-go/', '/api/cslive-full/'):
         if path.startswith(prefix): path = '/api/' + path[len(prefix):]
     route = path.removeprefix('/api/').split('/')[0]
-    required = {'overview': ('home',), 'wallet': ('wallet',), 'topups': ('wallet',),
+    required = {'overview': ('home',), 'wallet': ('wallet',),
                 'keys': ('keys',), 'invites': ('invites',), 'membership': ('membership',),
                 'renewals': ('renewal',), 'quote': ('subscribe', 'links'),
                 'catalog': ('subscribe', 'links', 'membership'), 'ledger': ('wallet',),

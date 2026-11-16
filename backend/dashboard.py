@@ -158,10 +158,8 @@ def overview(user, *, admin=False, start='', end='', days=1, include_admin=False
              '查看恢复进度与异常原因。')
         todo('refund_review','代退待核实',queues['refund']['review'],destination(order_path,'refund',status='attention'),'请核实服务进度与费用状态。')
         if admin:
-            topups = q.scalar("SELECT count(*) FROM topups t JOIN users u ON u.id=t.user_id WHERE t.status='pending' AND "+scope, *args)
             # Security events are global, including anonymous traffic, independent of business/date/account scope.
             risks = q.scalar('SELECT count(*) FROM risk_events WHERE NOT resolved')
-            todo('topups','充值待审核',topups,destination('/admin/topups',status='pending'),'核实到账凭据后入账。')
             todo('risks','风险事件待核查',risks,destination('/admin/risk',state='pending',all_time='true'),'全站未核查事件，包含未登录访问。')
             totals = activity['totals']
             # Unified ledger amounts use cents. Only actual charges/refunds enter net settlement.

@@ -21,12 +21,11 @@
 | 创建与查询订单 | POST/GET `/api/v1/orders`、GET `/api/v1/orders/{id}` |
 | 关闭自动续费 | POST/GET `/api/v1/renewals`、GET `/api/v1/renewals/{id}` |
 | 余额、兑换与流水 | GET `/api/v1/wallet`、POST `/api/v1/wallet/redeem`、GET `/api/v1/wallet/ledger` |
-| 充值申请 | POST/GET `/api/v1/topups`、POST `/api/v1/topups/{id}/cancel` |
 | Session 检查 | POST `/api/v1/session/inspect` |
 
 以上均使用 `Authorization: Bearer YOUR_API_KEY`，只能访问所属序付账户的数据。管理员接口、业务配置和系统运维信息不进入客户文档。
 
-创建订单使用 `workflow=subscription` 或 `link`，按后台当前配置的已有办理流程受理；是否开放统一遵守后台付款开关。付款执行代码和数据库结构未修改。创建订单、续费任务和充值申请要求固定的 `Idempotency-Key`，相同内容重试返回原记录，不同内容返回 409。账户余额与银行卡实际订阅费用分别说明，受理成功、付款成功、订阅生效和关闭续费分别判断。
+创建订单使用 `workflow=subscription` 或 `link`，按后台当前配置的已有办理流程受理；是否开放统一遵守后台付款开关。付款执行代码和数据库结构未修改。创建订单和续费任务要求固定的 `Idempotency-Key`，相同内容重试返回原记录，不同内容返回 409。账户余额与银行卡实际订阅费用分别说明，受理成功、付款成功、订阅生效和关闭续费分别判断。
 
 ## 维护与验证
 

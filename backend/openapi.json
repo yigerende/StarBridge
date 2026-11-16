@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "星桥 API",
-    "version": "2.7.0",
+    "version": "2.8.0",
     "description": "使用同一个 API 密钥查询账户、订阅套餐、代退报价和积分钱包，提交申请并跟踪办理结果。当前可用功能见 GET /api/v1/me 的 features；重置登录密码后需重新创建 API 密钥。 请求按来源 IP 限流，同一出口的账号和密钥共用请求额度；注册、订阅和代退共用下单限额。429 按 Retry-After 等待，重试仍使用原幂等键。"
   },
   "servers": [
@@ -726,7 +726,7 @@
       "get": {
         "operationId": "get_membership",
         "summary": "查询会员权益",
-        "description": "查询会员等级、套餐优惠及分页查询全部 条已结算订单的成长记录。 growth 与 items 均为本页成长明细，total 是筛选后的总条数；page、page_size、has_more 用于翻页。筛选不影响会员等级和报价。",
+        "description": "查询会员等级、套餐优惠及分页查询注册、订阅、代退全部已结算订单的成长记录。 growth 与 items 均为本页成长明细，total 是筛选后的总条数；page、page_size、has_more 用于翻页。筛选不影响会员等级和报价。",
         "security": [
           {
             "BearerKey": []
@@ -808,17 +808,26 @@
                           },
                           "product_name": {
                             "type": "string",
-                            "description": "套餐名称。"
+                            "description": "业务服务名称。"
                           },
                           "updated_at": {
                             "type": "string",
-                            "description": "更新时间。",
+                            "description": "最近结算或服务费退回时间。",
                             "format": "date-time"
                           },
                           "spent": {
                             "type": "integer",
                             "description": "本单已结算服务费，单位：积分最小单位（展示时除以 100）。",
                             "minimum": 0
+                          },
+                          "business": {
+                            "type": "string",
+                            "enum": [
+                              "registration",
+                              "subscription",
+                              "refund"
+                            ],
+                            "description": "成长所属业务。"
                           }
                         }
                       },
@@ -916,17 +925,26 @@
                           },
                           "product_name": {
                             "type": "string",
-                            "description": "套餐名称。"
+                            "description": "业务服务名称。"
                           },
                           "updated_at": {
                             "type": "string",
-                            "description": "更新时间。",
+                            "description": "最近结算或服务费退回时间。",
                             "format": "date-time"
                           },
                           "spent": {
                             "type": "integer",
                             "description": "本单已结算服务费，单位：积分最小单位（展示时除以 100）。",
                             "minimum": 0
+                          },
+                          "business": {
+                            "type": "string",
+                            "enum": [
+                              "registration",
+                              "subscription",
+                              "refund"
+                            ],
+                            "description": "成长所属业务。"
                           }
                         }
                       },
@@ -1189,6 +1207,7 @@
               "type": "string",
               "enum": [
                 "id",
+                "business",
                 "product_name",
                 "spent",
                 "updated_at"
@@ -3971,623 +3990,6 @@
         }
       }
     },
-    "/api/v1/topups": {
-      "get": {
-        "operationId": "list_topups",
-        "summary": "查询充值申请",
-        "description": "查看本账户人工充值申请的审核结果。pending 不表示余额已到账。",
-        "tags": [
-          "资金与充值"
-        ],
-        "parameters": [
-          {
-            "name": "status",
-            "in": "query",
-            "description": "按业务状态筛选，省略为全部。 来源：由调用方从下方枚举中选择筛选状态；也可以使用本列表 items[].status 的值，省略表示全部。",
-            "schema": {
-              "type": "string",
-              "description": "审核状态。",
-              "enum": [
-                "pending",
-                "approved",
-                "rejected",
-                "cancelled"
-              ]
-            },
-            "x-input-source": "由调用方从下方枚举中选择筛选状态；也可以使用本列表 items[].status 的值，省略表示全部。",
-            "x-source-operations": []
-          },
-          {
-            "name": "page",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100000,
-              "default": 1
-            },
-            "description": "页码，从 1 开始。 来源：由调用方指定，首次查询用 1；本接口响应 has_more=true 时，将响应 page 加 1 查询下一页。",
-            "x-input-source": "由调用方指定，首次查询用 1；本接口响应 has_more=true 时，将响应 page 加 1 查询下一页。",
-            "x-source-operations": []
-          },
-          {
-            "name": "page_size",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 500,
-              "default": 50
-            },
-            "description": "每页条数，1～500；建议使用 10、50、100 或 500。",
-            "x-input-source": "由调用方选择每页条数；沿用接口默认值或在允许范围内设置，翻页时保持一致。",
-            "x-source-operations": []
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "description": "搜索当前账户的记录；对完整记录筛选后分页。",
-            "schema": {
-              "type": "string",
-              "default": ""
-            }
-          },
-          {
-            "name": "sort_by",
-            "in": "query",
-            "required": false,
-            "description": "排序字段；在完整筛选结果上排序，同值按记录标识稳定排序。",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "amount",
-                "status",
-                "created_at",
-                "updated_at"
-              ],
-              "default": "created_at"
-            }
-          },
-          {
-            "name": "sort_dir",
-            "in": "query",
-            "required": false,
-            "description": "asc 升序，desc 降序。",
-            "schema": {
-              "type": "string",
-              "enum": [
-                "asc",
-                "desc"
-              ],
-              "default": "desc"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "请求成功；提交类接口只表示已受理，请继续查询任务状态。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TopupPage"
-                },
-                "example": {
-                  "items": [],
-                  "page": 1,
-                  "page_size": 50,
-                  "total": 0,
-                  "has_more": false
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数无效",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "请求参数无效"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "API 密钥无效或账户不可用",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "API 密钥无效或账户不可用"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "当前账户无权访问此功能",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "无权访问"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "记录不存在或不属于当前账户",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "记录不存在或不属于当前账户"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "请求过于频繁",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "请求过于频繁"
-                }
-              }
-            },
-            "headers": {
-              "Retry-After": {
-                "description": "IP 频率限制的剩余等待秒数。业务容量限制可能不返回此字段。",
-                "schema": {
-                  "type": "integer",
-                  "minimum": 1
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务暂时异常",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "服务暂时异常"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "请求标识与之前的内容冲突，或当前状态不允许操作",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "请求标识与之前的内容冲突，或当前状态不允许操作"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "请求体过大",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "请求体过大"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "办理资源暂不可用",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "办理资源暂不可用"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "operationId": "create_topup",
-        "summary": "提交充值申请",
-        "description": "提交人工审核申请，不直接扣银行卡或增加余额。同时最多保留 3 笔待审核申请。请求超时可用相同标识重试。",
-        "tags": [
-          "资金与充值"
-        ],
-        "parameters": [
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "required": true,
-            "description": "同一次操作使用固定请求标识；超时重试必须复用相同标识和相同请求内容。不同操作使用新标识。 来源：由调用方为一次操作生成并保存唯一值，例如 UUID。首次请求前生成，超时重试复用原值；不是从查询接口读取。",
-            "schema": {
-              "type": "string",
-              "minLength": 8,
-              "maxLength": 120
-            },
-            "example": "YOUR_UNIQUE_REQUEST_ID",
-            "x-input-source": "由调用方为一次操作生成并保存唯一值，例如 UUID。首次请求前生成，超时重试复用原值；不是从查询接口读取。",
-            "x-source-operations": []
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "请求成功；提交类接口只表示已受理，请继续查询任务状态。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "description": "充值申请编号。"
-                    },
-                    "replayed": {
-                      "type": "boolean",
-                      "description": "是否返回已有申请；首次可能省略。"
-                    }
-                  },
-                  "required": [
-                    "id"
-                  ]
-                },
-                "example": {
-                  "id": "TOPUP_ID"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数无效",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "请求参数无效"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "API 密钥无效或账户不可用",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "API 密钥无效或账户不可用"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "当前账户无权访问此功能",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "无权访问"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "记录不存在或不属于当前账户",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "记录不存在或不属于当前账户"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "请求过于频繁",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "请求过于频繁"
-                }
-              }
-            },
-            "headers": {
-              "Retry-After": {
-                "description": "IP 频率限制的剩余等待秒数。业务容量限制可能不返回此字段。",
-                "schema": {
-                  "type": "integer",
-                  "minimum": 1
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务暂时异常",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "服务暂时异常"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "请求标识与之前的内容冲突，或当前状态不允许操作",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "请求标识与之前的内容冲突，或当前状态不允许操作"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "请求体过大",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "请求体过大"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "办理资源暂不可用",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "办理资源暂不可用"
-                }
-              }
-            }
-          }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/TopupRequest"
-              },
-              "examples": {
-                "manual": {
-                  "summary": "人工充值申请",
-                  "value": {
-                    "amount": 10000,
-                    "proof": "线下转账凭证编号"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/topups/{id}/cancel": {
-      "post": {
-        "operationId": "cancel_topup",
-        "summary": "取消待审核充值",
-        "description": "仅允许取消本人待审核申请；重复取消同一已取消申请仍返回成功。已审核申请返回 409。",
-        "tags": [
-          "资金与充值"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "description": "当前账户拥有的记录编号。 来源：使用 POST /api/v1/topups 响应根级 id，或 GET /api/v1/topups 的 items[].id；将它替换到 /api/v1/topups/{id}/cancel。只能取消待审核或已取消的充值申请。",
-            "schema": {
-              "type": "string"
-            },
-            "example": "RECORD_ID",
-            "x-input-source": "使用 POST /api/v1/topups 响应根级 id，或 GET /api/v1/topups 的 items[].id；将它替换到 /api/v1/topups/{id}/cancel。只能取消待审核或已取消的充值申请。",
-            "x-source-operations": [
-              {
-                "operationId": "create_topup",
-                "label": "POST /api/v1/topups → id"
-              },
-              {
-                "operationId": "list_topups",
-                "label": "GET /api/v1/topups → items[].id"
-              }
-            ]
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "请求成功；提交类接口只表示已受理，请继续查询任务状态。",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": {
-                      "type": "boolean",
-                      "description": "true 表示申请已取消，重复取消仍返回成功。"
-                    }
-                  }
-                },
-                "example": {
-                  "ok": true
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "请求参数无效",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "请求参数无效"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "API 密钥无效或账户不可用",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "API 密钥无效或账户不可用"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "当前账户无权访问此功能",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "无权访问"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "记录不存在或不属于当前账户",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "记录不存在或不属于当前账户"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "请求过于频繁",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "请求过于频繁"
-                }
-              }
-            },
-            "headers": {
-              "Retry-After": {
-                "description": "IP 频率限制的剩余等待秒数。业务容量限制可能不返回此字段。",
-                "schema": {
-                  "type": "integer",
-                  "minimum": 1
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "服务暂时异常",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "服务暂时异常"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "请求标识与之前的内容冲突，或当前状态不允许操作",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "请求标识与之前的内容冲突，或当前状态不允许操作"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "请求体过大",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "请求体过大"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "办理资源暂不可用",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                },
-                "example": {
-                  "error": "办理资源暂不可用"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/refund/quote": {
       "get": {
         "operationId": "refund_quote",
@@ -6388,7 +5790,7 @@
           "settled_spent": {
             "type": "integer",
             "minimum": 0,
-            "description": "实际成功结算的服务费净累计，积分最小单位，不含等级调整。"
+            "description": "注册、订阅、代退已结算服务费减退费的累计值，积分最小单位，不含等级调整。"
           }
         }
       },
@@ -7584,75 +6986,6 @@
           }
         }
       },
-      "Topup": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "description": "充值申请编号。"
-          },
-          "amount": {
-            "type": "integer",
-            "description": "申请充值金额，积分最小单位。"
-          },
-          "method": {
-            "type": "string",
-            "description": "充值方式，manual 为人工审核。"
-          },
-          "proof": {
-            "type": "string",
-            "description": "充值凭证或备注。"
-          },
-          "status": {
-            "type": "string",
-            "description": "审核状态。",
-            "enum": [
-              "pending",
-              "approved",
-              "rejected",
-              "cancelled"
-            ]
-          },
-          "note": {
-            "type": "string",
-            "description": "审核备注。"
-          },
-          "created_at": {
-            "type": "string",
-            "description": "创建时间。",
-            "format": "date-time"
-          },
-          "updated_at": {
-            "type": "string",
-            "description": "更新时间。",
-            "format": "date-time"
-          }
-        }
-      },
-      "TopupRequest": {
-        "type": "object",
-        "properties": {
-          "amount": {
-            "type": "integer",
-            "description": "申请金额，积分最小单位，至少 100；上限由站点配置决定。 来源：由用户填写充值金额，调用方转换为整数积分最小单位；例如 10 积分 传 1000。",
-            "minimum": 100,
-            "x-input-source": "由用户填写充值金额，调用方转换为整数积分最小单位；例如 10 积分 传 1000。",
-            "x-source-operations": []
-          },
-          "proof": {
-            "type": "string",
-            "description": "充值凭证或备注，UTF-8 编码后最多 500 字节（通常最多 166 个汉字）。 来源：由用户提供本次充值凭证文字或备注；无内容时可省略。",
-            "maxLength": 500,
-            "default": "",
-            "x-input-source": "由用户提供本次充值凭证文字或备注；无内容时可省略。",
-            "x-source-operations": []
-          }
-        },
-        "required": [
-          "amount"
-        ],
-        "additionalProperties": false
-      },
       "LedgerEntry": {
         "type": "object",
         "properties": {
@@ -7830,34 +7163,6 @@
               "$ref": "#/components/schemas/RenewalTask"
             },
             "description": "本页续费任务记录；无匹配结果时为空数组。"
-          },
-          "page": {
-            "type": "integer",
-            "description": "页码，从 1 开始。"
-          },
-          "page_size": {
-            "type": "integer",
-            "description": "每页数量。"
-          },
-          "total": {
-            "type": "integer",
-            "description": "符合筛选条件的总条数。"
-          },
-          "has_more": {
-            "type": "boolean",
-            "description": "是否还有下一页。"
-          }
-        }
-      },
-      "TopupPage": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Topup"
-            },
-            "description": "本页充值申请记录；无匹配结果时为空数组。"
           },
           "page": {
             "type": "integer",
@@ -8573,21 +7878,6 @@
         {
           "operationId": "list_renewals",
           "label": "GET /api/v1/renewals → items[].id"
-        }
-      ]
-    },
-    {
-      "field": "取消充值路径中的 {id}",
-      "source": "POST /api/v1/topups → id；GET /api/v1/topups → items[].id",
-      "value": "POST /api/v1/topups/TOPUP_ID/cancel",
-      "links": [
-        {
-          "operationId": "create_topup",
-          "label": "POST /api/v1/topups → id"
-        },
-        {
-          "operationId": "list_topups",
-          "label": "GET /api/v1/topups → items[].id"
         }
       ]
     },

@@ -13,7 +13,7 @@ COUNTRIES = {'PH','US','JP','SG','GB','EG','TR'}
 STATES = set('AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY'.split())
 RANGES = {
  'invites': {'rate_percent':(1,30)},
- 'risk': {'login_per_minute':(1,100),'api_per_minute':(10,10000),'order_per_minute':(1,100),'max_open_orders':(1,500),'max_topup':(100,100000000),'session_hours':(1,168),'event_retention_days':(7,365)},
+ 'risk': {'login_per_minute':(1,100),'api_per_minute':(10,10000),'order_per_minute':(1,100),'max_open_orders':(1,500),'session_hours':(1,168),'event_retention_days':(7,365)},
  'scheduler': {'max_parallel':(1,100),'per_user_parallel':(1,20),'retry_limit':(0,10),'retry_delay_seconds':(5,3600),'task_timeout_seconds':(30,1800),'queue_limit':(1,10000)},
  'payment': {'max_parallel':(1,20),'per_user_parallel':(1,5),'prepare_timeout_seconds':(30,300),'quote_timeout_seconds':(30,600),'result_timeout_seconds':(30,600),'requests_per_minute':(1,20),'subscription_wait_seconds':(30,1800),'renewal_check_interval_seconds':(5,300),'renewal_check_limit':(1,60),'network_restart_limit':(0,5),'activation_check_interval_seconds':(2,300),'activation_check_limit':(1,120)},
  'proxy': {'request_timeout_seconds':(10,120),'failure_cooldown_seconds':(10,3600),'recovery_interval_seconds':(1,300)}, 'site': {'invite_rate':(0,0)}

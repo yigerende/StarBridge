@@ -5,12 +5,7 @@ const { lockMember } = require('./member-lock');
 // Match backend/membership.py: settled spend and active growth credit select one tier.
 async function prices(q, memberId, settings) {
   const user = (await q.query(`SELECT u.id,u.membership_code,u.membership_until,u.membership_growth_credit,
-    coalesce((SELECT sum(s.spent) FROM (
-      SELECT l.order_id,greatest(0,-sum(l.amount)) AS spent
-      FROM ledger l JOIN orders o ON o.id=l.order_id AND o.user_id=l.user_id
-      WHERE l.user_id=u.id AND o.status='succeeded'
-        AND ((l.kind='charge' AND l.amount<0) OR (l.kind='refund' AND l.amount>0))
-      GROUP BY l.order_id) s),0) AS spent
+    coalesce((SELECT sum(s.spent) FROM membership_order_spend s WHERE s.user_id=u.id),0) AS spent
     FROM users u JOIN platform_users p ON p.xufu_user_id=u.id WHERE p.id=$1`, [memberId])).rows[0];
   fail(user, '用户不存在', 404);
   const exclusive = Object.fromEntries((await q.query(

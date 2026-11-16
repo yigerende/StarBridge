@@ -7,7 +7,7 @@ const groups=[
  {name:'访问与业务请求',hint:'每个来源 IP 单独计数，单位：次 / 分钟。',keys:['edge_per_minute','api_per_minute','order_per_minute','redeem_per_minute','inspect_per_minute','export_per_minute']},
  {name:'登录与验证',hint:'登录、注册、重置密码和滑块验证，单位：次 / 分钟 / IP。',keys:['login_per_minute','register_per_minute','reset_per_minute','slider_per_minute','slider_verify_per_minute']},
  {name:'邮件验证码',hint:'发送次数按 IP 统计，重发间隔按邮箱计算。',keys:['email_per_minute','email_per_day','email_cooldown_seconds']},
- {name:'账户与记录',hint:'设置订单数量、登录有效期和记录保留时间。',keys:['max_open_orders','session_hours','event_retention_days','max_topup']}
+ {name:'账户与记录',hint:'设置订单数量、登录有效期和记录保留时间。',keys:['max_open_orders','session_hours','event_retention_days']}
 ]
 function label(f:Row){if(f.k==='email_per_minute')return '每分钟发送验证码';return f.n.replace('每 IP 每分钟','').replace('每 IP 每日','每日')}
 </script>

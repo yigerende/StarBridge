@@ -121,12 +121,6 @@
   },
   {
     "method": "GET",
-    "path": "/api/admin/topups",
-    "status": "implemented",
-    "reason": ""
-  },
-  {
-    "method": "GET",
     "path": "/api/admin/users",
     "status": "implemented",
     "reason": ""
@@ -343,12 +337,6 @@
   },
   {
     "method": "POST",
-    "path": "/api/admin/topups/{id}/review",
-    "status": "implemented",
-    "reason": ""
-  },
-  {
-    "method": "POST",
     "path": "/api/admin/users",
     "status": "implemented",
     "reason": ""
@@ -410,18 +398,6 @@
   {
     "method": "POST",
     "path": "/api/session/inspect",
-    "status": "implemented",
-    "reason": ""
-  },
-  {
-    "method": "POST",
-    "path": "/api/topups",
-    "status": "implemented",
-    "reason": ""
-  },
-  {
-    "method": "POST",
-    "path": "/api/topups/{id}/cancel",
     "status": "implemented",
     "reason": ""
   },

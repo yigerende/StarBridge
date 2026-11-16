@@ -24,7 +24,8 @@ class MembershipServiceTests(unittest.TestCase):
 
     def test_all_service_quotes_match_actual_pricing_after_growth_upgrade(self):
         db.execute("INSERT INTO orders(id,user_id,product_id,product_name,email,status,fee,idempotency_key,request_hash) VALUES('new','u','plus','Plus','u@example.test','succeeded',1000,'new','fixture')")
-        db.execute("INSERT INTO ledger(user_id,order_id,kind,amount,balance_after,frozen_after,reference,description) VALUES('u','new','charge',-1000,1000,300,'new','fixture')")
+        db.execute("INSERT INTO refunds(id,user_id,email,credentials,status,fee,fee_status) VALUES('new','u','fixture@example.test',decode('00','hex'),'succeeded',1000,'settled')")
+        db.execute("INSERT INTO ledger(user_id,refund_order_id,business,kind,amount,balance_after,frozen_after,reference,description) VALUES('u','new','refund','charge',-1000,1000,300,'new','fixture')")
         db.execute("INSERT INTO user_service_prices(user_id,service,fee) VALUES('u','refund',0)")
         with patch('backend.registration_gateway.enabled',return_value=True):result=membership.membership(self.request)
         self.assertEqual(result['membership']['current']['code'],'diamond')

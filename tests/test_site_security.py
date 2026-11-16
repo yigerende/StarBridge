@@ -35,7 +35,7 @@ class SiteSecurityTests:
             token=TestClient(self.client.app,headers={'Authorization':'Bearer '+key})
             flags={k:False for k in config('features')}
             self.ok(self.client.put('/api/admin/settings/features',json=flags))
-            for path in ('overview','orders','orders/fake','wallet','v1/topups','keys','invites','membership','renewals','renewals/fake','quote','v1/catalog','v1/me','subscriptions/fake','cslive-go/subscriptions/fake','cslive-full/subscriptions/fake'):
+            for path in ('overview','orders','orders/fake','wallet','keys','invites','membership','renewals','renewals/fake','quote','v1/catalog','v1/me','subscriptions/fake','cslive-go/subscriptions/fake','cslive-full/subscriptions/fake'):
                 self.assertEqual(user.get('/api/'+path).status_code,403,path)
             for prefix in ('','/v1','/cslive-go','/cslive-full'):
                 self.assertEqual(user.post('/api'+prefix+'/orders',json={}).status_code,403)

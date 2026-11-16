@@ -121,6 +121,7 @@ def initialize():
         q.cursor.execute((ROOT/'backend/refund_schema.sql').read_text(encoding='utf-8'))
         q.cursor.execute((ROOT/'backend/refund_mother_schema.sql').read_text(encoding='utf-8'))
         q.cursor.execute((ROOT/'backend/registration_session_schema.sql').read_text(encoding='utf-8'))
+        q.cursor.execute((ROOT/'backend/membership_schema.sql').read_text(encoding='utf-8'))
 
 
 def close():
