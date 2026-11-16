@@ -151,6 +151,15 @@ class RefundTests(unittest.TestCase):
                 self.assertEqual(detail.status_code,200)
                 self.assertNotIn('not-real',detail.text);self.assertNotIn('totp_secret',detail.text)
                 self.assertNotIn('lease',detail.text);self.assertNotIn('mother',detail.text)
+                # Read the actual Go-encrypted order only through the administrator endpoint.
+                credentials=await c.get('/api/admin/refund/orders/'+id+'/credentials',headers=session('a'))
+                self.assertEqual(credentials.status_code,200,credentials.text)
+                self.assertEqual(credentials.json(),data['accounts'][0])
+                for headers in (session('u'),session('v'),key):
+                    self.assertEqual((await c.get('/api/admin/refund/orders/'+id+'/credentials',headers=headers)).status_code,403)
+                normal_detail=await c.get('/api/admin/refund/orders/'+id,headers=session('a'))
+                self.assertEqual(normal_detail.status_code,200,normal_detail.text)
+                self.assertNotIn('not-real',normal_detail.text);self.assertNotIn('totp_secret',normal_detail.text)
                 # Authenticated public API keys cannot call the private web route.
                 self.assertEqual((await c.get('/api/refund/orders',headers=key)).status_code,403)
                 reads=await asyncio.gather(*(c.get('/api/refund/orders',headers=session('u' if i%2==0 else 'v')) for i in range(100)))

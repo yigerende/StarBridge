@@ -3,6 +3,7 @@ import {computed,defineAsyncComponent,ref} from 'vue'
 import {Clock3,LoaderCircle,ShieldCheck,CheckCircle2,AlertCircle,XCircle,Copy,Check,Wallet,History,Mail} from 'lucide-vue-next'
 import {cash,date,type Row} from '../lib'
 const AdminRefundTimeline=defineAsyncComponent(()=>import('./AdminRefundTimeline.vue'))
+const AdminRefundCredentials=defineAsyncComponent(()=>import('./AdminRefundCredentials.vue'))
 const props=defineProps<{detail:Row;admin?:boolean}>()
 const order=computed(()=>props.detail.order),copied=ref(false),copyError=ref('')
 const states:Row={queued:{label:'排队中',icon:Clock3,tone:'pending'},processing:{label:'办理中',icon:LoaderCircle,tone:'active'},verifying:{label:'核实中',icon:ShieldCheck,tone:'active'},attention:{label:'待跟进',icon:AlertCircle,tone:'attention'},succeeded:{label:'服务已完成',icon:CheckCircle2,tone:'success'},failed:{label:'办理失败',icon:XCircle,tone:'failed'},banned:{label:'账号不可用',icon:AlertCircle,tone:'failed'},cancelled:{label:'已取消',icon:XCircle,tone:'neutral'}}
@@ -23,6 +24,7 @@ async function copyID(){try{await navigator.clipboard.writeText(order.value.id);
    <section class="refund-detail-card"><h4><Mail :size="16"/>申请账号</h4><b class="refund-detail-email">{{order.email}}</b><span class="refund-detail-caption">提交时间 · {{date(order.created_at)}}</span><span v-if="admin&&order.user_email" class="refund-detail-caption">申请人 · {{order.user_email}}</span></section>
    <section class="refund-detail-card"><h4><Wallet :size="16"/>服务费用<span class="refund-detail-fee-state" :class="order.fee_status">{{fee.label}}</span></h4><strong class="refund-detail-amount">{{cash(order.fee)}}<small>积分</small></strong><span class="refund-detail-caption">{{fee.note}}</span></section>
   </div>
+  <AdminRefundCredentials v-if="admin" :id="order.id" :key="order.id"/>
   <section v-if="admin" class="refund-detail-card refund-mother" aria-label="使用母号"><h4>使用母号</h4><template v-if="detail.mother"><b>{{detail.mother.name}}</b><span class="refund-detail-caption">{{detail.mother.email}}</span><small v-if="detail.mother.reassigning" class="refund-detail-caption">上次分配的母号，当前正在等待重新分配。</small><small v-else-if="detail.mother.deleted_at" class="refund-detail-caption">该母号已从资源列表移除。</small></template><span v-else class="refund-detail-caption">等待分配</span></section>
   <div class="refund-detail-reference"><span>订单编号</span><code>{{order.id}}</code><button class="icon-btn" :aria-label="copied?'订单号已复制':'复制订单号'" @click="copyID"><Check v-if="copied" :size="15"/><Copy v-else :size="15"/></button></div>
   <p v-if="copyError" class="refund-detail-copy-error" role="alert">{{copyError}}</p>

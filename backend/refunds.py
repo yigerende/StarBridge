@@ -8,6 +8,8 @@ import secrets
 import sys
 import httpx
 from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import JSONResponse
+from cryptography.exceptions import InvalidTag
 from . import db, membership, order_timing
 from .common import administrator, audit, body, current, member, require, integer, parsedate, now
 
@@ -211,6 +213,24 @@ async def monitor(request:Request,q:str='',status:str='',fee_status:str='',focus
 
 @admin.get('/orders/{id}/timeline')
 async def timeline(id:str,request:Request):return await call('timeline',current(request)['id'],id=id)
+
+@admin.get('/orders/{id}/credentials')
+def order_credentials(id:str,request:Request):
+    from .refund_mother_upstream import open_secret
+    row=db.one('SELECT email,credentials FROM refunds WHERE id=$1',id)
+    require(row,'代退订单不存在',404)
+    try:
+        value=open_secret(id,row['credentials'])
+    except (InvalidTag,ValueError,TypeError,UnicodeError):
+        require(False,'账号资料无法读取，请核对原始提交记录',409)
+    require(isinstance(value,dict) and isinstance(value.get('email'),str)
+            and value['email'].strip().lower()==row['email'].lower()
+            and all(isinstance(value.get(k),str) and bool(value[k]) for k in ('password','totp_secret')),
+            '账号资料不完整或与订单不符，请核对原始提交记录',409)
+    with db.transaction() as q:
+        audit(q,request,'refund.order.credentials',id,'查看代退账号密码与 2FA')
+    return JSONResponse({k:value[k] for k in ('email','password','totp_secret')},
+                        headers={'Cache-Control':'no-store','Pragma':'no-cache'})
 
 @admin.get('/orders/{id}')
 async def admin_detail(id:str,request:Request):
