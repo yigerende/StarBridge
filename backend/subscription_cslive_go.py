@@ -374,6 +374,11 @@ def _run_subscription(job: dict):
     order_id = job['id']
     if not subscription_retry.can_start(order_id):
         return
+    latest = db.one('SELECT credentials_enc,credentials_expires_at FROM subscription_runs '
+                    'WHERE order_id=$1 AND trace_round=$2', order_id, job.get('trace_round'))
+    if not latest:
+        return
+    job = dict(job, **latest)
     user_id = job['user_id']
     fee = job['fee']
     country = job['country']
@@ -409,6 +414,7 @@ def _run_subscription(job: dict):
             link_result = cached['result']
             request_context = cached.get('request_context') or {}
         else:
+            from .checkout_credentials import saver
             session_payload = {
                 'access_token': creds['access_token'],
                 'account_id': creds['account_id'],
@@ -428,6 +434,7 @@ def _run_subscription(job: dict):
                 checkout_type=checkout_type,
                 currency=currency,
                 with_price=True,
+                save_credentials=saver(job, creds),
             )
             request_context = link_result.get('request_context') or {}
 

@@ -7,6 +7,11 @@
       "date": "2026-11-10",
       "sha256_lf": "67bd91ec384db2c92d67fe419aaa2bb11e2bce6a790ed79b91bbbd34e8f7fa3b",
       "reason": "Recognize only the exact cancellation business 404 as cancellation_not_ready."
+    },
+    "starbridge_session_continuity_change": {
+      "date": "2026-11-17",
+      "sha256_lf": "6ad8023c7b7914ef023509e1ff6ca46c5578ff19fe77b363594836a9290e0438",
+      "reason": "Synchronize rotated/chunked login cookies and SessionToken; reject mismatched refresh identity without replacing saved login state."
     }
   },
   "chatgpt_parsing.go": {
@@ -37,6 +42,11 @@
       "date": "2026-11-10",
       "sha256_lf": "5b422f71103c857a63d539a27f7e5edb128f2fbcf005d922235dadf83e1d2bd7",
       "reason": "Refresh saved session on renewal read/cancellation 401 even after proactive refresh."
+    },
+    "starbridge_session_continuity_change": {
+      "date": "2026-11-17",
+      "sha256_lf": "18ecdd95455b2a5c8a8f951daa28498a29ef2472eebfade8c98986a88b3af945",
+      "reason": "Route every refresh through durable save acknowledgement before continuing; persist merchant-return cookies and retain original payment/cancellation fences."
     }
   },
   "model_catalog.go": {

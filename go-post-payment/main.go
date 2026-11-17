@@ -49,6 +49,7 @@ type credentials struct {
 	AccountID    string            `json:"account_id"`
 	Email        string            `json:"email"`
 	Cookies      map[string]string `json:"cookies"`
+	RefreshedAt  string            `json:"refreshed_at"`
 }
 type cookieSnapshot struct {
 	Name    string   `json:"name"`
@@ -187,6 +188,38 @@ func initialCheckpoint(in input) (*model_Checkpoint, error) {
 		if cp.AccountID != s.AccountID || cp.CheckoutID != s.CheckoutID || cp.Plan != s.Plan || cp.CancelRequested != s.CancelRequested || cp.CancelAttempts < 0 || cp.CancelAttempts > 2 {
 			return nil, protocol_NewError("checkpoint_mismatch")
 		}
+		// Python loads credentials from the order row on every invocation.
+		// Restore progress from Context, but never restore its older auth state.
+		if cp.Email != "" && s.Credentials.Email != "" && !strings.EqualFold(cp.Email, s.Credentials.Email) {
+			return nil, protocol_NewError("account_mismatch")
+		}
+		cp.AccessToken, cp.SessionToken, cp.Email = s.Credentials.AccessToken, s.Credentials.SessionToken, s.Credentials.Email
+		values := map[string]string{}
+		for _, c := range (&http.Request{Header: http.Header{"Cookie": {cp.Cookies}}}).Cookies() {
+			if authCookieFamily(c.Name) == "" {
+				values[c.Name] = c.Value
+			}
+		}
+		hasLogin := false
+		for name, value := range s.Credentials.Cookies {
+			if validCookie(name, value) && authCookieFamily(name) != "" {
+				values[name] = value
+				hasLogin = hasLogin || value != ""
+			}
+		}
+		if !hasLogin && cp.SessionToken != "" {
+			values["__Secure-next-auth.session-token"], values["__Secure-platform.session-token"] = cp.SessionToken, cp.SessionToken
+		}
+		names := make([]string, 0, len(values))
+		for name := range values {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		parts := make([]string, 0, len(names))
+		for _, name := range names {
+			parts = append(parts, name+"="+values[name])
+		}
+		cp.Cookies = strings.Join(parts, "; ")
 	} else {
 		cp = &model_Checkpoint{Phase: s.Phase, Payment: "charged", Plan: s.Plan, AccountID: s.AccountID, Email: s.Credentials.Email,
 			CheckoutID: s.CheckoutID, Entity: s.Entity, ReturnURL: s.ReturnURL, AccessToken: s.Credentials.AccessToken,
@@ -199,6 +232,11 @@ func initialCheckpoint(in input) (*model_Checkpoint, error) {
 		}
 		for _, c := range s.RequestContext.Cookies {
 			if strings.TrimPrefix(c.Domain, ".") != "chatgpt.com" || c.Path != "" && c.Path != "/" || c.Expires != nil && *c.Expires <= float64(time.Now().Unix()) {
+				continue
+			}
+			// A refreshed credential checkpoint is newer than the original
+			// checkout request snapshot. Keep its complete login-cookie family.
+			if s.Credentials.RefreshedAt != "" && authCookieFamily(c.Name) != "" && len(s.Credentials.Cookies) > 0 {
 				continue
 			}
 			if validCookie(c.Name, c.Value) {
@@ -340,7 +378,7 @@ func run(in input, w *wire) error {
 	tx.skipMerchantReturn = in.SkipMerchantReturn
 	tx.skipRenewalRefresh = in.SkipRenewalRefresh
 	if in.Operation == "refresh" {
-		err = platform.Refresh()
+		err = tx.refreshSession("")
 	} else {
 		err = tx.finishPayment()
 	}

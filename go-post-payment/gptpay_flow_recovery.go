@@ -3,6 +3,14 @@ package main
 
 import ()
 
+// Every successful refresh must be durably acknowledged before another step.
+func (t *gptpay_transaction) refreshSession(phase string) error {
+	if e := t.platform.Refresh(); e != nil {
+		return e
+	}
+	return t.save(phase)
+}
+
 func (t *gptpay_transaction) finishPayment() error {
 	if e := t.confirmActivation(); e != nil {
 		return e
@@ -20,17 +28,22 @@ func (t *gptpay_transaction) confirmActivation() error {
 	}
 	// Use the configured refresh retries before both the return page and the
 	// first subscription query. Persist the refreshed state before continuing.
-	if e := t.platform.Refresh(); e != nil {
-		return e
-	}
-	if e := t.save(""); e != nil {
+	if e := t.refreshSession(""); e != nil {
 		return e
 	}
 	if !t.skipMerchantReturn && cp.ReturnURL != "" {
 		u, e := chatgpt_ValidateReturnURL(cp.ReturnURL, cp)
 		if e == nil {
-			if _, e = t.http.Request("GET", u, protocol_RequestOptions{Headers: t.platform.Headers("")}); e != nil {
-				return e
+			response, err := t.http.Request("GET", u, protocol_RequestOptions{Headers: t.platform.Headers("")})
+			if err != nil {
+				return err
+			}
+			previousCookies := cp.Cookies
+			t.platform.Absorb(response)
+			if cp.Cookies != previousCookies {
+				if e = t.save(""); e != nil {
+					return e
+				}
 			}
 		} else if protocol_FlowErrorCode(e) != "invalid_return_url" {
 			return e
@@ -44,10 +57,7 @@ func (t *gptpay_transaction) confirmActivation() error {
 		}
 		data, e := t.platform.Subscriptions(false)
 		if protocol_FlowErrorCode(e) == "http_401" {
-			if e = t.platform.Refresh(); e != nil {
-				return e
-			}
-			if e = t.save(""); e != nil {
+			if e = t.refreshSession(""); e != nil {
 				return e
 			}
 			data, e = t.platform.Subscriptions(false)
@@ -78,10 +88,7 @@ func (t *gptpay_transaction) confirmActivation() error {
 func (t *gptpay_transaction) renewalSubscriptions() (protocol_Map, error) {
 	data, e := t.platform.Subscriptions(true)
 	if protocol_FlowErrorCode(e) == "http_401" {
-		if e = t.platform.Refresh(); e != nil {
-			return nil, e
-		}
-		if e = t.save(""); e != nil {
+		if e = t.refreshSession(""); e != nil {
 			return nil, e
 		}
 		return t.platform.Subscriptions(true)
@@ -93,11 +100,10 @@ func (t *gptpay_transaction) disableRenewal() error {
 	cp := t.cp
 	t.progress.emit(model_ProgressStageCancellation, model_ProgressRunning, "")
 	if !t.skipRenewalRefresh {
-		if e := t.platform.Refresh(); e != nil {
+		if e := t.refreshSession("cancellation"); e != nil {
 			return e
 		}
-	}
-	if e := t.save("cancellation"); e != nil {
+	} else if e := t.save("cancellation"); e != nil {
 		return e
 	}
 	data, e := t.renewalSubscriptions()
@@ -122,10 +128,7 @@ func (t *gptpay_transaction) disableRenewal() error {
 		original := e
 		unauthorized := protocol_FlowErrorCode(original) == "http_401"
 		if unauthorized {
-			if e = t.platform.Refresh(); e != nil {
-				return e
-			}
-			if e = t.save(""); e != nil {
+			if e = t.refreshSession(""); e != nil {
 				return e
 			}
 		}

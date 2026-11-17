@@ -238,12 +238,13 @@ const chatgpt_PlatformBase = "https://chatgpt.com"
 
 type chatgpt_Platform struct {
 	// PromoCode 仅存在于本次提链调用，不写支付快照。
-	PromoCode   string
-	Profile     protocol_BrowserProfile
-	HTTP        protocol_HTTPTransport
-	CP          *model_Checkpoint
-	Clock       fingerprint_Clock
-	Diagnostics *checkoutDiagnostics
+	PromoCode       string
+	Profile         protocol_BrowserProfile
+	HTTP            protocol_HTTPTransport
+	CP              *model_Checkpoint
+	Clock           fingerprint_Clock
+	Diagnostics     *checkoutDiagnostics
+	SaveCredentials checkoutCredentialSink
 }
 
 type chatgpt_PlatformHeaderOptions struct{ Referer, Mode string }
@@ -303,6 +304,9 @@ func (p *chatgpt_Platform) Absorb(response *protocol_HTTPResponse) {
 		parts = append(parts, entry.Key+"="+protocol_AsString(entry.Value))
 	}
 	p.CP.Cookies = strings.Join(parts, "; ")
+	if p.SaveCredentials != nil {
+		p.CP.Cookies = checkoutAbsorbCookies(request.Header.Get("Cookie"), response)
+	}
 	if value := jar.Get("oai-did"); value != nil {
 		p.CP.DeviceID = protocol_AsString(value)
 	}
@@ -403,6 +407,16 @@ func (p *chatgpt_Platform) Call(method, path string, options ...chatgpt_Platform
 
 func (p *chatgpt_Platform) Refresh() (err error) {
 	cp := p.CP
+	previous := *cp
+	if p.SaveCredentials != nil {
+		defer func() {
+			if err != nil {
+				cp.AccessToken, cp.SessionToken, cp.Cookies = previous.AccessToken, previous.SessionToken, previous.Cookies
+				cp.AccountID, cp.Email = previous.AccountID, previous.Email
+				cp.DeviceID = previous.DeviceID
+			}
+		}()
+	}
 	var data protocol_Map
 	if p.Diagnostics != nil {
 		before := p.Diagnostics.auth(cp)
@@ -426,12 +440,26 @@ func (p *chatgpt_Platform) Refresh() (err error) {
 	if account != "" && cp.AccountID != "" && account != cp.AccountID {
 		return &protocol_ProtocolError{Code: "account_mismatch"}
 	}
+	email := protocol_AsString(protocol_AsMap(data["user"])["email"])
+	if p.SaveCredentials != nil && email != "" && cp.Email != "" && !strings.EqualFold(email, cp.Email) {
+		return protocol_NewError("account_mismatch")
+	}
 	cp.AccessToken = token
 	if cp.AccountID == "" {
 		cp.AccountID = account
 	}
 	if cp.Email == "" {
-		cp.Email = protocol_AsString(protocol_AsMap(data["user"])["email"])
+		cp.Email = email
+	}
+	if p.SaveCredentials != nil {
+		cp.SessionToken = checkoutSessionToken(cp.Cookies)
+		if cp.SessionToken == "" {
+			return protocol_NewError("checkpoint_failed")
+		}
+		if err := p.SaveCredentials(model_Session{AccessToken: cp.AccessToken, SessionToken: cp.SessionToken,
+			AccountID: cp.AccountID, Email: cp.Email, Cookies: cp.Cookies}); err != nil {
+			return protocol_NewError("checkpoint_failed")
+		}
 	}
 	return nil
 }
@@ -1167,7 +1195,7 @@ type cli_arguments struct {
 	PromoCodeEnv                                                    string
 	BrowserProfile                                                  string
 	TLSCert, TLSKey                                                 string
-	WithPrice, Debug, DiagnosticsJSON                               bool
+	WithPrice, Debug, DiagnosticsJSON, CredentialCheckpoints        bool
 	Offset                                                          int
 	Timeout, Deadline                                               float64
 	Recover, Billing, Renewal, Checkpoint                           string
@@ -1201,6 +1229,7 @@ func cli_parseArguments(argv []string, payment bool, stderr io.Writer) (cli_argu
 	f.Float64Var(&a.Deadline, "deadline", 240, "整次操作超时秒数")
 	f.BoolVar(&a.Debug, "debug", false, "输出 HTTP、Sentinel 等安全明细")
 	f.BoolVar(&a.DiagnosticsJSON, "diagnostics-json", false, "输出有界的提链诊断 JSON，不包含凭据")
+	f.BoolVar(&a.CredentialCheckpoints, "credential-checkpoints", false, "私有凭据保存确认协议")
 	f.StringVar(&a.CheckoutType, "checkout-type", "", "请求偏好：oaics 或 hosted；最终按响应 checkout_ui_mode 分流")
 	if payment {
 		f.StringVar(&a.TLSCert, "tls-cert", "", "遇到待验证付款时启动 HTTPS 入口的证书")
@@ -1384,7 +1413,19 @@ func (r *cli_Runner) CreateCheckout(ctx context.Context, argv []string) (code in
 	if diagnostics != nil {
 		defer diagnostics.write(r.Err)
 	}
-	session, err := r.SessionInput(ctx, a.Session)
+	var session model_Session
+	if a.CredentialCheckpoints {
+		var save checkoutCredentialSink
+		if a.Session != "" {
+			return 2
+		}
+		session, save, err = checkoutCredentialInput(r.In, r.Out)
+		if err == nil {
+			ctx = context.WithValue(ctx, checkoutCredentialContextKey{}, save)
+		}
+	} else {
+		session, err = r.SessionInput(ctx, a.Session)
+	}
 	if err != nil {
 		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
 			r.message("Session input cancelled.", "WARNING")
@@ -11239,6 +11280,9 @@ func gptpay_newTransaction(ctx context.Context, c *gptpay_PaymentClient, cp mode
 	t.progress = &gptpay_progressTracker{sink: c.ProgressSink, traceID: obs.TraceID, operation: operation, started: started, states: make(map[model_ProgressStage]model_ProgressStatus), cp: &cp}
 	t.platform = chatgpt_NewPlatform(h, &cp, clock)
 	t.platform.Profile = profile
+	if save, ok := ctx.Value(checkoutCredentialContextKey{}).(checkoutCredentialSink); ok {
+		t.platform.SaveCredentials = save
+	}
 	if diagnostics, ok := ctx.Value(checkoutDiagnosticContextKey{}).(*checkoutDiagnostics); ok {
 		t.platform.Diagnostics = diagnostics
 		diagnostics.add("input_credentials", diagnostics.auth(&cp))

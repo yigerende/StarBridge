@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import subprocess
+from http.cookies import SimpleCookie
 from pathlib import Path
 from typing import Any
 
@@ -73,14 +74,16 @@ def _build_session_json(session: dict[str, Any]) -> str:
     cookies = session.get('cookies')
     if isinstance(cookies, dict):
         cookie_str = '; '.join(f'{k}={v}' for k, v in cookies.items())
-        cookie_values = [v for v in cookies.values() if v]
     else:
         cookie_str = str(cookies or '')
-        cookie_values = []
-    session_token = str(session.get('session_token') or session.get('sessionToken') or '').strip()
-    if not session_token and cookie_values:
-        # cs_live 要求 sessionToken 非空；没有独立 token 时回退用会话 Cookie 值。
-        session_token = cookie_values[0]
+    from .checkout_credentials import session_token as cookie_token
+    jar = SimpleCookie()
+    try:
+        jar.load(cookie_str)
+    except Exception:
+        raise CheckoutError('invalid_session') from None
+    session_token = cookie_token({k: v.value for k, v in jar.items()}) or str(
+        session.get('session_token') or session.get('sessionToken') or '').strip()
     payload = {
         'accessToken': session.get('access_token') or session.get('accessToken') or '',
         'sessionToken': session_token,
@@ -108,6 +111,7 @@ def create_checkout(
     with_price: bool = True,
     timeout_sec: int = 180,
     debug: bool = False,
+    save_credentials=None,
 ) -> dict[str, Any]:
     """Run cs_live create-checkout and shape the result for subscription_cslive_go.run.
 
@@ -155,16 +159,21 @@ def create_checkout(
             args.append('--debug')
         flags = subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
         try:
-            completed = subprocess.run(
-                args,
-                input=session_json.encode('utf-8'),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                cwd=str(executable.parent),
-                timeout=timeout_sec,
-                creationflags=flags,
-                env=environment,
-            )
+            if save_credentials is not None:
+                from .checkout_process import run
+                completed = run(args, session_json, cwd=str(executable.parent), environment=environment,
+                                timeout=timeout_sec, save=save_credentials)
+            else:
+                completed = subprocess.run(
+                    args,
+                    input=session_json.encode('utf-8'),
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    cwd=str(executable.parent),
+                    timeout=timeout_sec,
+                    creationflags=flags,
+                    env=environment,
+                )
         except subprocess.TimeoutExpired as exc:
             checkout_diagnostics.submit(exc.stderr or b'')
             raise CheckoutError('timeout') from None

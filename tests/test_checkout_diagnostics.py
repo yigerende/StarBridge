@@ -155,7 +155,7 @@ class CheckoutDiagnosticTests:
         result=subprocess.CompletedProcess([],exit_code,
             stdout if stdout is not None else json.dumps(payload).encode(),b'private stderr cookie=secret')
         with patch('backend.cslive_go_checkout.binary_path',return_value=Mock(is_file=lambda: True)), \
-             patch('backend.cslive_go_checkout.subprocess.run',return_value=result,side_effect=error) as process, \
+             patch('backend.checkout_process.run',return_value=result,side_effect=error) as process, \
              patch.object(flow,'StripeHostedClient') as payment, \
              patch('requests.sessions.Session.request',side_effect=AssertionError('External network forbidden')):
             yield process,payment

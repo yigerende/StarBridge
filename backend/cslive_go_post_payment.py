@@ -431,6 +431,8 @@ def _run(order_id, *, plan=None, responses=(), proxy_url=None, request_context=N
             cp['executor'] = executor
             _save(order_id, cp)
         cp['executor'] = executor
+        from .checkout_credentials import restore_order_credentials
+        restore_order_credentials(cp, row['credentials_enc'])
         pcfg = config('payment')
         cp['visit_merchant_return'] = pcfg.get('cslive_go_visit_return', True)
         cp['refresh_before_renewal'] = pcfg.get('cslive_go_refresh_before_renewal', True)

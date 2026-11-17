@@ -51,23 +51,14 @@ func (p *chatgpt_Platform) Absorb(response *protocol_HTTPResponse) {
 	if response == nil {
 		return
 	}
-	request := &http.Request{Header: http.Header{"Cookie": []string{p.CP.Cookies}}}
-	jar := protocol_Fields{}
+	p.CP.Cookies = absorbSessionCookies(p.CP.Cookies, response)
+	request := &http.Request{Header: http.Header{"Cookie": {p.CP.Cookies}}}
 	for _, cookie := range request.Cookies() {
-		jar.Set(cookie.Name, cookie.Value)
+		if cookie.Name == "oai-did" {
+			p.CP.DeviceID = cookie.Value
+		}
 	}
-	parsed := (&http.Response{Header: response.Headers}).Cookies()
-	for _, cookie := range parsed {
-		jar.Set(cookie.Name, cookie.Value)
-	}
-	var parts []string
-	for _, entry := range jar {
-		parts = append(parts, entry.Key+"="+protocol_AsString(entry.Value))
-	}
-	p.CP.Cookies = strings.Join(parts, "; ")
-	if value := jar.Get("oai-did"); value != nil {
-		p.CP.DeviceID = protocol_AsString(value)
-	}
+	p.CP.SessionToken = sessionFromCookies(p.CP.Cookies)
 }
 
 func (p *chatgpt_Platform) Headers(path string, options ...chatgpt_PlatformHeaderOptions) protocol_Fields {
@@ -173,6 +164,7 @@ func (p *chatgpt_Platform) Refresh() error {
 
 func (p *chatgpt_Platform) refreshOnce() error {
 	cp := p.CP
+	previousCookies, previousSession, previousDevice := cp.Cookies, cp.SessionToken, cp.DeviceID
 	if cp.SessionToken == "" {
 		return &protocol_ProtocolError{Code: "session_token_required"}
 	}
@@ -188,7 +180,9 @@ func (p *chatgpt_Platform) refreshOnce() error {
 		return &protocol_ProtocolError{Code: "session_expired"}
 	}
 	account := protocol_AsString(protocol_AsMap(data["account"])["id"])
-	if account != "" && cp.AccountID != "" && account != cp.AccountID {
+	email := protocol_AsString(protocol_AsMap(data["user"])["email"])
+	if account != "" && cp.AccountID != "" && account != cp.AccountID || email != "" && cp.Email != "" && !strings.EqualFold(email, cp.Email) {
+		cp.Cookies, cp.SessionToken, cp.DeviceID = previousCookies, previousSession, previousDevice
 		return &protocol_ProtocolError{Code: "account_mismatch"}
 	}
 	cp.AccessToken = token
@@ -196,7 +190,7 @@ func (p *chatgpt_Platform) refreshOnce() error {
 		cp.AccountID = account
 	}
 	if cp.Email == "" {
-		cp.Email = protocol_AsString(protocol_AsMap(data["user"])["email"])
+		cp.Email = email
 	}
 	return nil
 }

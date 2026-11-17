@@ -170,6 +170,8 @@ def _run(order_id, *, plan=None, responses=(), proxy_url=None, request_context=N
             cp['executor'] = executor
             _save(order_id, cp)
         cp['executor'] = executor
+        from .checkout_credentials import restore_order_credentials
+        restore_order_credentials(cp, row['credentials_enc'])
         with trace.scope(order_id, row['trace_round']):
             try:
                 if (cp['proxy_endpoint'] != endpoint
