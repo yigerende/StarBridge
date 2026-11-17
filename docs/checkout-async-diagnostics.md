@@ -24,6 +24,8 @@ Go 每次只在内存收集最多 192 条事件，超限保留前 96 条与最�
 
 默认目录为 `$MAINTENANCE_DIR/diagnostics/checkout.jsonl`，正式对应 `/opt/1panel/apps/starbridge/.maintenance/diagnostics/checkout.jsonl`。目录 0700、文件 0600；每份约 10 MiB，保留当前及 4 份历史，更新容器后仍保留。仅服务器运维读取，不增加网页或用户 API 出口。
 
+维护根目录保持 root:root/0755；宿主更新器安装及启动时单独创建 diagnostics 子目录并设为应用 UID/GID 1000、0700，拒绝符号链接，不修改已有日志。上线验收发现应用不能在 root 维护根目录下直接建子目录，因此补齐该初始化，并在新镜像验收中模拟实际权限。
+
 ## 验证
 
 - Python 6 项独立测试：磁盘阻塞、50 并发提交 1,000 份诊断、队列溢出、写失败恢复、脱敏、版本作用域、关闭排空、提链成功/失败不受日志故障影响。

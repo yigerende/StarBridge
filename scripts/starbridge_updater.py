@@ -281,11 +281,21 @@ class Updater:
             finally:self.log=None
 
 
+def prepare_diagnostics_directory():
+    # PUBLIC is root-owned; the unprivileged app needs only this private child.
+    target=PUBLIC/'diagnostics'
+    target.mkdir(exist_ok=True,mode=0o700)
+    if not stat.S_ISDIR(target.lstat().st_mode):raise UpdateError('诊断目录类型无效')
+    os.chown(target,1000,1000,follow_symlinks=False)
+    target.chmod(0o700)
+
+
 def install():
     if os.geteuid()!=0:raise SystemExit('Install as root')
     STATE.mkdir(parents=True,exist_ok=True,mode=0o700)
     PUBLIC.mkdir(exist_ok=True,mode=0o755);PUBLIC.chmod(0o755);os.chown(PUBLIC,0,0)
     requests=PUBLIC/'requests';requests.mkdir(exist_ok=True,mode=0o700);os.chown(requests,1000,1000);requests.chmod(0o700)
+    prepare_diagnostics_directory()
     BACKUPS.mkdir(parents=True,exist_ok=True,mode=0o700)
     target=Path('/usr/local/lib/starbridge');target.mkdir(parents=True,exist_ok=True)
     shutil.copy2(Path(__file__),target/'updater.py')
@@ -312,6 +322,7 @@ WantedBy=multi-user.target
 def serve():
     import fcntl
     lock=(STATE/'lock').open('w');fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+    prepare_diagnostics_directory()
     updater=Updater();worker=None
     if updater.private.get('journal'):
         with (STATE/'recovery.log').open('ab',buffering=0) as updater.log:updater.restore(updater.private['journal']['previous'])
