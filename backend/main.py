@@ -17,7 +17,7 @@ from .seed import seed
 from .runtime import worker_mode
 from . import login_slider, customer_api, admin_orders, order_updates, invitations, email_auth, features, custom_menus, branding, regions, country_pool, price_reference
 from . import deployment
-from . import subscription_recovery
+from . import subscription_recovery, checkout_diagnostics
 from . import refunds, support, activity, refund_mothers, refund_resource_recovery, finance_reports, public_metrics, proxy_recovery, refund_account_limits
 from .request_origin import configured_origin, origin_allowed
 from .auth_runtime import bounded_call
@@ -93,6 +93,7 @@ def worker_loop(stop):
 @asynccontextmanager
 async def lifespan(app):
     db.initialize();seed();stop=threading.Event()
+    checkout_diagnostics.writer.start()
     await refunds.start()
     thread=threading.Thread(target=worker_loop,args=(stop,),daemon=True,name='starbridge-scheduler');thread.start()
     order_updates.updates.start()
@@ -106,6 +107,7 @@ async def lifespan(app):
         await asyncio.to_thread(thread.join,115)
         await registration_gateway.close_transport()
         await refunds.stop()
+        await asyncio.to_thread(checkout_diagnostics.writer.stop)
         db.close()
 
 

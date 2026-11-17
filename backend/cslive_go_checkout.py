@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from . import payment_trace as trace
+from . import checkout_diagnostics
 from .checkout_errors import CheckoutError
 from .team_subscription import seat_counts, promo_code as validate_promo_code
 
@@ -118,7 +119,8 @@ def create_checkout(
     canonical = _normalize_plan(plan)
     is_team = canonical in ('team', 'team5x')
     promotion=validate_promo_code(promo_code,'team' if is_team else canonical)
-    environment=None
+    identity = trace.diagnostic_identity()
+    environment = dict(os.environ, STARBRIDGE_DIAGNOSTIC_KEY=checkout_diagnostics.diagnostic_key(identity[0]) if identity else '')
     session_json = _build_session_json(session)
     with trace.request('checkout_create') as diagnostic:
         if not executable.is_file():
@@ -129,6 +131,7 @@ def create_checkout(
             '--plan', canonical,
             '--proxy', proxy_url,
             '--checkout-type', checkout_type,
+            '--diagnostics-json',
         ]
         if is_team:
             ordinary, premium = seat_counts(seats, seats_5x)
@@ -138,7 +141,7 @@ def create_checkout(
                 '--interval', interval if interval in ('month', 'year') else 'month',
             ]
         if promotion:
-            environment=dict(os.environ,XUFU_TEAM_PROMO_CODE=promotion)
+            environment['XUFU_TEAM_PROMO_CODE'] = promotion
             args += ['--promo-code-env','XUFU_TEAM_PROMO_CODE']
         if currency:
             args += ['--currency', currency.upper()]
@@ -162,10 +165,12 @@ def create_checkout(
                 creationflags=flags,
                 env=environment,
             )
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as exc:
+            checkout_diagnostics.submit(exc.stderr or b'')
             raise CheckoutError('timeout') from None
         except OSError:
             raise CheckoutError('checkout_program_unavailable') from None
+        checkout_diagnostics.submit(completed.stderr)
         stdout = completed.stdout.decode('utf-8', errors='replace')
         try:
             parsed = _parse_output(stdout)

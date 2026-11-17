@@ -1,16 +1,16 @@
-// cs_live.go：明文单文件源码，不包含启动器、源码压缩包或原仓库导入。
+// cs_live.go：支付源码；星桥的私有诊断位于 checkout_diagnostics.go。
 //
 // 依赖 Go 1.25+，面向 Linux amd64 / macOS arm64，CGO_ENABLED=0。
-// 将 cs_live.go 与 go.mod、go.sum 放入独立目录，执行：
+// 保留本目录的 Go 源码与 go.mod、go.sum，执行：
 //   go mod download
-//   go run cs_live.go --help
+//   go run . --help
 // 提链（只创建订单、不付款）：
-//   go run cs_live.go create-checkout --country PH --plan plus --session data/session.json
+//   go run . create-checkout --country PH --plan plus --session data/session.json
 // 支付（新建另一笔订单并付款，不复用上次提链订单）：
-//   go run cs_live.go pay --country PH --plan plus --session data/session.json --billing data/billing.json --renewal keep
+//   go run . pay --country PH --plan plus --session data/session.json --billing data/billing.json --renewal keep
 // 手动人机交接（浏览器继续验证原付款，不重提卡片/付款）：
-//   go run cs_live.go payment-action --recover data/payment-EXAMPLE.enc --tls-cert localhost.pem --tls-key localhost-key.pem
-// 核验原交易：go run cs_live.go pay --recover data/payment-EXAMPLE.enc
+//   go run . payment-action --recover data/payment-EXAMPLE.enc --tls-cert localhost.pem --tls-key localhost-key.pem
+// 核验原交易：go run . pay --recover data/payment-EXAMPLE.enc
 // pay 同时传 --tls-cert / --tls-key 时，遇到待验证付款自动生成本机 HTTPS 入口。
 // 证书需被浏览器信任并包含 127.0.0.1；不传证书仅为 HTTP 调试入口。
 // 验证链接只在本机可用，10 分钟有效；浏览器不沿用命令行代理。
@@ -238,11 +238,12 @@ const chatgpt_PlatformBase = "https://chatgpt.com"
 
 type chatgpt_Platform struct {
 	// PromoCode 仅存在于本次提链调用，不写支付快照。
-	PromoCode string
-	Profile   protocol_BrowserProfile
-	HTTP      protocol_HTTPTransport
-	CP        *model_Checkpoint
-	Clock     fingerprint_Clock
+	PromoCode   string
+	Profile     protocol_BrowserProfile
+	HTTP        protocol_HTTPTransport
+	CP          *model_Checkpoint
+	Clock       fingerprint_Clock
+	Diagnostics *checkoutDiagnostics
 }
 
 type chatgpt_PlatformHeaderOptions struct{ Referer, Mode string }
@@ -400,15 +401,20 @@ func (p *chatgpt_Platform) Call(method, path string, options ...chatgpt_Platform
 	return protocol_JSONResponse(response, false)
 }
 
-func (p *chatgpt_Platform) Refresh() error {
+func (p *chatgpt_Platform) Refresh() (err error) {
 	cp := p.CP
+	var data protocol_Map
+	if p.Diagnostics != nil {
+		before := p.Diagnostics.auth(cp)
+		defer func() { p.Diagnostics.refresh(before, cp, data, err) }()
+	}
 	if cp.SessionToken == "" {
 		return &protocol_ProtocolError{Code: "session_token_required"}
 	}
 	h := p.Headers("/api/auth/session", chatgpt_PlatformHeaderOptions{Mode: "renewal"})
 	h.Delete("Authorization")
 	h.Update(protocol_O("x-openai-target-path", "/api/auth/session", "x-openai-target-route", "/api/auth/session"))
-	data, err := p.Call("GET", "/api/auth/session?refresh=true&reason=token_expired", chatgpt_PlatformCallOptions{Headers: h})
+	data, err = p.Call("GET", "/api/auth/session?refresh=true&reason=token_expired", chatgpt_PlatformCallOptions{Headers: h})
 	if err != nil {
 		return err
 	}
@@ -1161,7 +1167,7 @@ type cli_arguments struct {
 	PromoCodeEnv                                                    string
 	BrowserProfile                                                  string
 	TLSCert, TLSKey                                                 string
-	WithPrice, Debug                                                bool
+	WithPrice, Debug, DiagnosticsJSON                               bool
 	Offset                                                          int
 	Timeout, Deadline                                               float64
 	Recover, Billing, Renewal, Checkpoint                           string
@@ -1194,6 +1200,7 @@ func cli_parseArguments(argv []string, payment bool, stderr io.Writer) (cli_argu
 	f.Float64Var(&a.Timeout, "timeout", 45, "单请求超时秒数")
 	f.Float64Var(&a.Deadline, "deadline", 240, "整次操作超时秒数")
 	f.BoolVar(&a.Debug, "debug", false, "输出 HTTP、Sentinel 等安全明细")
+	f.BoolVar(&a.DiagnosticsJSON, "diagnostics-json", false, "输出有界的提链诊断 JSON，不包含凭据")
 	f.StringVar(&a.CheckoutType, "checkout-type", "", "请求偏好：oaics 或 hosted；最终按响应 checkout_ui_mode 分流")
 	if payment {
 		f.StringVar(&a.TLSCert, "tls-cert", "", "遇到待验证付款时启动 HTTPS 入口的证书")
@@ -1373,6 +1380,10 @@ func (r *cli_Runner) CreateCheckout(ctx context.Context, argv []string) (code in
 		return 2
 	}
 	cli_offsetNotice(r, a.Offset)
+	diagnostics := newCheckoutDiagnostics(a.DiagnosticsJSON, os.Getenv("STARBRIDGE_DIAGNOSTIC_KEY"))
+	if diagnostics != nil {
+		defer diagnostics.write(r.Err)
+	}
 	session, err := r.SessionInput(ctx, a.Session)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
@@ -1396,7 +1407,12 @@ func (r *cli_Runner) CreateCheckout(ctx context.Context, argv []string) (code in
 			code = 1
 		}
 	}()
-	result, err := r.ClientFactory(a.config(), gptpay_ClientOptions{EventSink: r.observer(a.Debug)}).CreateCheckout(ctx, session, gptpay_CreateCheckoutOptions{Country: a.Country, Plan: a.Plan, Seats: a.Seats, Seats5x: a.Seats5x, Interval: a.Interval, CheckoutType: a.CheckoutType, WithPrice: a.WithPrice, FingerprintClockOffsetHours: a.Offset, PromoCode: os.Getenv(a.PromoCodeEnv)})
+	sink := r.observer(a.Debug)
+	if diagnostics != nil {
+		sink = diagnostics.event
+		ctx = context.WithValue(ctx, checkoutDiagnosticContextKey{}, diagnostics)
+	}
+	result, err := r.ClientFactory(a.config(), gptpay_ClientOptions{EventSink: sink}).CreateCheckout(ctx, session, gptpay_CreateCheckoutOptions{Country: a.Country, Plan: a.Plan, Seats: a.Seats, Seats5x: a.Seats5x, Interval: a.Interval, CheckoutType: a.CheckoutType, WithPrice: a.WithPrice, FingerprintClockOffsetHours: a.Offset, PromoCode: os.Getenv(a.PromoCodeEnv)})
 	if err != nil {
 		output["error_code"] = observability_SafeErrorCode(err)
 		if diagnostics := checkoutHomepageErrorDiagnostics(err); diagnostics != nil {
@@ -1689,7 +1705,7 @@ func (r *cli_Runner) Pay(ctx context.Context, argv []string) (code int) {
 		}
 		storeReady = true
 		r.message("恢复文件："+store.Path, "INFO")
-		r.message("恢复命令：go run cs_live.go pay --recover "+cli_shellQuote(store.Path), "INFO")
+		r.message("恢复命令：go run . pay --recover "+cli_shellQuote(store.Path), "INFO")
 		approve := func(amount int64, currency string) (bool, error) {
 			// 金额摘要是继续本次付款的必要输出；日志目标失败时不默认为已展示。
 			if err := r.message(fmt.Sprintf("套餐=%s 国家=%s 最终含税金额=%s 卡尾号=%s 自动续费=%s", a.Plan, strings.ToUpper(a.Country), cli_DisplayAmount(amount, currency), card.Number[len(card.Number)-4:], a.Renewal), "INFO"); err != nil {
@@ -11223,6 +11239,10 @@ func gptpay_newTransaction(ctx context.Context, c *gptpay_PaymentClient, cp mode
 	t.progress = &gptpay_progressTracker{sink: c.ProgressSink, traceID: obs.TraceID, operation: operation, started: started, states: make(map[model_ProgressStage]model_ProgressStatus), cp: &cp}
 	t.platform = chatgpt_NewPlatform(h, &cp, clock)
 	t.platform.Profile = profile
+	if diagnostics, ok := ctx.Value(checkoutDiagnosticContextKey{}).(*checkoutDiagnostics); ok {
+		t.platform.Diagnostics = diagnostics
+		diagnostics.add("input_credentials", diagnostics.auth(&cp))
+	}
 	t.stripe = stripe_NewStripe(sh, &cp, clock)
 	t.stripe.Profile = profile
 	// Stripe.js 的 stripe_js_id 与 client_session_id 是同一次页面会话的标识，
@@ -13425,7 +13445,7 @@ func standaloneNewOperationArgs(args []string) []string {
 func main() {
 	args := os.Args[1:]
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" || args[0] == "help" {
-		fmt.Println("独立 cs_live 工具：create-checkout（提链）、pay（付款/恢复）、payment-action（原交易手动验证）。\n用法：go run cs_live.go <子命令> --help\n新操作默认请求 hosted；人机验证入口仅本机有效。")
+		fmt.Println("独立 cs_live 工具：create-checkout（提链）、pay（付款/恢复）、payment-action（原交易手动验证）。\n用法：go run . <子命令> --help\n新操作默认请求 hosted；人机验证入口仅本机有效。")
 		return
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)

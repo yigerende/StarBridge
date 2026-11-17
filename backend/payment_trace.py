@@ -106,6 +106,11 @@ _DIAGNOSTIC_ENUMS = {
 _dropped = 0
 
 
+def diagnostic_identity():
+    ctx = _current.get()
+    return (ctx['order_id'], ctx['round']) if ctx else None
+
+
 def error_code(exc):
     if isinstance(exc, CheckoutError):
         return exc.category
