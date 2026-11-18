@@ -81,16 +81,19 @@ class RefundTests(unittest.TestCase):
                         response=await c.post('/api/admin/refund/proxies',headers=admin,json=data)
                         self.assertEqual(response.status_code,200,response.text)
                     info=(await c.get('/api/admin/refund/settings',headers=admin)).json()
+                    self.assertTrue(info['settings']['resource_recovery']['email_password_fallback'])
                     self.assertEqual(info['settings']['resource_recovery']['post_login_wait_seconds'],5)
                     self.assertEqual(info['settings']['resource_recovery']['fallback_plan_wait_seconds'],5)
                     by={p['target']:p['id'] for p in info['proxies']}
                     cfg=info['settings'];cfg.update(child_proxy_id=by['both'],child_proxy_backups=[by['child']],child_proxy_cooldown_seconds=180)
+                    cfg['resource_recovery']['email_password_fallback']=False
                     cfg['resource_recovery']['post_login_wait_seconds']=12
                     cfg['resource_recovery']['fallback_plan_wait_seconds']=7
                     self.assertEqual((await c.put('/api/admin/refund/settings',headers=user,json={'settings':cfg})).status_code,403)
                     response=await c.put('/api/admin/refund/settings',headers=admin,json={'settings':cfg})
                     self.assertEqual(response.status_code,200,response.text)
                     saved=(await c.get('/api/admin/refund/settings',headers=admin)).json()
+                    self.assertFalse(saved['settings']['resource_recovery']['email_password_fallback'])
                     self.assertEqual(saved['settings']['resource_recovery']['post_login_wait_seconds'],12)
                     self.assertEqual(saved['settings']['resource_recovery']['fallback_plan_wait_seconds'],7)
                     self.assertEqual(saved['settings']['child_proxy_backups'],[by['child']])

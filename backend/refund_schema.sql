@@ -143,6 +143,8 @@ UPDATE refund_settings SET resource_recovery=resource_recovery||'{"post_login_wa
  WHERE NOT (resource_recovery ? 'post_login_wait_seconds');
 UPDATE refund_settings SET resource_recovery=resource_recovery||'{"fallback_plan_wait_seconds":5}'::jsonb
  WHERE NOT (resource_recovery ? 'fallback_plan_wait_seconds');
+UPDATE refund_settings SET resource_recovery=resource_recovery||'{"email_password_fallback":true}'::jsonb
+ WHERE NOT (resource_recovery ? 'email_password_fallback');
 CREATE TABLE IF NOT EXISTS refund_resource_health (
  scope TEXT PRIMARY KEY, failures INTEGER NOT NULL DEFAULT 0,
  blocked BOOLEAN NOT NULL DEFAULT false, next_at TIMESTAMPTZ,

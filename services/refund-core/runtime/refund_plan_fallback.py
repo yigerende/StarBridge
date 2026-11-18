@@ -8,15 +8,16 @@ from manager_oauth import bridge, upstream
 from manager_oauth.adapter import ProjectProtocolLogin
 from manager_oauth.merge_v2 import TeamProtocolLogin
 from workspace_observation import WorkspaceObservationMixin, observe
+from password_login import PasswordContinuationMixin, NeedsVerification
 
 
-class PersonalLogin(WorkspaceObservationMixin, ProjectProtocolLogin):
+class PersonalLogin(PasswordContinuationMixin, WorkspaceObservationMixin, ProjectProtocolLogin):
     # Retain the existing password/TOTP, cookies, proxy and callback mechanics.
     follow_callback = TeamProtocolLogin.follow_callback
 
     def log(self, step, message, level="info"):
         if step == "waiting_code":
-            raise RuntimeError("additional verification required")
+            raise NeedsVerification(getattr(self, "_password_submitted", False))
         super().log(step, message, level)
 
     def submit_workspace_and_org(self, referer_url):
@@ -164,6 +165,7 @@ def execute(job, checkpoint, mother, login_factory=PersonalLogin):
         payload = {"email": account["email"], "password": account["password"], "_totp_secret": account["totp_secret"],
                    "proxy": job["child_proxy"], "credential_mode": "chatgpt_at", "configured_login_mode": "password_totp",
                    "selected_login_mode": "password_totp", "allow_sms": False, "skip_phone_verification": True,
+                   "_email_password_fallback": (job["settings"].get("resource_recovery") or {}).get("email_password_fallback", True),
                    "excluded_team": job["mother"]["team_id"], "personal_id": (job.get("personal_baseline") or {}).get("id", "")}
         bridge.configure(payload, lambda *_: (_ for _ in ()).throw(RuntimeError("unexpected checkpoint")))
         flow = login_factory(job["id"], payload)

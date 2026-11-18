@@ -34,6 +34,14 @@ AND d.diagnostic->>'code'<>'protocol_trace' ORDER BY d.id DESC LIMIT 1`, id).Sca
 	}
 	d = d.Sanitized()
 	if d.Code == "extra_verification" {
+		if d.Evidence != nil {
+			if d.Evidence.Reason == "email_verification_after_password" {
+				return passwordEmailReleasedMessage, nil
+			}
+			if d.Evidence.LoginPage == "email_otp_verification" {
+				return emailVerificationReleasedMessage, nil
+			}
+		}
 		return verificationReleasedMessage, nil
 	}
 	if d.Code == "account_unavailable" && d.Evidence != nil && d.Evidence.Side == "child" &&

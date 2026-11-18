@@ -8,20 +8,21 @@ import (
 )
 
 type ResourceRecoverySettings struct {
-	TeamSessionFailureLimit int `json:"team_session_failure_limit"`
-	MotherFailedAccounts    int `json:"mother_failed_accounts"`
-	AccountFailureLimit     int `json:"account_failure_limit"`
-	PostLoginWaitSeconds    int `json:"post_login_wait_seconds"`
-	FallbackPlanWaitSeconds int `json:"fallback_plan_wait_seconds"`
-	FailureLimit            int `json:"failure_limit"`
-	CooldownSeconds         int `json:"cooldown_seconds"`
-	WatchSeconds            int `json:"watch_seconds"`
-	RetrySeconds            int `json:"retry_seconds"`
-	SlowRetrySeconds        int `json:"slow_retry_seconds"`
-	FastAttempts            int `json:"fast_attempts"`
-	LoginFailureLimit       int `json:"login_failure_limit"`
-	LoginWindowSeconds      int `json:"login_window_seconds"`
-	LoginCooldownSeconds    int `json:"login_cooldown_seconds"`
+	EmailPasswordFallback   bool `json:"email_password_fallback"`
+	TeamSessionFailureLimit int  `json:"team_session_failure_limit"`
+	MotherFailedAccounts    int  `json:"mother_failed_accounts"`
+	AccountFailureLimit     int  `json:"account_failure_limit"`
+	PostLoginWaitSeconds    int  `json:"post_login_wait_seconds"`
+	FallbackPlanWaitSeconds int  `json:"fallback_plan_wait_seconds"`
+	FailureLimit            int  `json:"failure_limit"`
+	CooldownSeconds         int  `json:"cooldown_seconds"`
+	WatchSeconds            int  `json:"watch_seconds"`
+	RetrySeconds            int  `json:"retry_seconds"`
+	SlowRetrySeconds        int  `json:"slow_retry_seconds"`
+	FastAttempts            int  `json:"fast_attempts"`
+	LoginFailureLimit       int  `json:"login_failure_limit"`
+	LoginWindowSeconds      int  `json:"login_window_seconds"`
+	LoginCooldownSeconds    int  `json:"login_cooldown_seconds"`
 }
 
 func (v ResourceRecoverySettings) Validate() error {

@@ -17,7 +17,7 @@ func timelineFailure(d RefundDiagnostic) (stage, reason string) {
 		return "", ""
 	}
 	switch e.Stage {
-	case "login", "csrf", "signin", "authorize", "identifier", "password", "mfa_challenge", "mfa_verify", "workspace", "callback", "session", "sentinel", "email_verification", "fallback_login":
+	case "login", "csrf", "signin", "authorize", "identifier", "auth_session_read", "password", "mfa_challenge", "mfa_verify", "workspace", "callback", "session", "sentinel", "email_verification", "fallback_login":
 		stage = "登"
 	case "export":
 		stage = "停"
@@ -51,6 +51,10 @@ func timelineFailure(d RefundDiagnostic) (stage, reason string) {
 		reason = "上游请求过于频繁（429），暂时无法继续"
 	case e.Reason == "phone_verification_skipped":
 		reason = "上游要求手机验证，本次登录未完成"
+	case e.Reason == "email_verification_after_password":
+		reason = "密码验证后仍需邮箱验证码，本次登录未完成"
+	case e.Reason == "extra_verification" && e.LoginPage == "email_otp_verification":
+		reason = "上游要求邮箱验证码，本次登录未完成"
 	case oneOf(e.Reason, "extra_verification", "passkey_or_challenge"):
 		reason = "账号需要额外验证，本次登录未完成"
 	case oneOf(e.Reason, "incorrect_password", "invalid_password"):
@@ -78,6 +82,7 @@ func readTimelineFailures(ctx context.Context, tx pgx.Tx, id string, out *Refund
 		return err
 	}
 	defer rows.Close()
+	passwordNotes := map[int]string{}
 	for rows.Next() {
 		var at time.Time
 		var raw []byte
@@ -89,6 +94,18 @@ func readTimelineFailures(ctx context.Context, tx pgx.Tx, id string, out *Refund
 			continue
 		}
 		stage, reason := timelineFailure(d)
+		passwordNote := ""
+		if e := d.Sanitized().Evidence; e != nil && e.Stage == "password_fallback" && e.Side == "child" {
+			if e.Event == "start" {
+				passwordNote = "邮箱验证码页，已尝试密码登录"
+			}
+			if e.Event == "response" {
+				passwordNote = "已改用密码登录，密码验证通过"
+			}
+			if passwordNote != "" {
+				stage, reason = "登", passwordNote
+			}
+		}
 		if reason == "" {
 			continue
 		}
@@ -102,6 +119,10 @@ func readTimelineFailures(ctx context.Context, tx pgx.Tx, id string, out *Refund
 			if item.FinishedAt != nil && at.After(item.FinishedAt.Add(2*time.Second)) {
 				break
 			}
+			if passwordNote != "" {
+				passwordNotes[i] = passwordNote
+				break
+			}
 			if oneOf(item.Status, "已完成", "已受理", "已确认") {
 				if stage == "停" && !strings.Contains(item.Reason, reason) {
 					item.Reason = reason + "；" + item.Reason
@@ -110,6 +131,13 @@ func readTimelineFailures(ctx context.Context, tx pgx.Tx, id string, out *Refund
 				item.Reason = reason
 			}
 			break
+		}
+	}
+	for i, note := range passwordNotes {
+		if out.Items[i].Reason == "" {
+			out.Items[i].Reason = note
+		} else {
+			out.Items[i].Reason = note + "；" + out.Items[i].Reason
 		}
 	}
 	return rows.Err()

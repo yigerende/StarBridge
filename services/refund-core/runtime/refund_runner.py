@@ -15,6 +15,7 @@ from manager_oauth import bridge, upstream
 from manager_oauth.adapter import parse_retry_after
 from manager_oauth.merge_v2 import TeamProtocolLogin
 from workspace_observation import WorkspaceObservationMixin, observe
+from password_login import PasswordContinuationMixin, NeedsVerification
 
 
 class StopProtocol(BaseException):
@@ -23,10 +24,6 @@ class StopProtocol(BaseException):
 
 class TeamSelectionConflict(Exception):
     pass
-
-
-class NeedsVerification(Exception):
-    code = "extra_verification"
 
 
 class UpstreamFailure(Exception):
@@ -44,7 +41,7 @@ def rpc(method, params=None, **kwargs):
     return {}
 
 
-class CustomerLogin(WorkspaceObservationMixin, TeamProtocolLogin):
+class CustomerLogin(PasswordContinuationMixin, WorkspaceObservationMixin, TeamProtocolLogin):
     def validate_team(self, session):
         # A callback can return this customer's session before the invited team
         # is selected. Retry a fresh login, never submit with that credential.
@@ -131,36 +128,9 @@ class CustomerLogin(WorkspaceObservationMixin, TeamProtocolLogin):
             except TeamSelectionConflict:
                 raise upstream.LoginFlowError("Team selection conflict", code="team_selection_conflict", status=409, retryable=True) from None
 
-    def inspect_login_step(self, step, operation):
-        # The generic login client falls back to email OTP when the next URL is
-        # absent. This service has password/TOTP only: absence is not OTP proof.
-        data = step if isinstance(step, dict) else {}
-        self._login_step_evidence = diagnostics.login_step(data, operation)
-        page = self.extract_page_type(data).lower()
-        url = self.normalize_auth_url(self.extract_continue_url(data))
-        self.raise_if_passkey_or_challenge(data, url)
-        if page == "email_otp_verification" or "/email-verification" in url.lower():
-            raise NeedsVerification()
-        if not url and page not in {"login_password", "mfa_challenge"}:
-            incomplete = not page and not data.get("error") and not self.needs_phone_verification(data)
-            raise upstream.LoginFlowError(
-                "Login response has no usable next step",
-                code="login_response_incomplete" if incomplete else "login_step_unsupported",
-                retryable=incomplete,
-            )
-
-    def complete_modern_login(self, step, password, issued_after):
-        self.inspect_login_step(step, "identifier")
-        return super().complete_modern_login(step, password, issued_after)
-
-    def submit_modern_password(self, password):
-        step = super().submit_modern_password(password)
-        self.inspect_login_step(step, "password")
-        return step
-
     def log(self, step, message, level="info"):
         if step == "waiting_code":
-            raise NeedsVerification()
+            raise NeedsVerification(getattr(self, "_password_submitted", False))
         super().log(step, message, level)
 
 
@@ -395,6 +365,7 @@ def _execute(job, checkpoint, mother_factory, login_factory, sleep):
                 "selected_login_mode": "password_totp", "allow_sms": False,
                 "_skip_personal_plan_observation": job["settings"].get("query_personal_plan", True) is False,
                 "_post_login_wait_seconds": (job["settings"].get("resource_recovery") or {}).get("post_login_wait_seconds", 5),
+                "_email_password_fallback": (job["settings"].get("resource_recovery") or {}).get("email_password_fallback", True),
                 "_transport_attempts": 1 if recovery else 3,
                 "skip_phone_verification": True, "merge_v2": {"team_id": job["mother"]["team_id"],
                     "verification_http_statuses": (job["settings"].get("recovery") or {}).get("verification_http_statuses", [404])},
