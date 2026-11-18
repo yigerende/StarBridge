@@ -285,7 +285,7 @@ def customer_prices(request: Request):
 def price_list(request:Request,plan:str='plus',q:str='',page:int=1,page_size:int=10,sort_by:str='amount_cny',sort_dir:str='asc'):
     from .listing import page_rows
     from .common import require
-    require(plan in ('plus','pro','team','team_premium'),'套餐无效')
+    require(plan in PLAN_KEYS,'套餐无效')
     data=customer_prices(request)
     quotes={r['country']:r for r in data['rows'] if r['plan']==plan}
     rows=[quotes.get(c['code'],dict(country=c['code'],name=c['name'],currency=c['currency'],plan=plan)) for c in data['countries']]

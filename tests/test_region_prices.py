@@ -99,6 +99,46 @@ class RegionalPriceTests:
             # A newer fetch time does not falsify the upstream FX publication time.
             self.assertEqual(prices.read(prices.FX_KEY)['source_updated_at'], 1800000000)
 
+    def test_region_prices_list_all_plans_search_sort_and_pagination(self):
+        with self.price_fixture(), patch.object(prices, 'fetch_json') as fetch:
+            # Use the public source parser so list IDs cannot drift from cache IDs.
+            entries = {}
+            countries = []
+            for index, country in enumerate(('US','PH','JP','SG','CA','GB','DE','FR','IT','ES','AU','NZ')):
+                countries.append(dict(code=country,name=country,currency='USD',enabled=True,sort=index))
+                data = {'country_code':country,'currency_config':{'symbol_code':'USD',**{
+                    source:{'month':{'amount':(offset+1)*100+index,'tax':'exclusive'}}
+                    for offset,source in enumerate(prices.PLAN_KEYS.values())}}}
+                entries[country] = dict(quotes=prices.parse_prices(data,country),fetched_at=prices.clock())
+            prices.write('regions', {'items':countries})
+            prices.write(prices.PRICE_KEY, {'entries':entries})
+            prices.write(prices.FX_KEY, {'rates':{'USD':7},'fetched_at':prices.clock(),'source_updated_at':prices.clock()})
+            _, _, member = self.new_user()
+            try:
+                for offset,plan in enumerate(prices.PLAN_KEYS):
+                    with self.subTest(plan=plan):
+                        response=self.ok(member.get('/api/subscription-prices/list',params={'plan':plan}))
+                        self.assertEqual(response['total'],12)
+                        self.assertEqual(len(response['items']),10)
+                        self.assertEqual(response['items'][0]['amount'],(offset+1)*100)
+                        self.assertTrue(all(r['plan']==plan for r in response['items']))
+                        second=self.ok(member.get('/api/subscription-prices/list',params={'plan':plan,'page':2}))
+                        self.assertEqual([r['country'] for r in second['items']],['AU','NZ'])
+                        for size in (10,50,100,500):
+                            page=self.ok(member.get('/api/subscription-prices/list',params={'plan':plan,'page_size':size,'sort_dir':'desc'}))
+                            self.assertEqual(len(page['items']),min(size,12))
+                            self.assertEqual(page['items'][0]['country'],'NZ')
+                        result=self.ok(member.get('/api/subscription-prices/list',params={'plan':plan,'q':'PH'}))
+                        self.assertEqual([r['country'] for r in result['items']],['PH'])
+                for plan in ('unknown','pro','promax'):
+                    self.assertEqual(member.get('/api/subscription-prices/list',params={'plan':plan}).status_code,400)
+                flags=prices.read('features')
+                prices.write('features',{**flags,'subscribe':False,'links':False})
+                self.assertEqual(member.get('/api/subscription-prices/list',params={'plan':'pro5x'}).status_code,403)
+                fetch.assert_not_called()
+            finally:
+                member.close()
+
     def test_region_prices_regions_added_deleted_and_renamed(self):
         with self.price_fixture(), patch.object(prices, 'clock', return_value=1800000000), patch.object(prices, 'fetch_json', side_effect=self.price_source) as fetch:
             prices.refresh_tick(); prices.refresh_tick()
