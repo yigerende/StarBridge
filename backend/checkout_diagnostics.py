@@ -10,6 +10,8 @@ import queue
 import re
 import threading
 import time
+import html
+import unicodedata
 
 from .checkout_errors import safe_code
 
@@ -21,18 +23,40 @@ _EXTRA_CODES = frozenset('RefreshAccessTokenError RefreshTokenError OAuthCallbac
     'SessionExpired invalid_grant invalid_token invalid_request invalid_request_error authentication_error '
     'token_expired session_revoked account_deactivated account_disabled access_denied other'.split())
 _ENUMS = {
-    'event': {'input_credentials', 'session_refresh', 'http_request', 'http_retry_wait', 'phase', 'transaction', 'price', 'checkpoint'},
+    'event': {'input_credentials', 'credentials', 'wire_credentials', 'session_refresh', 'http_request', 'http_retry_wait', 'phase', 'transaction', 'price', 'checkpoint'},
+    'point': {'before_request', 'after_response', 'refresh_return'},
     'step': {'homepage', 'session_refresh', 'account_check', 'subscription_check', 'checkout_create', 'verification', 'checkout_price', 'payment_bootstrap', 'other'},
     'method': {'GET', 'POST', 'PATCH', 'DELETE', 'PUT'}, 'service': {'chatgpt', 'stripe'},
     'outcome': {'started', 'completed', 'succeeded', 'failed', 'retry', 'retrying', 'received', 'saved', 'skipped'},
     'phase': {'initializing', 'account_checked', 'stripe_ready', 'checkout_created', 'checkout_ready'},
 }
 _BOOLS = {'has_at', 'has_session', 'response_has_at', 'response_has_error', 'response_has_account', 'account_matches',
-          'at_version_changed', 'session_version_changed', 'auth_cookie_version_changed'}
-_VERSIONS = {'at_version', 'session_version', 'auth_cookie_version', 'before_at_version', 'before_session_version', 'before_auth_cookie_version'}
+          'at_version_changed', 'session_version_changed', 'auth_cookie_version_changed', 'duplicate_auth_cookies'}
+_VERSIONS = {'at_version', 'session_version', 'auth_cookie_version', 'proxy_version', 'before_at_version', 'before_session_version', 'before_auth_cookie_version'}
 _NUMBERS = {'elapsed_ms', 'attempt', 'status', 'durationMs', 'remainingDeadlineMs', 'connectionReadyMs', 'requestWriteMs',
             'firstByteMs', 'responseWaitMs', 'retryWaitElapsedMs'}
 _CODES = {'error_code', 'response_error', 'errorCode', 'responseErrorCode', 'responseErrorType'}
+_TEXT = {'upstream_message', 'upstream_detail', 'upstream_title', 'upstream_summary'}
+_UPSTREAM_CODE = re.compile(r'(?:[a-z]+(?:[_.-][a-z]+)+|[A-Z]+(?:[_.-][A-Z]+)+)\Z')
+_REQUEST_ID = re.compile(r'(?:req_[A-Za-z0-9]{1,80}|[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12})\Z')
+_REDACTIONS = [re.compile(pattern, re.I) for pattern in (
+    r'\b(?:https?|socks[45]h?)://[^\s<>"\']+', r'\b[^\s<>"\']+@[^\s<>"\']+\.[a-z]{2,}',
+    r'\b(?:bearer|basic)\s+[^\s,;<>"\']+', r'[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}',
+    r'\b(?:sk|pk|rk|sess|session|token|access_token|refresh_token|cs_live|ctoken|pi|seti|pm|cus)_[A-Za-z0-9_=-]+',
+    r'\b(?:authorization|set-cookie|cookie|session|token|access[_ -]?token|refresh[_ -]?token|client[_ -]?secret|api[_ -]?key|password|passwd|secret|proxy|card[_ -]?number|cvc|cvv|email|phone|billing|address|name|ip(?: address)?)\b\s*(?::|=|\bis\b)\s*.*',
+    r'"[^"]*"|\'[^\']*\'|`[^`]*`', r'\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b',
+    r'[A-Za-z0-9_+/=-]{20,}', r'\b(?:[0-9][ -]*){3,}\b')]
+
+
+def _safe_text(value):
+    # Only called by the background decoder or the administrator read path.
+    if not isinstance(value, str) or len(value) > 4096:
+        return ''
+    value = html.unescape(value)
+    value = ' '.join(''.join(c if not unicodedata.category(c).startswith('C') else ' ' for c in value).split())
+    for pattern in _REDACTIONS:
+        value = pattern.sub('[redacted]', value)
+    return value[:240]
 
 
 def diagnostic_key(order_id):
@@ -58,11 +82,20 @@ def _event(value):
             result[key] = round(item, 2)
         elif key in _CODES and isinstance(item, str):
             result[key] = item if item in _EXTRA_CODES or item == '' else safe_code(item)
+        elif key in _TEXT:
+            result[key] = _safe_text(item)
+        elif key in {'upstream_code', 'upstream_type'} and isinstance(item, str):
+            allowed = item in _EXTRA_CODES or (_UPSTREAM_CODE.fullmatch(item) and not _REDACTIONS[4].search(item))
+            result[key] = item if len(item) <= 64 and allowed else 'redacted'
+        elif key == 'upstream_request_id' and isinstance(item, str) and _REQUEST_ID.fullmatch(item):
+            result[key] = item
+        elif key == 'upstream_content_type' and item in ('application/json', 'text/html', 'text/plain', 'application/problem+json'):
+            result[key] = item
     return result
 
 
 def decode(raw):
-    """Treat subprocess output as untrusted. No text, URLs or headers are retained."""
+    """Untrusted subprocess output: only typed facts and sanitized error fields."""
     for line in reversed(raw[-MAX_BYTES:].splitlines()):
         if not line.startswith(b'{') or b'"starbridge_checkout_diagnostics"' not in line:
             continue
@@ -142,6 +175,9 @@ class AsyncDiagnostics:
                         handler.stream.write(message + '\n')
                         handler.stream.flush()
                     self.written += 1
+                    if self.sink is None:
+                        from .checkout_evidence import save
+                        save(directory, data)
                 except Exception:
                     self.write_failures += 1
                     if handler is not None:

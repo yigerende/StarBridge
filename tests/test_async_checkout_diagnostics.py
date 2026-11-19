@@ -31,9 +31,13 @@ class AsyncCheckoutDiagnosticTests(unittest.TestCase):
         try:
             writer.submit('first', 1, frame())
             self.assertTrue(entered.wait(2))
+            payload = frame([{'event':'http_request','step':'checkout_create','status':400,
+                'upstream_code':'checkout_account_not_eligible','upstream_message':'Account cannot purchase this plan.',
+                'upstream_request_id':'req_fixture123'}, {'event':'credentials','point':'after_response',
+                'at_version':'a'*24,'session_version':'b'*24,'auth_cookie_version':'c'*24,'proxy_version':'d'*24}]*30)
             started = time.perf_counter()
             with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
-                list(executor.map(lambda n: writer.submit('order'+str(n), n % 3+1, frame()), range(1000)))
+                list(executor.map(lambda n: writer.submit('order'+str(n), n % 3+1, payload), range(1000)))
             elapsed = time.perf_counter()-started
             self.assertLess(elapsed, 2)
             self.assertEqual(writer.queue.qsize(), 8)

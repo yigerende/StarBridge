@@ -394,11 +394,17 @@ func (p *chatgpt_Platform) Call(method, path string, options ...chatgpt_Platform
 	if len(headers) == 0 {
 		headers = p.Headers(route.Path, chatgpt_PlatformHeaderOptions{Mode: opts.Mode})
 	}
+	if p.Diagnostics != nil {
+		p.Diagnostics.credentials(p.CP, route.Path, "before_request")
+	}
 	response, err := p.HTTP.Request(method, chatgpt_PlatformBase+path, protocol_RequestOptions{Headers: headers, Body: opts.Body})
 	if err != nil {
 		return nil, err
 	}
 	p.Absorb(response)
+	if p.Diagnostics != nil {
+		p.Diagnostics.credentials(p.CP, route.Path, "after_response")
+	}
 	if chatgpt_isSubscriptionNotFound(method, route.EscapedPath(), response) {
 		return nil, protocol_NewError("subscription_not_found")
 	}
@@ -407,6 +413,10 @@ func (p *chatgpt_Platform) Call(method, path string, options ...chatgpt_Platform
 
 func (p *chatgpt_Platform) Refresh() (err error) {
 	cp := p.CP
+	if p.Diagnostics != nil {
+		// Registered before restoration so this records the actual retained state.
+		defer func() { p.Diagnostics.credentials(cp, "/api/auth/session", "refresh_return") }()
+	}
 	previous := *cp
 	if p.SaveCredentials != nil {
 		defer func() {
@@ -527,12 +537,18 @@ func checkoutHomepageDiagnostics(response *protocol_HTTPResponse, cookies string
 func (p *chatgpt_Platform) Homepage() error {
 	h := p.Headers("")
 	h.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	if p.Diagnostics != nil {
+		p.Diagnostics.credentials(p.CP, "/", "before_request")
+	}
 	response, err := p.HTTP.Request("GET", chatgpt_PlatformBase+"/", protocol_RequestOptions{Headers: h})
 	if err != nil {
 		return err
 	}
 	diagnostics := checkoutHomepageDiagnostics(response, p.CP.Cookies)
 	p.Absorb(response)
+	if p.Diagnostics != nil {
+		p.Diagnostics.credentials(p.CP, "/", "after_response")
+	}
 	diagnostics.DeviceIDPresent = p.CP.DeviceID != ""
 	if response.StatusCode != 200 {
 		return &checkoutHomepageError{Code: "homepage_unavailable", Diagnostics: diagnostics}
@@ -8702,18 +8718,19 @@ func transport_curlChrome131Headers() protocol_Fields {
 
 // Transport 仅供单笔交易串行使用；GET 复用会话，写请求独享网络连接。
 type transport_Transport struct {
-	ctx          context.Context
-	cancel       context.CancelFunc
-	timeout      time.Duration
-	expires      time.Time
-	jar          fhttp.CookieJar
-	client       tls_client.HttpClient
-	options      []tls_client.HttpClientOption
-	observer     *observability_Observer
-	service      string
-	proxySecrets []string
-	prepared     *transport_preparedConnection
-	preparedURL  string
+	checkoutDiagnostics *checkoutDiagnostics
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	timeout             time.Duration
+	expires             time.Time
+	jar                 fhttp.CookieJar
+	client              tls_client.HttpClient
+	options             []tls_client.HttpClientOption
+	observer            *observability_Observer
+	service             string
+	proxySecrets        []string
+	prepared            *transport_preparedConnection
+	preparedURL         string
 }
 
 func transport_NewTransport(ctx context.Context, proxyURL string, timeout float64, expires time.Time) (*transport_Transport, error) {
@@ -8887,6 +8904,10 @@ func (t *transport_Transport) requestOnce(ctx context.Context, method, rawURL st
 			return nil, err
 		}
 		defer client.CloseIdleConnections()
+	}
+	if t.checkoutDiagnostics != nil {
+		// The transport uses lower-case header keys; observe exactly those sent.
+		t.checkoutDiagnostics.wire(req.URL.Path, strings.Join(req.Header["authorization"], ""), req.Header["cookie"])
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -11285,6 +11306,9 @@ func gptpay_newTransaction(ctx context.Context, c *gptpay_PaymentClient, cp mode
 	}
 	if diagnostics, ok := ctx.Value(checkoutDiagnosticContextKey{}).(*checkoutDiagnostics); ok {
 		t.platform.Diagnostics = diagnostics
+		if transport, ok := h.(*transport_Transport); ok {
+			transport.checkoutDiagnostics = diagnostics
+		}
 		diagnostics.add("input_credentials", diagnostics.auth(&cp))
 	}
 	t.stripe = stripe_NewStripe(sh, &cp, clock)

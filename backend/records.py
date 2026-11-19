@@ -269,6 +269,14 @@ def admin_orders(q:str='',status:str='',attention:str='',include_admin:bool=True
     return {'items':rows,'total':total,'summary':counts,'page':page,'page_size':page_size,'has_more':page*page_size<total}
 
 
+@admin_router.get('/orders/{id}/checkout-diagnostics')
+def checkout_diagnostic_detail(id: str):
+    from fastapi.responses import JSONResponse
+    from .checkout_evidence import read
+    require(db.one('SELECT id FROM orders WHERE id=$1 AND deleted_at IS NULL', id), '订单不存在', 404)
+    return JSONResponse({'rounds': read(id)}, headers={'Cache-Control': 'no-store'})
+
+
 @admin_router.get('/orders/{id}')
 def admin_detail(id:str):
     row=db.one('SELECT '+ORDER_FIELDS+',o.user_id,o.note,u.email AS owner FROM orders o JOIN users u ON u.id=o.user_id WHERE o.id=$1 AND o.deleted_at IS NULL',id)

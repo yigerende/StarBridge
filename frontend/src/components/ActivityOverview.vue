@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed,defineAsyncComponent,onMounted,onUnmounted,ref} from 'vue'
+import {computed,defineAsyncComponent,onMounted,onUnmounted,ref,watch} from 'vue'
 import {Activity,ArrowUpRight,CheckCheck,ChevronLeft,ChevronRight,Clock3,Filter,RefreshCw,Search,TriangleAlert} from 'lucide-vue-next'
 import {api,cash,date,orderLabel,orderTone,type Row} from '../lib'
 import {rangePresets,presetRange} from '../lib/report-period'
@@ -16,7 +16,7 @@ const record=ref<Row|null>(null)
 function openRecord(row:Row){if(props.admin)record.value=row;else detail.value=row}
 const data=ref<Row>({items:[],summary:{},businesses:[],total:0,show_fees:false}),loading=ref(false),fetching=ref(false),error=ref(''),detail=ref<Row|null>(null)
 const period=ref('today'),initialRange=presetRange('today')
-function selectPeriod(id:string){period.value=id;if(id!=='custom'){const range=presetRange(id);start.value=range.start;end.value=range.end;apply()}}
+function selectPeriod(id:string){period.value=id;if(id!=='custom'){const range=presetRange(id);start.value=range.start;end.value=range.end}}
 const search=ref(''),business=ref(''),state=ref(''),start=ref(initialRange.start),end=ref(initialRange.end),includeAdmin=ref(true),page=ref(1),size=ref(10),sortBy=ref('created_at'),sortDir=ref('desc')
 const applied=ref<Row>({}),names:Row={registration:'注册',subscription:'订阅',refund:'代退'}
 rememberList((props.admin?'admin':'customer')+'-activity',{page,size,sortBy,sortDir,search,business,state,start,end,includeAdmin,period,applied})
@@ -34,11 +34,15 @@ async function load(quiet=false){
  catch(e){if((e as Error).name!=='AbortError'&&controller===request)error.value=(e as Error).message}
  finally{if(controller===request){loading.value=false;fetching.value=false}}
 }
-function apply(){applied.value={q:search.value,business:business.value,state:state.value,start:start.value,end:end.value,...(props.admin?{include_admin:String(includeAdmin.value)}:{})};page.value=1;void load()}
+let searchTimer:ReturnType<typeof setTimeout>|undefined
+const filters=()=>({q:search.value,business:business.value,state:state.value,start:start.value,end:end.value,...(props.admin?{include_admin:String(includeAdmin.value)}:{})})
+function apply(){clearTimeout(searchTimer);const next=filters();if(JSON.stringify(next)===JSON.stringify(applied.value))return;applied.value=next;page.value=1;void load()}
 function reset(){period.value='today';const range=presetRange('today');search.value='';business.value='';state.value='';start.value=range.start;end.value=range.end;includeAdmin.value=true;apply()}
-function selectState(value:string){state.value=value;apply()}
+function selectState(value:string){state.value=value}
+watch([business,state,start,end,includeAdmin],apply)
+watch(search,()=>{clearTimeout(searchTimer);searchTimer=setTimeout(apply,300)})
 onMounted(()=>{applied.value={q:search.value,business:business.value,state:state.value,start:start.value,end:end.value,...(props.admin?{include_admin:String(includeAdmin.value)}:{})};void load()})
-onUnmounted(()=>{controller?.abort()})
+onUnmounted(()=>{clearTimeout(searchTimer);controller?.abort()})
 </script>
 <template>
  <section class="activity-overview" :class="{'is-admin':admin}">
@@ -51,7 +55,7 @@ onUnmounted(()=>{controller?.abort()})
    <button :class="{selected:state==='completed'}" @click="selectState('completed')"><CheckCheck :size="19"/><span>已完成<strong>{{data.summary.completed||0}}</strong><small>办理结果已确认</small></span></button>
    <button :class="{selected:state==='attention'}" @click="selectState('attention')"><TriangleAlert :size="19"/><span>需核实<strong>{{data.summary.attention||0}}</strong><small>等待进一步确认</small></span></button>
   </div>
-  <div class="activity-businesses"><button v-for="item in businesses" :key="item.id" :class="{selected:business===item.id}" @click="business=business===item.id?'':item.id;apply()"><span>{{names[item.id]}}<strong>{{item.total}} <small>笔</small></strong></span><span>{{item.active}} 笔进行中<small v-if="data.show_fees">已结算 {{cash(item.settled)}} 积分</small></span></button></div>
+  <div class="activity-businesses"><button v-for="item in businesses" :key="item.id" :class="{selected:business===item.id}" @click="business=business===item.id?'':item.id"><span>{{names[item.id]}}<strong>{{item.total}} <small>笔</small></strong></span><span>{{item.active}} 笔进行中<small v-if="data.show_fees">已结算 {{cash(item.settled)}} 积分</small></span></button></div>
   <div class="activity-summary-line"><span v-if="admin">涉及客户 <b>{{data.summary.customers||0}}</b> 位</span><span>注册已交付 <b>{{data.summary.delivered||0}}</b> 个</span><span>部分完成 <b>{{data.summary.partial||0}}</b> 笔</span><span>未完成 <b>{{data.summary.failed||0}}</b> 笔</span><span>已取消 <b>{{data.summary.cancelled||0}}</b> 笔</span></div>
   <section class="panel activity-records">
    <form class="activity-filters" @submit.prevent="apply">
@@ -60,7 +64,7 @@ onUnmounted(()=>{controller?.abort()})
     <label>状态<select v-model="state"><option value="">全部状态</option><option v-for="(label,key) in states" :key="key" :value="key">{{label}}</option></select></label>
     <label>开始日期<input v-model="start" type="date" @change="period='custom'"/></label><label>结束日期<input v-model="end" type="date" @change="period='custom'" :min="start"/></label>
     <label v-if="admin" class="activity-admin-scope"><input v-model="includeAdmin" type="checkbox"/>包含管理员</label>
-    <div class="activity-filter-actions"><button class="btn primary" :disabled="loading"><Filter :size="15"/>筛选</button><button type="button" class="btn secondary" :disabled="loading" @click="reset">重置</button></div>
+    <div class="activity-filter-actions"><button type="button" class="btn secondary" @click="reset">重置</button></div>
    </form>
    <div class="activity-list-heading"><span>{{loading?'正在读取…':`共 ${data.total} 笔办理`}}</span><span v-if="data.show_fees">已结算 <b>{{cash(data.summary.settled)}}</b> · 冻结 <b>{{cash(data.summary.frozen)}}</b> 积分</span></div>
    <DataTable paged :sort-by="sortBy" :sort-dir="sortDir" @sort="changeSort" :rows="data.items" :columns="columns" :page-size="size" hide-toolbar hide-pagination>

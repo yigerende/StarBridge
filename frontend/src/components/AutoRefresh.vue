@@ -7,13 +7,17 @@ const emit=defineEmits<{refresh:[quiet:boolean]}>()
 const enabled=ref(true),seconds=ref(10),hidden=ref(document.hidden)
 rememberList('auto-refresh-'+props.storageKey,{enabled,seconds})
 if(![5,10,30,60].includes(seconds.value))seconds.value=10
-let timer:ReturnType<typeof setTimeout>|undefined
-function schedule(){clearTimeout(timer);if(enabled.value&&!hidden.value&&!props.busy&&!props.paused)timer=setTimeout(()=>{emit('refresh',true);schedule()},seconds.value*1000)}
-function visible(){hidden.value=document.hidden;schedule()}
-function manual(){clearTimeout(timer);emit('refresh',false);schedule()}
-watch([enabled,seconds,()=>props.busy,()=>props.paused],schedule)
-onMounted(()=>{document.addEventListener('visibilitychange',visible);schedule()})
-onUnmounted(()=>{clearTimeout(timer);document.removeEventListener('visibilitychange',visible)})
+let timer:ReturnType<typeof setInterval>|undefined,nextDue=Date.now()+seconds.value*1000
+// Keep a deadline independent of incidental parent requests. Repeated busy
+// changes must not continually postpone the next refresh.
+function tick(){if(enabled.value&&!hidden.value&&!props.busy&&!props.paused&&Date.now()>=nextDue){nextDue=Date.now()+seconds.value*1000;emit('refresh',true)}}
+function visible(){hidden.value=document.hidden;if(!hidden.value){nextDue=Date.now();tick()}}
+function manual(){if(props.busy)return;nextDue=Date.now()+seconds.value*1000;emit('refresh',false)}
+watch([enabled,seconds],()=>{nextDue=Date.now()+seconds.value*1000})
+watch(()=>props.busy,busy=>{if(!busy)tick()})
+watch(()=>props.paused,(paused,previous)=>{if(previous&&!paused){nextDue=Date.now();tick()}})
+onMounted(()=>{hidden.value=document.hidden;document.addEventListener('visibilitychange',visible);timer=setInterval(tick,1000)})
+onUnmounted(()=>{clearInterval(timer);document.removeEventListener('visibilitychange',visible)})
 </script>
 <template><div class="auto-refresh"><label><input v-model="enabled" type="checkbox"/>自动刷新</label><select v-model.number="seconds" aria-label="自动刷新间隔" :disabled="!enabled"><option v-for="s in [5,10,30,60]" :key="s" :value="s">{{s}} 秒</option></select><button type="button" class="btn secondary" :disabled="busy" @click="manual"><RefreshCw :size="15" :class="{spinning:busy}"/>立即刷新</button><span v-if="enabled&&(hidden||paused)" class="auto-paused">已暂停</span></div></template>
 <style scoped>

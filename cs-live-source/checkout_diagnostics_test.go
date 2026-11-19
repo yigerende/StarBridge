@@ -48,7 +48,12 @@ func TestCheckoutRefreshEvidencePreservesProtocol(t *testing.T) {
 						t.Fatal("credential leaked")
 					}
 				}
-				event := d.events[0]
+				var event protocol_Map
+				for _, candidate := range d.events {
+					if candidate["event"] == "session_refresh" {
+						event = candidate
+					}
+				}
 				if event["auth_cookie_version_changed"] != true {
 					t.Fatal("cookie rotation evidence lost")
 				}
@@ -64,6 +69,53 @@ func TestCheckoutRefreshEvidencePreservesProtocol(t *testing.T) {
 				t.Fatal("diagnostics modified credentials")
 			}
 		})
+	}
+}
+
+func TestCheckoutErrorEvidenceAndWireCredentials(t *testing.T) {
+	d := newCheckoutDiagnostics(true, strings.Repeat("b", 64))
+	response := &protocol_HTTPResponse{StatusCode: 400, Headers: http.Header{"Content-Type": {"application/json"}, "X-Request-Id": {"req_fixture123"}},
+		Content: []byte(`{"detail":{"code":"checkout_account_not_eligible","type":"invalid_request_error","message":"Account cannot purchase this plan. private-token-fixture user@example.test https://private.test/secret"}}`)}
+	sink := observability_NewObserver("create-checkout", d.event, "", "")
+	fields := observability_HTTPFailureDiagnostics(response, []string{"private-token-fixture"})
+	fields["path"], fields["status"], fields["outcome"] = "/backend-api/payments/checkout", 400, "failed"
+	sink.Emit("http_request", fields)
+	if d.events[0]["upstream_code"] != "checkout_account_not_eligible" || d.events[0]["upstream_request_id"] != "req_fixture123" {
+		t.Fatalf("specific failure lost: %v", d.events[0])
+	}
+	d.wire("/api/auth/session", "", []string{"__Secure-next-auth.session-token=A", "__Secure-next-auth.session-token=B"})
+	if d.events[1]["duplicate_auth_cookies"] != true || d.events[1]["has_at"] != false {
+		t.Fatal("wire facts missing")
+	}
+	d.wire("/backend-api/accounts/check/v4", "Bearer private-token-fixture", []string{"__Secure-next-auth.session-token=B"})
+	if d.events[2]["at_version"] != d.version("private-token-fixture") {
+		t.Fatal("actual AT missing")
+	}
+	var out bytes.Buffer
+	d.write(&out)
+	for _, value := range []string{"private-token-fixture", "user@example.test", "https://private.test", "session-token=A", "session-token=B"} {
+		if strings.Contains(out.String(), value) {
+			t.Fatal("secret in diagnostic")
+		}
+	}
+}
+
+func TestCheckoutRefreshReturnRecordsRestoredState(t *testing.T) {
+	cp := model_DefaultCheckpoint()
+	cp.AccessToken, cp.SessionToken, cp.AccountID = "old-at", "old-session", "acct"
+	cp.Cookies = "__Secure-next-auth.session-token=old-session"
+	clock, _ := fingerprint_NewClock(0)
+	p := chatgpt_NewPlatform(&homepageTransport{&protocol_HTTPResponse{StatusCode: 200, Headers: http.Header{"Set-Cookie": {"__Secure-next-auth.session-token=bad-session; Path=/"}}, Content: []byte(`{"error":"RefreshAccessTokenError"}`)}}, &cp, clock)
+	p.SaveCredentials = func(model_Session) error { t.Fatal("failed refresh persisted"); return nil }
+	d := newCheckoutDiagnostics(true, strings.Repeat("c", 64))
+	p.Diagnostics = d
+	before := d.auth(&cp)
+	if protocol_FlowErrorCode(p.Refresh()) != "session_expired" {
+		t.Fatal("flow changed")
+	}
+	last := d.events[len(d.events)-1]
+	if last["point"] != "refresh_return" || last["auth_cookie_version"] != before["auth_cookie_version"] || last["at_version"] != before["at_version"] {
+		t.Fatal("restored state not recorded")
 	}
 }
 

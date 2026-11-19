@@ -4,6 +4,7 @@ import {CheckCircle2,AlertTriangle,Clock3,LoaderCircle,ChevronRight,Minus} from 
 import {date,type Row} from '../lib'
 import {buildPaymentJourney} from '../paymentJourney'
 import PaymentTraceEvents from './PaymentTraceEvents.vue'
+import CheckoutDiagnostics from './CheckoutDiagnostics.vue'
 const props=defineProps<{events:Row[];links?:Row[];order:Row;payment?:Row;billing?:Row;checkout?:Row}>()
 const journey=computed(()=>buildPaymentJourney(props))
 const logFilter=ref('all')
@@ -26,6 +27,7 @@ const stageLabels:Record<string,string>={completed:'已完成',running:'进行�
    </details>
   </li>
  </ol>
+ <CheckoutDiagnostics v-if="order.id && events.some(e=>e.source==='technical'&&e.phase==='checkout'&&e.state==='failed')" :key="order.id" :order-id="order.id" :events="events"/>
  <details class="journey-technical"><summary>技术日志 <span>{{events.length}} 条原始记录 · 按需查看</span><ChevronRight :size="15"/></summary><div class="journey-log-toolbar"><label>筛选记录<select v-model="logFilter"><option value="all">全部记录</option><option value="attention">异常与待核实</option><option value="network">网络检查</option></select></label><small>接口返回、过程完成和业务成功分别保留；日志条数不代表付款或取消次数。</small></div><PaymentTraceEvents :events="events" :filter="logFilter" :live="['queued','processing'].includes(order.status)||order.status==='succeeded'&&journey.stages.some(s=>s.state==='running')"/></details>
 </section>
 </template>
