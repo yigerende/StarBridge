@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "星桥 API",
-    "version": "2.8.0",
+    "version": "2.9.0",
     "description": "使用同一个 API 密钥查询账户、订阅套餐、代退报价和积分钱包，提交申请并跟踪办理结果。当前可用功能见 GET /api/v1/me 的 features；重置登录密码后需重新创建 API 密钥。 请求按来源 IP 限流，同一出口的账号和密钥共用请求额度；注册、订阅和代退共用下单限额。429 按 Retry-After 等待，重试仍使用原幂等键。"
   },
   "servers": [
@@ -4263,7 +4263,7 @@
       "post": {
         "operationId": "refund_create",
         "summary": "提交代退申请",
-        "description": "提交 1～500 个账号，每个账号一笔订单，总请求不超过 1 MB。任一账号校验失败时整批不受理，也不冻结积分。已存在未结束或成功申请的账号不能重复办理。受理时冻结服务费，服务完成后结算，失败或排队取消后释放；待核实保留冻结。保存响应 ids，逐笔查询详情。超时须按原账号顺序、原参数和原 Idempotency-Key 重试。 账号被上游明确停用后，再次提交达到允许次数将返回 409，不创建订单或冻结积分。账号恢复后请联系客服；请勿更换请求标识反复提交。相同请求标识和内容的重发仍返回原订单，不计作再次提交。同一代退账号连续多笔订单失败达到限制时也返回 409，不创建订单或冻结积分；此限制按代退账号邮箱累计，不是星桥登录账户，成功订单会清零连续失败计数。收到限制提示后请联系客服，不要继续重复提交。",
+        "description": "提交 1～500 个账号，每个账号一笔订单，总请求不超过 1 MB。任一账号校验失败时整批不受理，也不冻结积分。已存在未结束或成功申请的账号不能重复办理。受理时冻结服务费，服务完成后结算，失败或排队取消后释放；待核实保留冻结。保存响应 ids，逐笔查询详情。超时须按原账号顺序、原参数和原 Idempotency-Key 重试。 账号被上游明确停用后，再次提交达到允许次数将返回 409，不创建订单或冻结积分。账号恢复后请联系客服；请勿更换请求标识反复提交。相同请求标识和内容的重发仍返回原订单，不计作再次提交。同一代退账号连续多笔订单失败达到限制时也返回 409，不创建订单或冻结积分；此限制按代退账号邮箱累计，不是星桥登录账户，成功订单会清零连续失败计数。收到限制提示后请联系客服，不要继续重复提交。\n\n每个账号可选填 email_code_url。先尝试密码和 2FA，仍需邮箱验证码时才访问接码地址；不填写也可提交，现有请求格式和响应不变。",
         "tags": [
           "代退办理"
         ],
@@ -4521,6 +4521,12 @@
                           "type": "string",
                           "description": "Base32 2FA 密钥或 otpauth 链接，不能使用六位验证码",
                           "writeOnly": true
+                        },
+                        "email_code_url": {
+                          "type": "string",
+                          "maxLength": 4096,
+                          "description": "可选邮箱接码地址，填写可访问的公网 HTTP/HTTPS 链接。仅密码及 2FA 验证后仍需要邮箱验证码时取码；省略或空字符串保持原有处理。地址随账号凭据加密保存，不在订单查询中返回。",
+                          "writeOnly": true
                         }
                       },
                       "required": [
@@ -4567,6 +4573,20 @@
                         "email": "authorized2@example.com",
                         "password": "AUTHORIZED_ACCOUNT_PASSWORD",
                         "totp_secret": "BASE32_TOTP_SECRET"
+                      }
+                    ]
+                  }
+                },
+                "with_email_code_url": {
+                  "summary": "填写可选邮箱接码地址",
+                  "value": {
+                    "authorized": true,
+                    "accounts": [
+                      {
+                        "email": "account@example.com",
+                        "password": "YOUR_ACCOUNT_PASSWORD",
+                        "totp_secret": "BASE32_TOTP_SECRET",
+                        "email_code_url": "https://mail.example.com/api/get-code?uid=YOUR_MAILBOX_ID"
                       }
                     ]
                   }

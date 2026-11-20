@@ -1,12 +1,12 @@
 """Password continuation for an explicitly offered passwordless email login.
 
-Uses the existing live auth session and password/TOTP protocol. No OTP pickup,
-new authorization, proxy allocation, or refund operation belongs here.
+Uses the existing live auth session and password/TOTP protocol. Optional mailbox
+access is permitted only after password verification still requires email OTP.
 """
 import time
 from urllib.parse import urlsplit
 import diagnostics
-from manager_oauth import upstream
+from manager_oauth import upstream, bridge
 
 
 class NeedsVerification(Exception):
@@ -19,6 +19,35 @@ class NeedsVerification(Exception):
 
 
 class PasswordContinuationMixin:
+    def can_pickup_email(self):
+        return bool(getattr(self, '_password_verified', False) and self.payload.get('_pickup_url'))
+
+    def prepare_email_code(self):
+        if not self.can_pickup_email():
+            return False
+        if self.payload.get('manual_email_code'):
+            return True
+        from mailbox_pickup import MailboxReader, MailboxError
+        # No mailbox request, DNS lookup or baseline fetch occurs before here.
+        self._mail_used = getattr(self, '_mail_used', set())
+        failure = None
+        code = ''
+        diagnostics.record({'stage': 'email_verification', 'side': 'child', 'event': 'start'})
+        try:
+            if not hasattr(self, '_mail_reader'):
+                self._mail_reader = MailboxReader(self.payload['email'], self.payload['_pickup_url'])
+            code = self._mail_reader.next_code(getattr(self, '_login_issued_after', 0), self._mail_used)
+        except MailboxError as exc:
+            failure = exc.code
+        if failure:
+            error = NeedsVerification(True)
+            error.code = failure
+            raise error
+        bridge.protect_code(code)
+        self._mail_used.add(code)
+        self.payload['manual_email_code'] = code
+        return True
+
     def read_password_login_session(self):
         # The browser reads this endpoint after "Continue with password".
         # Reuse this login's cookie jar; never import a captured HAR session.
@@ -62,7 +91,7 @@ class PasswordContinuationMixin:
             raise upstream.LoginFlowError("Phone verification required",
                                           code="phone_verification_skipped", retryable=False)
         if page == "email_otp_verification" or "/email-verification" in url.lower():
-            if not allow_password:
+            if not allow_password and not self.can_pickup_email():
                 raise NeedsVerification(getattr(self, "_password_submitted", False))
             return
         if not url and page not in {"login_password", "mfa_challenge"}:
@@ -72,6 +101,7 @@ class PasswordContinuationMixin:
                                           retryable=incomplete)
 
     def complete_modern_login(self, step, password, issued_after):
+        self._login_issued_after = issued_after
         data = step if isinstance(step, dict) else {}
         # A passwordless offer before password submission is different from a
         # mandatory email challenge after password/MFA. Never loop between them.
@@ -101,6 +131,7 @@ class PasswordContinuationMixin:
                                           code="login_step_unsupported", retryable=False)
         self._password_submitted = True
         step = super().submit_modern_password(password)
+        self._password_verified = not bool(step.get('error'))
         self.inspect_login_step(step, "password")
         page = self.extract_page_type(step).lower()
         url = self.normalize_auth_url(self.extract_continue_url(step))
@@ -114,4 +145,29 @@ class PasswordContinuationMixin:
         # An email/phone challenge after MFA is mandatory. Never send it back
         # into the passwordless-offer branch or treat it as a completed login.
         self.inspect_login_step({"continue_url": url}, "mfa_verify")
+        if '/email-verification' in url.lower() and self.can_pickup_email():
+            if getattr(self, '_mfa_email_continued', False):
+                raise NeedsVerification(True)
+            self._mfa_email_continued = True
+            return upstream.ChatGPTProtocolLogin.complete_modern_login(
+                self, {'page': {'type': 'email_otp_verification'}, 'continue_url': url},
+                '', getattr(self, '_login_issued_after', 0))
         return url
+
+    def submit_mfa_verify(self, factor_id, code):
+        step = super().submit_mfa_verify(factor_id, code)
+        if self.extract_page_type(step) == 'email_otp_verification' and not self.extract_continue_url(step):
+            step = {**step, 'continue_url': 'https://auth.openai.com/email-verification'}
+        return step
+
+    def submit_modern_code(self, code):
+        try:
+            step = super().submit_modern_code(code)
+        finally:
+            self.payload.pop('manual_email_code', None)
+        page = self.extract_page_type(step)
+        url = self.normalize_auth_url(self.extract_continue_url(step))
+        if page in {'email_otp_verification', 'login_password'} or any(p in url for p in ('/email-verification', '/log-in/password')):
+            raise NeedsVerification(True)
+        diagnostics.record({'stage': 'email_verification', 'side': 'child', 'event': 'response'})
+        return step

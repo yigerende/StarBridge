@@ -51,6 +51,10 @@ func timelineFailure(d RefundDiagnostic) (stage, reason string) {
 		reason = "上游请求过于频繁（429），暂时无法继续"
 	case e.Reason == "phone_verification_skipped":
 		reason = "上游要求手机验证，本次登录未完成"
+	case e.Reason == "email_code_unavailable":
+		reason = "未从接码地址获取到可用的邮箱验证码"
+	case e.Reason == "email_code_address_blocked":
+		reason = "邮箱接码地址不可访问，请使用公网 HTTP 或 HTTPS 地址"
 	case e.Reason == "email_verification_after_password":
 		reason = "密码验证后仍需邮箱验证码，本次登录未完成"
 	case e.Reason == "extra_verification" && e.LoginPage == "email_otp_verification":
@@ -95,12 +99,20 @@ func readTimelineFailures(ctx context.Context, tx pgx.Tx, id string, out *Refund
 		}
 		stage, reason := timelineFailure(d)
 		passwordNote := ""
-		if e := d.Sanitized().Evidence; e != nil && e.Stage == "password_fallback" && e.Side == "child" {
+		if e := d.Sanitized().Evidence; e != nil && (e.Stage == "password_fallback" || e.Stage == "email_verification") && e.Side == "child" {
 			if e.Event == "start" {
 				passwordNote = "邮箱验证码页，已尝试密码登录"
 			}
 			if e.Event == "response" {
 				passwordNote = "已改用密码登录，密码验证通过"
+			}
+			if e.Stage == "email_verification" {
+				if e.Event == "start" {
+					passwordNote = "密码验证后仍需邮箱验证码，正在取码"
+				}
+				if e.Event == "response" {
+					passwordNote = "邮箱验证码验证通过"
+				}
 			}
 			if passwordNote != "" {
 				stage, reason = "登", passwordNote

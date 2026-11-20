@@ -69,8 +69,8 @@
     {
       "path": "internal/store/refund_diagnostics.go",
       "source_sha256": "892271dab4e19d636413203cf97bb2b17c143abd0292905ca83123c3b44558a9",
-      "sha256": "c3d0c34cc8630b94f0da03f29a1b691bc7195de4b0093647a15958e0a1564908",
-      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md. 2026-11-12 retain mfa_state_conflict in sanitized diagnostic evidence; scheduler and wallet behavior unchanged. See docs/refund-mfa-conflict.md. 2026-11-13 authorized same-child target-team session retry and configurable post-login wait; original validation, submission and recovery budgets preserved. See docs/refund-team-session-retry.md.; 2026-11-14 user-authorized fallback login wait and bounded private account/plan comparison evidence 2026-11-18: Allowlist password-continuation evidence only."
+      "sha256": "1ace0461d008e98fedecfb6f9173ff089c52a09409cb1576d2a4719c643c6c34",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md. 2026-11-12 retain mfa_state_conflict in sanitized diagnostic evidence; scheduler and wallet behavior unchanged. See docs/refund-mfa-conflict.md. 2026-11-13 authorized same-child target-team session retry and configurable post-login wait; original validation, submission and recovery budgets preserved. See docs/refund-team-session-retry.md.; 2026-11-14 user-authorized fallback login wait and bounded private account/plan comparison evidence 2026-11-18: Allowlist password-continuation evidence only.; 2026-11-20 optional encrypted per-order mailbox URL and password-first email OTP continuation; original protocol and worker unchanged"
     },
     {
       "path": "internal/store/refund_execution.go",
@@ -87,8 +87,8 @@
     {
       "path": "internal/store/refund_login_result.go",
       "source_sha256": "6592e422a1ad1506db1076d1e41415d9ab88c3e24de0fc304c79a10581b98e8e",
-      "sha256": "b32dac9b7904810f2b3b8a053c0393c030d10c47582a96c4f2a84f30116901c3",
-      "adaptation": " 2026-11-18: Map confirmed cleanup to precise email-verification result."
+      "sha256": "5960d371346eeb0085c1e4ad2bfc2d171a7617a210cb00f68e34c2b5d595c8f2",
+      "adaptation": " 2026-11-18: Map confirmed cleanup to precise email-verification result.; 2026-11-20 optional encrypted per-order mailbox URL and password-first email OTP continuation; original protocol and worker unchanged"
     },
     {
       "path": "internal/store/refund_monitor.go",
@@ -116,8 +116,8 @@
     {
       "path": "internal/store/refund_public.go",
       "source_sha256": "9423c5361c615376b65e2383799ecb30b77039c1b20745070e14152e88c68496",
-      "sha256": "94d29e80d6a9cd9f9d99c57f3b06f3265dac323eddb2f7f34755b188697ff826",
-      "adaptation": " 2026-11-18: Whitelist fixed email verification result text."
+      "sha256": "262207d97f5ba4b28c3a09ba734b26da10dab92b8875846933ed270f90754c6b",
+      "adaptation": " 2026-11-18: Whitelist fixed email verification result text.; 2026-11-20 optional encrypted per-order mailbox URL and password-first email OTP continuation; original protocol and worker unchanged"
     },
     {
       "path": "internal/store/refund_recovery.go",
@@ -156,8 +156,8 @@
     {
       "path": "runtime/diagnostics.py",
       "source_sha256": "da898b3792390743d86fecf84ca3eefcf977251398329f33a397edc328e26e0c",
-      "sha256": "0015aae551212f2aeb2ebadf62e6d1eadffd71836a68d1f6b16345f09949e13e",
-      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md. 2026-11-12 preserve bounded mfa_state_conflict evidence for the existing login retry path. See docs/refund-mfa-conflict.md. 2026-11-13 authorized same-child target-team session retry and configurable post-login wait; original validation, submission and recovery budgets preserved. See docs/refund-team-session-retry.md.; 2026-11-14 user-authorized fallback login wait and bounded private account/plan comparison evidence 2026-11-18: allowlisted auth-session read and post-password email verification evidence; no credential content."
+      "sha256": "9cc0000289c43521058dbc1d2ee9241038cb6ee02cdcc4b4e7d38db47310d888",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md. 2026-11-12 preserve bounded mfa_state_conflict evidence for the existing login retry path. See docs/refund-mfa-conflict.md. 2026-11-13 authorized same-child target-team session retry and configurable post-login wait; original validation, submission and recovery budgets preserved. See docs/refund-team-session-retry.md.; 2026-11-14 user-authorized fallback login wait and bounded private account/plan comparison evidence 2026-11-18: allowlisted auth-session read and post-password email verification evidence; no credential content.; 2026-11-20 optional encrypted per-order mailbox URL and password-first email OTP continuation; original protocol and worker unchanged"
     },
     {
       "path": "runtime/manager_oauth/PORT.md",
@@ -228,8 +228,8 @@
     {
       "path": "runtime/refund_plan_fallback.py",
       "source_sha256": "cdbc9eb9c82b74ad71031b25d8ab6c19d69d31c24710c81917ba5c2c25f79abc",
-      "sha256": "f024080b1146c57cf555daa5a12b6e75e3dbbb3d4872d2974bd3cf21887de93b",
-      "adaptation": "; 2026-11-14 user-authorized fallback login wait and bounded private account/plan comparison evidence 2026-11-18: personal fallback uses the same configured live-session password continuation."
+      "sha256": "a32e9437929d86b47f9b43f4b84afef2644dde98367226e76b93bf48f6db635d",
+      "adaptation": "; 2026-11-14 user-authorized fallback login wait and bounded private account/plan comparison evidence 2026-11-18: personal fallback uses the same configured live-session password continuation.; 2026-11-20 optional encrypted per-order mailbox URL and password-first email OTP continuation; original protocol and worker unchanged"
     },
     {
       "path": "runtime/refund_recovery.py",
@@ -239,8 +239,8 @@
     {
       "path": "runtime/refund_runner.py",
       "source_sha256": "3319f0b871c973a13f140bbb07bdcf6d1a07752b4d7d6aa3edb11f6c33e9a947",
-      "sha256": "f8ff0a22f8a20b9e3d544e2f12564feb79489b0ec01cda08bd1945de660549b2",
-      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md. 2026-11-12 authorized MFA verification POST 409 classification: reuse existing login retry/recovery only; no retry budgets, delay settings or network failover changes. See docs/refund-mfa-conflict.md. 2026-11-13 authorized same-child target-team session retry and configurable post-login wait; original validation, submission and recovery budgets preserved. See docs/refund-team-session-retry.md. 2026-11-18: reuse a StarBridge password continuation mixin for an explicit passwordless email offer, retaining retries and cleanup."
+      "sha256": "6a11128e58908e733542650c6e03188fac5157c0fbcc7c8b7406a0a2bfceb1d3",
+      "adaptation": "Authorized resource recovery repair (2026-11-12): dedicated mother proxy, capacity guard, durable cleanup/cooldown, optional pre-service personal plan observation and isolated tests. See docs/refund-resource-recovery.md. 2026-11-12 authorized MFA verification POST 409 classification: reuse existing login retry/recovery only; no retry budgets, delay settings or network failover changes. See docs/refund-mfa-conflict.md. 2026-11-13 authorized same-child target-team session retry and configurable post-login wait; original validation, submission and recovery budgets preserved. See docs/refund-team-session-retry.md. 2026-11-18: reuse a StarBridge password continuation mixin for an explicit passwordless email offer, retaining retries and cleanup.; 2026-11-20 optional encrypted per-order mailbox URL and password-first email OTP continuation; original protocol and worker unchanged"
     },
     {
       "path": "runtime/requirements.txt",
@@ -335,15 +335,15 @@
       "path": "internal/store/store.go",
       "source_path": "internal/store/store.go",
       "source_sha256": "103b019b0310cbeca74a06d30ba9d0f30a2d6c53c85ad178d9011b8944b5831f",
-      "sha256": "eb155e9f9688a01083be5f72350d6fea0fd4e4bac3400a1d9e4e8ea31873fde7",
-      "adaptation": "Extract refund admission/read/transaction primitives; use shared StarBridge user status, balance, ledger deltas, audit and refund idempotency table. No legacy users, wallets or notification center. Customer paginated refund reads with owner scope, stable whitelisted ordering and 500-row limit.; 2026-11-12 authorized account termination admission limit/settings; execution and retry behavior preserved.; 2026-11-14 encrypted mother Session editing and confirmed-cleanup failure protection with target-email terminal-order restrictions"
+      "sha256": "c8fd1aeaffeacdfd962930489eccadce386d2a69610ea9c91c7ee580caefa0dc",
+      "adaptation": "Extract refund admission/read/transaction primitives; use shared StarBridge user status, balance, ledger deltas, audit and refund idempotency table. No legacy users, wallets or notification center. Customer paginated refund reads with owner scope, stable whitelisted ordering and 500-row limit.; 2026-11-12 authorized account termination admission limit/settings; execution and retry behavior preserved.; 2026-11-14 encrypted mother Session editing and confirmed-cleanup failure protection with target-email terminal-order restrictions; 2026-11-20 optional encrypted per-order mailbox URL and password-first email OTP continuation; original protocol and worker unchanged"
     },
     {
       "path": "internal/refundprovider/account.go",
       "source_path": "internal/refundprovider/provider.go",
       "source_sha256": "c3087e8a50283570687cc74ac4270e83eeb11df385ffd1fe0eb1517b5db04522",
-      "sha256": "b2273d51b1a6a65d07e875fd1499adf68dfc5ab1f4c4e7a9280c05a6952b3962",
-      "adaptation": "Keep only the credential data type needed by the original runner; omit legacy provider HTTP service."
+      "sha256": "114cff7884dd434dd3e524ec40769767e6c1ec6399c509b1ad0c69305f9a538d",
+      "adaptation": "Keep only the credential data type needed by the original runner; omit legacy provider HTTP service.; 2026-11-20 optional encrypted per-order mailbox URL and password-first email OTP continuation; original protocol and worker unchanged"
     },
     {
       "path": "internal/store/refund_resources.go",

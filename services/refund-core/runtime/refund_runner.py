@@ -129,7 +129,7 @@ class CustomerLogin(PasswordContinuationMixin, WorkspaceObservationMixin, TeamPr
                 raise upstream.LoginFlowError("Team selection conflict", code="team_selection_conflict", status=409, retryable=True) from None
 
     def log(self, step, message, level="info"):
-        if step == "waiting_code":
+        if step == "waiting_code" and not self.prepare_email_code():
             raise NeedsVerification(getattr(self, "_password_submitted", False))
         super().log(step, message, level)
 
@@ -360,7 +360,7 @@ def _execute(job, checkpoint, mother_factory, login_factory, sleep):
             account = job["account"]
             payload = {
                 "email": account["email"], "password": account["password"],
-                "_totp_secret": account["totp_secret"], "proxy": job["child_proxy"],
+                "_totp_secret": account["totp_secret"], "_pickup_url": account.get("email_code_url", ""), "proxy": job["child_proxy"],
                 "credential_mode": "chatgpt_at", "configured_login_mode": "password_totp",
                 "selected_login_mode": "password_totp", "allow_sms": False,
                 "_skip_personal_plan_observation": job["settings"].get("query_personal_plan", True) is False,

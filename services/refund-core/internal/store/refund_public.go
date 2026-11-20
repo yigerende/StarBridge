@@ -11,6 +11,8 @@ const passwordEndingMessage = "登录验证未通过（401）。申请正在结�
 const passwordAttentionMessage = "登录验证未通过（401）。申请结束处理需要跟进，请联系服务专员。"
 const verificationReleasedMessage = "登录需要额外验证码，服务费已释放，可再次尝试。"
 const emailVerificationReleasedMessage = "登录需要邮箱验证码，服务费已释放。"
+const mailboxUnavailableMessage = "未获取到可用的邮箱验证码，服务费已释放。"
+const mailboxBlockedMessage = "邮箱接码地址不可访问，服务费已释放。"
 const passwordEmailReleasedMessage = "密码验证后仍需邮箱验证码，服务费已释放。"
 const deactivatedReleasedMessage = "账号已停用，本次未能办理，服务费已释放。"
 
@@ -39,7 +41,7 @@ func sanitizeRefund(r *Refund) {
 // This also protects historical rows written before the private event split.
 func publicProgress(message string) bool {
 	switch message {
-	case passwordFailedMessage, passwordEndingMessage, passwordAttentionMessage, autoReleasedMessage, autoUnconfirmedMessage, verificationReleasedMessage, emailVerificationReleasedMessage, passwordEmailReleasedMessage, deactivatedReleasedMessage:
+	case mailboxUnavailableMessage, mailboxBlockedMessage, passwordFailedMessage, passwordEndingMessage, passwordAttentionMessage, autoReleasedMessage, autoUnconfirmedMessage, verificationReleasedMessage, emailVerificationReleasedMessage, passwordEmailReleasedMessage, deactivatedReleasedMessage:
 		return true
 	case "申请已受理", "开始处理", "处理时间延长，正在继续", "退款服务已完成", "正在继续处理", "申请需要跟进，请联系服务专员。", "本次服务未完成，冻结服务费已释放。", "申请已取消，冻结积分已释放。":
 		return true

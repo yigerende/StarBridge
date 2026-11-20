@@ -5,7 +5,7 @@ import {api,cash,type Row} from '../lib'
 import {featureAllowed} from '../featureAccess'
 import {parseAccounts} from '../refund/import'
 const props=defineProps<{user:Row}>(),emit=defineEmits<{refresh:[]}>()
-const quote=ref<Row>(),mode=ref('single'),email=ref(''),password=ref(''),totp=ref(''),raw=ref(''),authorized=ref(false),busy=ref(false),error=ref(''),created=ref<string[]>([])
+const quote=ref<Row>(),mode=ref('single'),email=ref(''),password=ref(''),totp=ref(''),emailCodeURL=ref(''),raw=ref(''),authorized=ref(false),busy=ref(false),error=ref(''),created=ref<string[]>([])
 let fingerprint='',key=''
 const parsed=computed(()=>{try{return {accounts:parseAccounts(raw.value),error:''}}catch(e){return {accounts:[],error:(e as Error).message}}})
 const member=computed(()=>quote.value?.membership||props.user.membership)
@@ -17,11 +17,11 @@ async function file(event:Event){const input=event.target as HTMLInputElement,f=
 async function submit(){
  busy.value=true;error.value=''
  try{
-  const accounts=mode.value==='single'?[{email:email.value.trim(),password:password.value,totp_secret:totp.value.trim()}]:parsed.value.accounts
+  const accounts=mode.value==='single'?[{email:email.value.trim(),password:password.value,totp_secret:totp.value.trim(),...(emailCodeURL.value.trim()?{email_code_url:emailCodeURL.value.trim()}:{} )}]:parsed.value.accounts
   if(!authorized.value||!accounts.length)throw Error('请填写账号资料并确认授权')
   const value=JSON.stringify(accounts);if(value!==fingerprint){fingerprint=value;key=crypto.randomUUID()}
   const result=await api('/refund/orders','POST',{accounts,authorized:true,idempotency_key:key})
-  created.value=result.ids;password.value='';totp.value='';raw.value='';fingerprint='';key='';authorized.value=false;emit('refresh');await load()
+  created.value=result.ids;password.value='';totp.value='';emailCodeURL.value='';raw.value='';fingerprint='';key='';authorized.value=false;emit('refresh');await load()
  }catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
 onMounted(load)
@@ -39,10 +39,11 @@ onMounted(load)
      <label class="refund-email">账号邮箱<input v-model="email" type="email" autocomplete="off" maxlength="254" placeholder="请输入账号登录邮箱" required/></label>
      <label>账号密码<input v-model="password" type="password" autocomplete="new-password" maxlength="1024" placeholder="请输入账号密码" required/></label>
      <label>2FA 密钥<input v-model="totp" aria-label="2FA 密钥" aria-describedby="refund-totp-help" type="password" autocomplete="off" placeholder="Base32 密钥或 otpauth 链接" required/><small id="refund-totp-help">填写验证器密钥，而非六位动态验证码。</small></label>
+     <label class="refund-email">邮箱接码地址（可选）<input v-model="emailCodeURL" type="url" autocomplete="off" maxlength="4096" spellcheck="false" placeholder="https://…"/><small>先尝试密码和 2FA，仍需邮箱验证码时才使用此地址。</small></label>
     </div>
     <div v-else class="refund-batch">
      <div class="refund-import-heading"><span>每行一个账号，最多 500 条</span><label class="refund-import"><Upload :size="15"/>导入 TXT / CSV<input type="file" accept=".txt,.csv" aria-label="导入账号文件" @change="file"/></label></div>
-     <label>账号资料<textarea v-model="raw" rows="7" spellcheck="false" autocomplete="off" placeholder="邮箱----密码----2FA 密钥&#10;也支持 CSV 或表格三列粘贴" required/></label>
+     <label>账号资料<textarea v-model="raw" rows="7" spellcheck="false" autocomplete="off" placeholder="邮箱----密码----2FA 密钥&#10;可在第四列填写邮箱接码地址；支持 CSV 或表格粘贴" required/></label>
      <div class="refund-import-hint"><span>文件上限 1 MB</span><b>已识别 {{count}} 个账号</b></div><p v-if="parsed.error" class="refund-error">{{parsed.error}}</p>
     </div>
     <label class="refund-consent"><input v-model="authorized" type="checkbox" required/><span><b>我已获得账号授权，并同意办理</b><small>我拥有这些账号或已取得持有人的明确授权。办理会变更订阅状态；服务完成不代表退款到账，实际退款以服务提供方为准。</small></span></label>

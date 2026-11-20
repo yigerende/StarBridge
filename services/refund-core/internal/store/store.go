@@ -164,6 +164,13 @@ func ValidateAccounts(accounts []refundprovider.Account) error {
 		a := &accounts[i]
 		a.Email = strings.ToLower(strings.TrimSpace(a.Email))
 		a.TOTPSecret = strings.TrimSpace(a.TOTPSecret)
+		a.EmailCodeURL = strings.TrimSpace(a.EmailCodeURL)
+		if a.EmailCodeURL != "" {
+			u, e := url.Parse(a.EmailCodeURL)
+			if e != nil || len(a.EmailCodeURL) > 4096 || (u.Scheme != "https" && u.Scheme != "http") || u.Hostname() == "" || u.User != nil || strings.ContainsAny(a.EmailCodeURL, "\r\n\t ") {
+				return fmt.Errorf("第 %d 行邮箱接码地址须为有效的 HTTP 或 HTTPS 链接", i+1)
+			}
+		}
 		addr, err := mail.ParseAddress(a.Email)
 		if err != nil || addr.Address != a.Email || len(a.Email) > 254 {
 			return fmt.Errorf("第 %d 行邮箱格式不正确", i+1)

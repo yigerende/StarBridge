@@ -117,7 +117,7 @@ async def create(request:Request):
     require(set(v)<= ({'accounts','authorized'} if public else {'accounts','authorized','idempotency_key'}),'请求包含不支持的字段')
     accounts=v.get('accounts')
     require(isinstance(accounts,list) and 1<=len(accounts)<=500,'每批须包含 1～500 个账号')
-    require(all(isinstance(a,dict) and set(a)=={'email','password','totp_secret'} and all(isinstance(x,str) for x in a.values()) for a in accounts),'请填写邮箱、密码和 2FA 密钥')
+    require(all(isinstance(a,dict) and {'email','password','totp_secret'}<=set(a)<= {'email','password','totp_secret','email_code_url'} and all(isinstance(x,str) for x in a.values()) for a in accounts),'请填写邮箱、密码和 2FA 密钥，邮箱接码地址为可选项')
     key=request.headers.get('Idempotency-Key') or ('' if public else v.get('idempotency_key',''))
     require(isinstance(key,str) and 8<=len(key)<=128,'请提供 8～128 位 Idempotency-Key')
     user=current(request)

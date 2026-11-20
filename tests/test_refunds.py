@@ -41,6 +41,42 @@ class RefundTests(unittest.TestCase):
     def test_http_wallet_permissions_idempotency_and_parallel_reads(self):
         asyncio.run(self.scenario())
 
+    def test_optional_mailbox_api_legacy_and_new_requests(self):
+        from backend.refund_mother_upstream import open_secret
+        async def scenario():
+            await refunds.start()
+            try:
+                db.execute('UPDATE refund_settings SET accepting=true')
+                headers={'Authorization':'Bearer fixture-api-key-long-enough','Idempotency-Key':'mailbox-http-fixture'}
+                account={'email':'mailbox@fixture.invalid','password':'synthetic','totp_secret':'JBSWY3DPEHPK3PXP',
+                         'email_code_url':'https://mail.example.test/get-code?uid=private-fixture'}
+                value={'authorized':True,'accounts':[account]}
+                async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),base_url='http://testserver') as c:
+                    responses=await asyncio.gather(*(c.post('/api/v1/refund/orders',headers=headers,json=value) for _ in range(20)))
+                    self.assertTrue(all(r.status_code==200 for r in responses),[(r.status_code,r.text) for r in responses if r.status_code!=200])
+                    ids={r.json()['ids'][0] for r in responses};self.assertEqual(len(ids),1);id=ids.pop()
+                    encrypted=db.scalar('SELECT credentials FROM refunds WHERE id=$1',id)
+                    self.assertEqual(open_secret(id,encrypted),account)
+                    for path in ('/api/v1/refund/orders','/api/v1/refund/orders/'+id):
+                        r=await c.get(path,headers=headers);self.assertEqual(r.status_code,200)
+                        self.assertNotIn('private-fixture',r.text);self.assertNotIn('email_code_url',r.text)
+                    self.assertEqual(db.one("SELECT balance,frozen FROM users WHERE id='u'"),{'balance':200000,'frozen':500})
+                    self.assertEqual(db.scalar("SELECT count(*) FROM ledger WHERE business='refund'"),1)
+                    changed={**value,'accounts':[{**account,'email_code_url':'https://mail.example.test/changed'}]}
+                    self.assertEqual((await c.post('/api/v1/refund/orders',headers=headers,json=changed)).status_code,409)
+                    for invalid in (None,7,False,'file:///etc/passwd','https://user:secret@mail.example.test'):
+                        bad={**value,'accounts':[{**account,'email_code_url':invalid}]}
+                        self.assertEqual((await c.post('/api/v1/refund/orders',headers={**headers,'Idempotency-Key':'invalid-url-fixture'},json=bad)).status_code,400)
+                    await c.post('/api/v1/refund/orders/'+id+'/cancel',headers=headers,json={})
+                    legacy={k:v for k,v in account.items() if k!='email_code_url'};legacy['email']='legacy@fixture.invalid'
+                    legacy_headers={**headers,'Idempotency-Key':'legacy-optional-fixture'}
+                    r=await c.post('/api/v1/refund/orders',headers=legacy_headers,json={'authorized':True,'accounts':[legacy]})
+                    self.assertEqual(r.status_code,200,r.text)
+                    r=await c.post('/api/v1/refund/orders',headers=legacy_headers,json={'authorized':True,'accounts':[{**legacy,'email_code_url':''}]})
+                    self.assertEqual(r.status_code,200,r.text);self.assertTrue(r.json()['replayed'])
+            finally:await refunds.stop()
+        asyncio.run(scenario())
+
     def test_real_pagination_global_sort_and_private_resource_pages(self):
         db.execute("INSERT INTO refunds(id,user_id,email,credentials,status,fee,fee_status) SELECT 'rf'||lpad(n::text,4,'0'),'u','refund'||n||'@fixture.invalid',decode('00','hex'),'succeeded',n,'settled' FROM generate_series(1,525)n")
         async def scenario():

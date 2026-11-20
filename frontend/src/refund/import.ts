@@ -2,6 +2,7 @@ export interface Account {
   email: string;
   password: string;
   totp_secret: string;
+  email_code_url?: string;
 }
 // RFC 4180 quoting, including embedded commas, quotes and newlines.
 function csv(text: string, delimiter: string): string[][] {
@@ -74,9 +75,9 @@ export function parseAccounts(input: string): Account[] {
   if (rows.length > 500) throw new Error("每批最多 500 个账号");
   const seen = new Set<string>();
   return rows.map((row, index) => {
-    if (row.length !== 3)
+    if (row.length !== 3 && row.length !== 4)
       throw new Error(
-        `第 ${index + 1} 行需要邮箱、密码、2FA 三列；密码含分隔符时请使用 CSV`,
+        `第 ${index + 1} 行需要邮箱、密码、2FA，可加第四列邮箱接码地址；内容含分隔符时请使用 CSV`,
       );
     const email = row[0].trim().toLowerCase(),
       password = row[1],
@@ -87,6 +88,13 @@ export function parseAccounts(input: string): Account[] {
       throw new Error(`第 ${index + 1} 行密码或 2FA 为空`);
     if (seen.has(email)) throw new Error(`第 ${index + 1} 行账号重复`);
     seen.add(email);
-    return { email, password, totp_secret };
+    const email_code_url = row[3]?.trim();
+    if (email_code_url) {
+      let url: URL;
+      try { url = new URL(email_code_url); } catch { throw new Error(`第 ${index + 1} 行邮箱接码地址无效`); }
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || email_code_url.length > 4096)
+        throw new Error(`第 ${index + 1} 行邮箱接码地址无效`);
+    }
+    return { email, password, totp_secret, ...(email_code_url ? { email_code_url } : {}) };
   });
 }
