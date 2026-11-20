@@ -19,7 +19,7 @@ def renewal_record(id:str):
     return {'task':row,'events':db.all('SELECT status,message,created_at FROM renewal_events WHERE task_id=$1 ORDER BY id',id)}
 
 
-def listing(user,admin=False,search='',business='',state='',start='',end='',page=1,page_size=25,include_admin=True,sort_by='created_at',sort_dir='desc'):
+def listing(user,admin=False,search='',business='',state='',start='',end='',page=1,page_size=25,include_admin=True,sort_by='created_at',sort_dir='desc',customer_messages=False):
     require(len(search)<=200 and business in ('','registration','subscription','refund'),'筛选条件无效')
     require(state in ('','active','completed','partial','attention','failed','cancelled'),'状态筛选无效')
     require(1<=page<=1000000 and 1<=page_size<=500,'分页参数无效')
@@ -75,6 +75,11 @@ def listing(user,admin=False,search='',business='',state='',start='',end='',page
         if admin:
             from .order_stage import attach
             attach(result['items'],q=q)
+        if customer_messages:
+            from .subscription_messages import messages
+            guidance=messages(result['items'],q=q)
+            for row in result['items']:
+                row['message']=guidance.get(row['id'], '') if row['business']=='subscription' else ''
         for row in result['items']:
             row['href']=destination('/admin/orders' if admin else '/orders',row['business'],order_id=row['id']) if admin or flags['orders'] else None
             if row['workflow']=='renewal':row['href']=destination('/renewal',task_id=row['id']) if not admin and flags['renewal'] else None
@@ -96,10 +101,10 @@ def listing(user,admin=False,search='',business='',state='',start='',end='',page
 @router.get('/v1/activity')
 def customer_activity(request:Request,q:str='',business:str='',state:str='',start:str='',end:str='',
                       page:int=Query(1,ge=1,le=1000000),page_size:int=Query(25),sort_by:str='created_at',sort_dir:str='desc'):
-    return listing(current(request),search=q,business=business,state=state,start=start,end=end,page=page,page_size=page_size,sort_by=sort_by,sort_dir=sort_dir)
+    return listing(current(request),search=q,business=business,state=state,start=start,end=end,page=page,page_size=page_size,sort_by=sort_by,sort_dir=sort_dir,customer_messages=not request.url.path.startswith('/api/v1/'))
 
 
 @admin_router.get('/activity')
 def admin_activity(request:Request,q:str='',business:str='',state:str='',start:str='',end:str='',
                    page:int=Query(1,ge=1,le=1000000),page_size:int=Query(25),include_admin:bool=True,sort_by:str='created_at',sort_dir:str='desc'):
-    return listing(current(request),admin=True,search=q,business=business,state=state,start=start,end=end,page=page,page_size=page_size,include_admin=include_admin,sort_by=sort_by,sort_dir=sort_dir)
+    return listing(current(request),admin=True,search=q,business=business,state=state,start=start,end=end,page=page,page_size=page_size,include_admin=include_admin,sort_by=sort_by,sort_dir=sort_dir,customer_messages=True)

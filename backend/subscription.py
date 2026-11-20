@@ -621,6 +621,8 @@ def subscription_detail(id: str, request: Request):
     )
     require(row, '订单不存在', 404)
     events = db.all('SELECT stage,message,created_at FROM order_events WHERE order_id=$1 ORDER BY id', id)
+    from .subscription_messages import messages, project_events
+    project_events(events, messages([dict(row,workflow='subscription')]).get(id, ''), row['status'])
     payment = {}
     if row.get('payment_last4'):
         payment = {

@@ -15,6 +15,7 @@ const stageLabels:Record<string,string>={completed:'已完成',running:'进行�
 <section class="payment-journey" aria-label="办理结果与阶段进度">
  <div class="journey-heading"><div><span class="eyebrow">ORDER RESULT</span><h3>{{journey.result}}</h3></div><span class="journey-duration">全程耗时 · {{journey.total}}</span></div>
  <dl class="journey-summary"><div v-for="item in journey.summary" :key="item.label"><dt>{{item.label}}</dt><dd>{{item.value}}</dd></div></dl>
+ <p v-if="payment?.message && (['failed','review'].includes(order.status)||order.activation==='review'||order.renewal==='review')" class="journey-attention" role="status"><AlertTriangle :size="16"/>{{payment.message}}</p>
  <p v-if="order.queue_message" class="journey-attention"><AlertTriangle :size="16"/>{{order.queue_message}}</p>
  <p v-if="journey.renewalNotice" class="journey-attention"><Clock3 :size="16"/>{{journey.renewalNotice}}</p><p v-else-if="journey.attention" class="journey-attention"><AlertTriangle :size="16"/>需要处理：{{journey.attention}}。具体原因与建议见下方展开内容。</p>
  <div class="journey-section-heading"><h4>办理阶段</h4><span>同一阶段合并展示 · {{journey.rounds?journey.rounds+' 轮执行':'轮次未记录'}}</span></div>

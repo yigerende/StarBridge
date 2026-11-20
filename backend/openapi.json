@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "星桥 API",
-    "version": "2.9.0",
+    "version": "2.9.1",
     "description": "使用同一个 API 密钥查询账户、订阅套餐、代退报价和积分钱包，提交申请并跟踪办理结果。当前可用功能见 GET /api/v1/me 的 features；重置登录密码后需重新创建 API 密钥。 请求按来源 IP 限流，同一出口的账号和密钥共用请求额度；注册、订阅和代退共用下单限额。429 按 Retry-After 等待，重试仍使用原幂等键。"
   },
   "servers": [
@@ -2447,7 +2447,7 @@
       "get": {
         "operationId": "get_order",
         "summary": "查询订单详情",
-        "description": "读取订单、进度、结账地址和付款结果。付款成功后须分别检查订阅生效和自动续费状态。 已删除的订单不再返回；原请求标识仍不可用于新订单。",
+        "description": "读取订单、进度、结账地址和付款结果。付款成功后须分别检查订阅生效和自动续费状态。 已删除的订单不再返回；原请求标识仍不可用于新订单。 Session 失效等办理失败仍通过 HTTP 200 返回订单结果，具体原因见 payment.message 和 events[].message，不是星桥 API 鉴权 HTTP 401。只有已失败、提示明确未提交付款且 fee_state=released 时，才获取新的完整 Session 并用新的 Idempotency-Key 重新提交；付款成功或结果待核实时请处理原订单，不要重复下单或付款。请求结果未知时重试须保留原参数和原幂等键。",
         "security": [
           {
             "BearerKey": []
@@ -6036,7 +6036,7 @@
           },
           "message": {
             "type": "string",
-            "description": "付款结果说明。"
+            "description": "办理说明，供用户阅读。Session 无法刷新、缺少会话 Cookie 或账号不一致时会给出处理提示。付款成功后即使后续失败也不要重新付款。程序按 status、state、fee_state 判断，不匹配提示文字。"
           }
         }
       },
@@ -6311,7 +6311,7 @@
           },
           "message": {
             "type": "string",
-            "description": "付款结果说明。"
+            "description": "办理说明，供用户阅读。Session 无法刷新、缺少会话 Cookie 或账号不一致时会给出处理提示。付款成功后即使后续失败也不要重新付款。程序按 status、state、fee_state 判断，不匹配提示文字。"
           },
           "charged_amount": {
             "type": [

@@ -107,6 +107,12 @@ onMounted(async()=>{try{spec.value=await api('/openapi.json');await nextTick();i
         <tr><td>代退服务完成</td><td><code>order.status = succeeded</code>，<code>order.fee_status = settled</code>；服务完成不表示银行退款已到账。</td></tr>
       </tbody></table></div><p>订阅付款为 <code>checking</code> 时继续查询原单，冻结积分保留，不要再次付款。付款成功后，生效或续费仍为 pending/retrying 时继续查询；review 时联系支持核实原订单。付款成功且 <code>activation=active</code> 表示订阅已生效；此时 <code>renewal=review</code> 只表示续费待确认，不影响本次订阅，不要重新付款。</p>
     </section>
+    <section id="session-errors" class="panel docs-section"><h2>Session 失效时如何处理</h2>
+      <p>订单查询中的 <code>payment.message</code> 和 <code>events[].message</code> 会说明 Session 无法刷新、缺少会话 Cookie 或办理账号不一致等问题。Session 内的到期时间尚未到，不代表它仍能使用；请重新登录目标账号，获取新的完整 Session。</p>
+      <p>仅当订单已失败、提示明确说明“本单未提交付款”，且 <code>payment.fee_state = released</code> 时，才使用新 Session 和新的 <code>Idempotency-Key</code> 提交新订单。请求超时或结果不明时，继续查询原订单；重试原请求使用原参数和原键。</p>
+      <p>付款已成功时，即使 Session 刷新或后续核实失败，也不要重新下单或付款，请联系客服处理原订单。付款为 <code>checking / review</code> 时同样不要新建订单。</p>
+      <p>上游 Session 失效不会让订单查询返回 HTTP 401。查询成功仍返回 HTTP 200，请读取订单状态和提示；星桥返回 HTTP 401 表示 API 密钥或星桥登录状态需要检查。提示文字供用户阅读，程序判断请使用状态字段。</p>
+    </section>
     <section v-for="x in operations" :key="x.id" :id="x.id" class="panel docs-section">
       <div class="endpoint"><b :class="x.method">{{x.method.toUpperCase()}}</b><code>{{x.path}}</code></div>
       <h2>{{x.op.summary}}</h2><p>{{x.op.description}}</p>

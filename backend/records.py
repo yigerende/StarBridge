@@ -7,7 +7,7 @@ from .membership import membership_for,fee_for,fee_source,membership_eligible
 from .product_ids import public_id, public_order
 from .product_availability import visible_products
 from .runtime import order_workflows, queue_message, worker_mode
-from . import payment_trace, order_timing
+from . import payment_trace, order_timing, subscription_messages
 from .features import capabilities, project_user
 from .email_auth import security_config, mail_ready
 from .branding import public_site
@@ -20,8 +20,9 @@ ORDER_FIELDS='o.id,o.product_id,o.product_name,o.email,o.country,o.seats,o.statu
 ANN="SELECT id,title,body,tone FROM announcements WHERE published AND (starts_at IS NULL OR starts_at<=now()) AND (ends_at IS NULL OR ends_at>now())"
 
 
-def _order_history(id, technical=False):
+def _order_history(id, technical=False, message="", status=""):
     events=db.all('SELECT id,stage,message,created_at FROM order_events WHERE order_id=$1 ORDER BY id',id)
+    subscription_messages.project_events(events, message, status)
     labels={'admin_closed':'管理员关闭订单','network_retry':'等待网络重试','checkout_reused':'复用原结账链接','payment_review':'付款结果待核实','queued':'排队受理','processing':'开始办理','network_check':'检查代理出口',
             'network_verified':'记录代理出口','checkout_retry':'等待初始化重试','checkout':'生成结账链接','checkout_done':'结账链接已生成',
             'awaiting_payment':'等待用户付款','payment':'开始付款','confirming':'提交付款确认',
@@ -151,6 +152,7 @@ def order_detail(id:str,request:Request):
     require(row,'订单不存在',404)
     row['progress_stage'] = _progress_stage(id)
     if row['status']=='queued':row['queue_message']=queue_message(row.get('workflow'))
+    message=subscription_messages.messages([row]).get(id, '')
     payment={};checkout={}
     if row.get('workflow') in ('subscription','link'):
         sr=db.one('SELECT payment_last4,payment_amount,payment_currency,paid_at,checkout_session_id,checkout_url_enc FROM subscription_runs WHERE order_id=$1',id)
@@ -165,9 +167,9 @@ def order_detail(id:str,request:Request):
                 fee_state='released'
                 if row['status']=='succeeded':fee_state='charged'
                 elif row['status'] in ('queued','processing','review'):fee_state='held'
-                payment={'state':_payment_state(row),'last4':sr.get('payment_last4') or '','amount':sr.get('payment_amount'),'currency':sr.get('payment_currency') or '','fee_state':fee_state,'charged_amount':sr.get('payment_amount') if sr.get('payment_last4') else None,'charged_currency':sr.get('payment_currency') or '','message':_payment_message(row),'enabled':False}
+                payment={'state':_payment_state(row),'last4':sr.get('payment_last4') or '','amount':sr.get('payment_amount'),'currency':sr.get('payment_currency') or '','fee_state':fee_state,'charged_amount':sr.get('payment_amount') if sr.get('payment_last4') else None,'charged_currency':sr.get('payment_currency') or '','message':message or _payment_message(row),'enabled':False}
     public_order(row,request)
-    return {'order':row,**_order_history(id),'checkout':checkout,'payment':payment}
+    return {'order':row,**_order_history(id,message=message,status=row["status"]),'checkout':checkout,'payment':payment}
 
 
 def _payment_state(row):
@@ -193,11 +195,12 @@ def _payment_message(row):
     if s=='failed':return '办理未完成，服务费已解冻。'
     if s=='cancelled':return '订单已关闭，冻结服务费已释放。'
     if s=='queued':return '已排队，等待处理。'
-    if s=='review':return '付款结果尚未确认，已停止重复提交，请核实结果。'
+    if s=='review':return '付款结果尚未确认，已暂停办理。请联系客服协助处理，不要重复提交订单或付款。'
     return ''
 
 
 def _attach_list_payments(rows):
+    guidance=subscription_messages.messages(rows)
     ids=[r['id'] for r in rows if r.get('workflow')=='subscription']
     saved={r['order_id']:r for r in db.all('SELECT order_id,payment_last4,payment_amount,payment_currency FROM subscription_runs WHERE order_id=ANY($1)',ids)} if ids else {}
     checking={r['order_id'] for r in db.all("SELECT order_id FROM subscription_recoveries WHERE order_id=ANY($1) AND stage='payment' AND state IN ('armed','queued','running')",ids)} if ids else set()
@@ -207,7 +210,7 @@ def _attach_list_payments(rows):
         fee_state='charged' if row['status']=='succeeded' else 'held' if row['status'] in ('queued','processing','review') else 'released'
         sr=saved.get(row['id'],{})
         message='正在持续核实原交易，尚未确认付款结果；请勿重复付款。' if state=='checking' else '正在办理中，请稍候。' if row['status']=='processing' else _payment_message(row)
-        row['payment']={'state':state,'last4':sr.get('payment_last4') or '','amount':sr.get('payment_amount'),'currency':sr.get('payment_currency') or '','fee_state':fee_state,'message':message}
+        row['payment']={'state':state,'last4':sr.get('payment_last4') or '','amount':sr.get('payment_amount'),'currency':sr.get('payment_currency') or '','fee_state':fee_state,'message':guidance.get(row['id']) or message}
 
 
 def _order_list_payment(row):
@@ -283,6 +286,7 @@ def admin_detail(id:str):
     require(row,'订单不存在',404)
     row['progress_stage'] = _progress_stage(id)
     if row['status']=='queued':row['queue_message']=queue_message(row.get('workflow'))
+    message=subscription_messages.messages([row]).get(id, '')
     payment={};checkout={};billing={'state':'not_selected'};checkout_links=[]
     if row.get('workflow') in ('subscription','link'):
         sr=db.one('SELECT payment_last4,payment_amount,payment_currency,paid_at,checkout_session_id,checkout_url_enc,billing_snapshot FROM subscription_runs WHERE order_id=$1',id)
@@ -296,14 +300,14 @@ def admin_detail(id:str):
                 fee_state='released'
                 if row['status']=='succeeded':fee_state='charged'
                 elif row['status'] in ('queued','processing','review'):fee_state='held'
-                payment={'state':_payment_state(row),'last4':sr.get('payment_last4') or '','amount':sr.get('payment_amount'),'currency':sr.get('payment_currency') or '','fee_state':fee_state,'charged_amount':sr.get('payment_amount') if sr.get('payment_last4') else None,'charged_currency':sr.get('payment_currency') or '','message':_payment_message(row),'enabled':False}
+                payment={'state':_payment_state(row),'last4':sr.get('payment_last4') or '','amount':sr.get('payment_amount'),'currency':sr.get('payment_currency') or '','fee_state':fee_state,'charged_amount':sr.get('payment_amount') if sr.get('payment_last4') else None,'charged_currency':sr.get('payment_currency') or '','message':message or _payment_message(row),'enabled':False}
             if sr.get('billing_snapshot'):
                 billing=_billing_details(sr['billing_snapshot'])
             checkout_links=_saved_checkout_links(id,sr,checkout)
     closures=db.all('SELECT c.reason,c.prior_status,c.prior_payment_state,c.payment_submitted,c.created_at,u.email AS actor FROM order_closures c JOIN users u ON u.id=c.actor_id WHERE c.order_id=$1 ORDER BY c.created_at',id)
     if closures and payment:payment['error_code']='admin_closed'
     from .country_pool import order_metadata
-    return {'proxy':order_metadata(id),'closures':closures,'order':row,**_order_history(id,technical=True),'checkout':checkout,'checkout_links':checkout_links,'payment':payment,'billing':billing,'ledger':db.all('SELECT kind,amount,balance_after,frozen_after,description,created_at FROM ledger WHERE order_id=$1 ORDER BY id',id)}
+    return {'proxy':order_metadata(id),'closures':closures,'order':row,**_order_history(id,technical=True,message=message,status=row["status"]),'checkout':checkout,'checkout_links':checkout_links,'payment':payment,'billing':billing,'ledger':db.all('SELECT kind,amount,balance_after,frozen_after,description,created_at FROM ledger WHERE order_id=$1 ORDER BY id',id)}
 
 
 @admin_router.patch('/orders/{id}')
