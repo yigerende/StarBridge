@@ -1,4 +1,5 @@
 import {ref,reactive} from 'vue'
+import {readApiResponse} from './apiResponse'
 import {subscriptionConfirmed} from './subscriptionStatus.ts'
 export type Row=Record<string,any>
 export const subscriptionRegions=reactive<Row[]>([])
@@ -7,7 +8,7 @@ export const regionLabel=(code:string)=>{const r=subscriptionRegions.find(r=>r.c
 export const toast=ref('')
 let timer:ReturnType<typeof setTimeout>
 export function notify(message:string){toast.value=message;clearTimeout(timer);timer=setTimeout(()=>toast.value='',5000)}
-export async function api(path:string,method='GET',body?:unknown,headers:Record<string,string>={},signal?:AbortSignal){const r=await fetch('/api'+path,{method,credentials:'same-origin',headers:{'Content-Type':'application/json',...headers},body:body===undefined?undefined:JSON.stringify(body),signal});const v=await r.json();if(!r.ok)throw new Error(v.error||'请求未完成');return v}
+export async function api(path:string,method='GET',body?:unknown,headers:Record<string,string>={},signal?:AbortSignal){const r=await fetch('/api'+path,{method,credentials:'same-origin',headers:{'Content-Type':'application/json',...headers},body:body===undefined?undefined:JSON.stringify(body),signal});return readApiResponse(r)}
 export async function action(fn:()=>Promise<void>){try{await fn()}catch(e){notify((e as Error).message)}}
 export const money=(v:any)=>Number(v||0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2})
 export const cash=(v:any)=>money(Number(v||0)/100)

@@ -28,7 +28,7 @@ test('mother resources, credentials, members and inline controls',async()=>{
   if(p==='/api/admin/refund/settings')json=resources
   if(p==='/api/admin/refund/resources/mothers')json=paging([mother],url)
   if(p==='/api/admin/refund/resources/proxies')json=paging(resources.proxies,url)
-  if(p==='/api/admin/refund/mother-management/summary')json={items:[summary]}
+  if(p==='/api/admin/refund/mother-management/summary')json={items:[{...summary,enabled:mother.enabled}]}
   if(p==='/api/admin/refund/mother-management/settings'){if(body)Object.assign(settings,body);json=settings}
   if(p==='/api/admin/refund/mother-management/mother/resource'&&body){Object.assign(mother,body);json={ok:true}}
   if(p.endsWith('/mother/credentials'))json={access_token:'fixture-private-access',refresh_token:'fixture-private-refresh',expires_at:mother.token_expires_at}
@@ -67,8 +67,9 @@ test('mother resources, credentials, members and inline controls',async()=>{
   await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click()
   await section.getByRole('button',{name:'刷新全部席位',exact:true}).click()
   await section.getByRole('button',{name:'刷新全部套餐',exact:true}).click()
-  assert.equal(calls.filter(([m,p])=>p.endsWith('/mother/capacity')).length,1)
-  assert.equal(calls.filter(([m,p])=>p.endsWith('/mother/plan')).length,1)
+  await section.getByText('套餐刷新完成：成功 0，失败 0，跳过 1 个已停用母号。',{exact:true}).waitFor()
+  assert.equal(calls.filter(([m,p])=>p.endsWith('/mother/capacity')).length,0)
+  assert.equal(calls.filter(([m,p])=>p.endsWith('/mother/plan')).length,0)
   await section.getByRole('button',{name:'取消自动续费',exact:true}).click()
   dialog=page.getByRole('dialog')
   await dialog.getByRole('heading',{name:'已开启',exact:true}).waitFor()

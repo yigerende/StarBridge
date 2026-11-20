@@ -121,6 +121,53 @@ class MotherTests(unittest.TestCase):
             self.assertEqual(self.client.get(path+'&page=2').json()['items'][0]['id'],'second')
         self.assertEqual(self.client.get('/api/admin/refund/seat-recovery/tasks').status_code,404)
 
+    def test_batch_skips_disabled_before_proxy_or_upstream_and_keeps_snapshot(self):
+        self.client.post(self.root+'/mother/capacity', json={})
+        original = db.scalar("SELECT management_json FROM refund_mothers WHERE id='mother'")
+        db.execute("UPDATE refund_mothers SET enabled=false,token_expires_at=now()-interval '1 day'")
+        db.execute("UPDATE refund_proxies SET enabled=false")
+        self.assertFalse(self.client.get(self.root+'/summary').json()['items'][0]['enabled'])
+        with patch.object(mothers, 'TeamClient') as upstream:
+            for kind in ('capacity', 'plan'):
+                path = self.root+'/mother/'+kind+'?active_only=true'
+                response = self.client.post(path, json={})
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(response.json(), {'skipped': True, 'reason': 'disabled'})
+                self.assertEqual(self.user.post(path, json={}).status_code, 403)
+                self.assertEqual(TestClient(app).post(path, json={}).status_code, 401)
+            upstream.assert_not_called()
+        self.assertEqual(db.scalar("SELECT management_json FROM refund_mothers WHERE id='mother'"), original)
+        self.assertEqual(db.scalar('SELECT count(*) FROM ledger'), 0)
+
+    def test_expired_and_rejected_credentials_report_resource_error_without_refresh(self):
+        original = db.one("SELECT secret,refresh_secret,management_json FROM refund_mothers WHERE id='mother'")
+        db.execute("UPDATE refund_mothers SET token_expires_at=now()-interval '1 second'")
+        for kind in ('capacity', 'plan'):
+            with patch.object(FakeClient, kind) as upstream:
+                response = self.client.post(self.root+'/mother/'+kind+'?active_only=true', json={})
+                self.assertEqual(response.status_code, 400, response.text)
+                self.assertIn('母号凭据已过期', response.json()['error'])
+                upstream.assert_not_called()
+        db.execute("UPDATE refund_mothers SET token_expires_at=now()+interval '1 hour'")
+        for kind in ('capacity', 'plan'):
+            with patch.object(FakeClient, kind, side_effect=UpstreamError('unauthorized', 401)) as upstream:
+                response = self.client.post(self.root+'/mother/'+kind, json={})
+                self.assertEqual(response.status_code, 400, response.text)
+                self.assertIn('母号凭据已失效', response.json()['error'])
+                self.assertEqual(upstream.call_count, 1)
+        self.assertEqual(FakeClient.refreshes, 0)
+        self.assertEqual(db.one("SELECT secret,refresh_secret,management_json FROM refund_mothers WHERE id='mother'"), original)
+
+    def test_enabled_batch_and_explicit_disabled_query_still_work(self):
+        for enabled in (True, False):
+            db.execute("UPDATE refund_mothers SET enabled=$1", enabled)
+            for kind in ('capacity', 'plan'):
+                path = self.root+'/mother/'+kind+('?active_only=true' if enabled else '')
+                response = self.client.post(path, json={})
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertIn('checked_at', response.json())
+        self.assertFalse(db.scalar("SELECT enabled FROM refund_mothers WHERE id='mother'"))
+
     def test_inline_resource_changes_are_scoped_and_keep_busy_credentials(self):
         path=self.root+'/mother/resource'
         self.assertEqual(self.user.patch(path,json={'enabled':False}).status_code,403)

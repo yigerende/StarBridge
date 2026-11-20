@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, Request
 
 from . import db
-from .common import administrator, audit, body, config, encrypt, decrypt, now, require, uid, email_valid, parsedate
+from .common import administrator, audit, body, config, encrypt, decrypt, now, require, uid, email_valid, parsedate, BusinessError
 from .listing import page_rows
 from .refund_mother_upstream import TeamClient, UpstreamError, identity, open_secret, seal_secret
 
@@ -120,8 +120,11 @@ def mother_client(id, force_refresh=False, child_email=''):
 
 
 @contextmanager
-def readonly_client(id):
+def readonly_client(id, *, active_only=False):
     mother = mother_row(id)
+    if active_only and not mother['enabled']:
+        yield mother, None
+        return
     # Reading a roster never reserves a team or changes credentials in use.
     client = TeamClient(open_secret('mother:' + id, mother['secret']), mother['team_id'], proxy_url(mother['proxy_id']))
     try:
@@ -154,7 +157,7 @@ async def put_settings(request: Request):
 
 @router.get('/summary')
 def summary():
-    rows = db.all("""SELECT m.id,m.name,m.email,m.team_id,m.management_json management_json,m.last_refreshed_at,m.check_json,
+    rows = db.all("""SELECT m.id,m.name,m.email,m.team_id,m.enabled,m.management_json management_json,m.last_refreshed_at,m.check_json,
       count(e.refund_id)::int AS handled,count(e.refund_id) FILTER(WHERE r.status='succeeded')::int AS completed,
       COALESCE(sum(r.fee) FILTER(WHERE r.fee_status='settled'),0)::bigint AS settled
       FROM refund_mothers m LEFT JOIN refund_execution e ON e.mother_id=m.id LEFT JOIN refunds r ON r.id=e.refund_id
@@ -210,9 +213,18 @@ def refresh(id: str, request: Request):
     return {'ok': True, 'expires_at': mother['token_expires_at'], 'last_refreshed_at': mother['last_refreshed_at']}
 
 
-def read_snapshot(id, kind):
-    with readonly_client(id) as (mother, client):
-        result = client.capacity() if kind == 'capacity' else client.plan()
+def read_snapshot(id, kind, active_only=False):
+    with readonly_client(id, active_only=active_only) as (mother, client):
+        if client is None:
+            return {'skipped': True, 'reason': 'disabled'}
+        require(not mother['token_expires_at'] or mother['token_expires_at'] > now(),
+                '母号凭据已过期，请更新 Session / AT 后重试')
+        try:
+            result = client.capacity() if kind == 'capacity' else client.plan()
+        except UpstreamError as e:
+            if e.http_status == 401:
+                raise BusinessError('母号凭据已失效，请更新 Session / AT 后重试') from None
+            raise
         if kind == 'plan':
             require(result['email'] == mother['email'].lower(), '上游账号身份不匹配', 502)
         db.execute('UPDATE refund_mothers SET management_json=management_json||$2::jsonb WHERE id=$1 AND secret=$3',
@@ -221,13 +233,13 @@ def read_snapshot(id, kind):
 
 
 @router.post('/{id}/capacity')
-def capacity(id: str):
-    return read_snapshot(id, 'capacity')
+def capacity(id: str, active_only: bool = False):
+    return read_snapshot(id, 'capacity', active_only)
 
 
 @router.post('/{id}/plan')
-def plan(id: str):
-    return read_snapshot(id, 'plan')
+def plan(id: str, active_only: bool = False):
+    return read_snapshot(id, 'plan', active_only)
 
 
 @router.post('/{id}/renewal/check')

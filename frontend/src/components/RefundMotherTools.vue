@@ -9,15 +9,31 @@ import RefundMotherRenewal from './RefundMotherRenewal.vue'
 const props=defineProps<{selected:Row|null;initialTab?:string}>(),emit=defineEmits<{close:[];snapshot:[Row];changed:[]}>()
 const root='/admin/refund/mother-management',items=ref<Row[]>([]),settings=ref<Row>({auto_refresh:true}),busy=ref(false),error=ref(''),tab=ref('details'),credentials=ref<Row|null>(null),pending=ref<Row|null>(null),session=ref('')
 const q=ref(''),seat=ref(''),state=ref('')
+const refreshResult=ref('')
 const list=useRemoteList('refund-mother-members',()=>props.selected&&tab.value==='members'?`${root}/${props.selected.id}/members`:'',{q,seat_type:seat,status:state},{sortBy:'email',sortDir:'asc'})
 const {rows,page,size,sortBy,sortDir,data,loading,error:listError}=list
 const selectedInfo=computed(()=>items.value.find(r=>r.id===props.selected?.id))
 const seatEstimate=computed(()=>{const end=Date.parse(selectedInfo.value?.management_json?.plan?.expires_at||'');return Number.isFinite(end)?(125/30*Math.max(0,Math.floor((end+28800000)/86400000)-Math.floor((Date.now()+28800000)/86400000))).toFixed(2):'—'})
-const metrics=computed(()=>{const v={standard:0,premium:0,standardTotal:0,premiumTotal:0,held:0,loaded:0,completed:0};for(const r of items.value){const c=r.management_json?.capacity;v.completed+=r.completed||0;if(c){v.loaded++;v.standard+=c.standard.remaining;v.premium+=c.premium.remaining;v.standardTotal+=c.standard.total;v.premiumTotal+=c.premium.total;v.held+=c.premium.held}}return v})
+const metrics=computed(()=>{const v={standard:0,premium:0,standardTotal:0,premiumTotal:0,held:0,loaded:0,enabled:0,completed:0};for(const r of items.value){v.completed+=r.completed||0;if(!r.enabled)continue;v.enabled++;const c=r.management_json?.capacity;if(c){v.loaded++;v.standard+=c.standard.remaining;v.premium+=c.premium.remaining;v.standardTotal+=c.standard.total;v.premiumTotal+=c.premium.total;v.held+=c.premium.held}}return v})
 async function load(){const d=await api(root+'/summary');items.value=d.items;emit('snapshot',Object.fromEntries(d.items.map((r:Row)=>[r.id,r])))}
 async function renewalChanged(){try{await load();emit('changed')}catch(e){error.value=(e as Error).message}}
 async function perform(fn:()=>Promise<void>){busy.value=true;error.value='';try{await fn()}catch(e){error.value=(e as Error).message}finally{busy.value=false}}
-async function refresh(kind:string,id?:string){await perform(async()=>{const failures:string[]=[];for(const r of id?[{id,name:props.selected?.name}]:items.value){try{await api(`${root}/${r.id}/${kind}`,'POST',{})}catch(e){failures.push(`${r.name}：${(e as Error).message}`)}}await load();emit('changed');if(failures.length)error.value=failures.join('；')})}
+async function refresh(kind:string,id?:string){
+ refreshResult.value=''
+ await perform(async()=>{
+  // Reload first so a recently disabled resource is not included in the batch.
+  if(!id)await load()
+  const failures:string[]=[],targets=id?[{id,name:props.selected?.name}]:items.value.filter(r=>r.enabled)
+  let succeeded=0,skipped=id?0:items.value.length-targets.length
+  for(const r of targets){
+   try{const result=await api(`${root}/${r.id}/${kind}${id?'':'?active_only=true'}`,'POST',{});if(result.skipped)skipped++;else succeeded++}
+   catch(e){failures.push(`${r.name}：${(e as Error).message}`)}
+  }
+  if(!id)refreshResult.value=`${kind==='capacity'?'席位':'套餐'}刷新完成：成功 ${succeeded}，失败 ${failures.length}，跳过 ${skipped} 个已停用母号。`
+  error.value=failures.join('；')
+  await load();emit('changed')
+ })
+}
 async function reveal(){const id=props.selected?.id;tab.value='credentials';await perform(async()=>{const value=await api(`${root}/${id}/credentials`);if(props.selected?.id===id&&tab.value==='credentials')credentials.value=value})}
 async function saveSettings(){await perform(async()=>{settings.value=await api(root+'/settings','PUT',settings.value)})}
 async function saveChild(){await perform(async()=>{await api(root+'/children','POST',{session:session.value});session.value='';await list.load()})}
@@ -31,7 +47,8 @@ defineExpose({load})
 <template>
  <div class="mother-tools">
   <div class="mother-metrics"><article><span>普通席位剩余</span><strong>{{metrics.loaded?metrics.standard:'—'}}<small> / {{metrics.loaded?metrics.standardTotal:'—'}}</small></strong></article><article><span>高级席位剩余</span><strong>{{metrics.loaded?metrics.premium:'—'}}<small> / {{metrics.loaded?metrics.premiumTotal:'—'}}</small></strong></article><article><span>高级临停席位</span><strong>{{metrics.loaded?metrics.held:'—'}}</strong></article><article><span>累计完成代退</span><strong>{{metrics.completed}}<small> 笔</small></strong></article></div>
-  <div class="mother-toolbar"><small>席位为上次查询快照 · 已查询 {{metrics.loaded}} / {{items.length}} 个母号</small><button class="btn secondary" :disabled="busy||!items.length" @click="refresh('capacity')">刷新全部席位</button><button class="btn secondary" :disabled="busy||!items.length" @click="refresh('plan')">刷新全部套餐</button><label class="checkbox-label"><input v-model="settings.auto_refresh" type="checkbox" :disabled="busy" @change="saveSettings"/>空闲时自动刷新即将过期的 AT</label></div>
+  <div class="mother-toolbar"><small>已启用母号席位快照 · 已查询 {{metrics.loaded}} / {{metrics.enabled}} · 已停用 {{items.length-metrics.enabled}} 个</small><button class="btn secondary" :disabled="busy||!items.length" @click="refresh('capacity')">刷新全部席位</button><button class="btn secondary" :disabled="busy||!items.length" @click="refresh('plan')">刷新全部套餐</button><label class="checkbox-label"><input v-model="settings.auto_refresh" type="checkbox" :disabled="busy" @change="saveSettings"/>空闲时自动刷新即将过期的 AT</label></div>
+  <p v-if="refreshResult" class="muted" role="status">{{refreshResult}}</p>
   <p v-if="error&&!selected" class="alert danger" role="alert">{{error}}</p>
  </div>
  <Modal v-if="selected" :title="selected.name+' · 母号管理'" wide :busy="busy" @close="!busy&&emit('close')">
