@@ -7,6 +7,7 @@ uses an acknowledged checkpoint; the asynchronous diagnostic queue stays passive
 import json
 from pathlib import Path
 import runpy
+import secrets
 import sys
 
 RUNTIME = Path(__file__).resolve().parents[1] / "runtime"
@@ -47,9 +48,78 @@ class ChildProxyBoundary:
         self.send = checkpoint
         self.failure = None
         self.original_evidence = diagnostics.exception_evidence
+        self.in_login = False
+        self.login_failure = None
+        self.login_error = None
+
+    def login_factory(self, factory, job_id, payload):
+        # The original runtime controls whether/when another local attempt exists.
+        # Persist its new session before constructing that attempt's HTTP client.
+        if self.login_failure is not None:
+            vendor = self.job.get("child_proxy_vendor")
+            previous = self.job.get("child_proxy_session_ref")
+            prefix = {"iproyal": "_session-", "cliproxy": "-sid-",
+                      "1024proxy": "-sid-", "711proxy": "-session-"}.get(vendor)
+            if prefix and previous:
+                next_ref = previous
+                while next_ref == previous:
+                    next_ref = f"{secrets.randbelow(100000000):08d}" if vendor == "711proxy" else secrets.token_hex(4)
+                old = prefix + previous
+                if self.job["child_proxy"].count(old) != 1:
+                    raise EndChildAttempt({"code": "protocol_failed"})
+                endpoint = self.job["child_proxy"].replace(old, prefix + next_ref, 1)
+                try:
+                    self.send("child_login_session_retry", {
+                        "diagnostic": self.login_failure,
+                        "child_proxy_previous_ref": previous, "child_proxy_next_ref": next_ref,
+                    })
+                except BaseException:
+                    # Never use the previous endpoint after a possibly committed renewal.
+                    raise EndChildAttempt({"code": "protocol_failed"}) from None
+                self.job["child_proxy"], self.job["child_proxy_session_ref"] = endpoint, next_ref
+                payload["proxy"] = endpoint
+            self.login_failure = self.login_error = None
+        flow = factory(job_id, payload)
+        original_login = flow.login
+
+        def login():
+            self.in_login = True
+            try:
+                return original_login()
+            except Exception as exc:
+                detail = self.original_evidence(exc, diagnostics.stage(getattr(flow, "last_stage", "")), flow=flow)
+                evidence = detail["evidence"]
+                first = getattr(flow, "first_failed_request", None)
+                first = first if isinstance(first, dict) else {}
+                # Explicit access challenges/account errors are not proxy-session faults.
+                challenge = bool(first.get("body_markers")) or (first.get("headers") or {}).get("cf-mitigated") == "challenge"
+                typed403 = isinstance(exc, core.upstream.LoginFlowError) and exc.status == 403 and exc.retryable
+                proxy403 = evidence.get("proxy_http_status") == 403
+                if (typed403 or proxy403) and not challenge and evidence.get("reason") in {
+                    "unknown_error", "network_error", "chatgpt_signin_failed"
+                } and evidence.get("stage") in {
+                    "login", "csrf", "signin", "authorize", "identifier", "auth_session_read",
+                    "password", "mfa_challenge", "mfa_verify", "workspace", "callback", "session"
+                }:
+                    self.login_failure = {"code": "login_proxy_session_failed", "retryable": True, **detail}
+                    self.login_error = core.upstream.LoginFlowError(
+                        "Login proxy session unavailable", code="login_proxy_session_failed", status=403, retryable=True)
+                    raise self.login_error from None
+                raise
+            finally:
+                self.in_login = False
+
+        flow.login = login
+        return flow
 
     def evidence(self, exc, operation, side="child", flow=None):
+        if exc is self.login_error and self.login_failure is not None:
+            return {k: v for k, v in self.login_failure.items() if k not in {"code", "retryable"}}
         detail = self.original_evidence(exc, operation, side, flow)
+        if self.in_login and side == "child" and detail["evidence"].get("proxy_http_status") == 403:
+            # Let the login wrapper request same-provider session renewal; this
+            # response must not trigger the global network-cooldown boundary.
+            return detail
         if not child_network_failure(detail):
             return detail
         if self.failure is None:
@@ -93,7 +163,13 @@ def execute(job, checkpoint=core.rpc, **kwargs):
     boundary = ChildProxyBoundary(job, checkpoint)
     diagnostics.exception_evidence = boundary.evidence
     try:
-        return core.execute(job, checkpoint=boundary.checkpoint, **kwargs)
+        if job.get("recovery_mode", "") in {"", "retry"} and job.get("step") in {"assigned", "inviting", "invited", "login", "ready"}:
+            factory = kwargs.pop("login_factory", core.CustomerLogin)
+            kwargs["login_factory"] = lambda *args: boundary.login_factory(factory, *args)
+        result = core.execute(job, checkpoint=boundary.checkpoint, **kwargs)
+        if boundary.login_failure is not None and result.get("code") == "login_failed":
+            result.update(boundary.login_failure)
+        return result
     except EndChildAttempt as exc:
         return {"ok": False, **exc.diagnostic}
     finally:

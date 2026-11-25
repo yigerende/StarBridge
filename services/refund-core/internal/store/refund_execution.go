@@ -14,25 +14,27 @@ import (
 )
 
 type RefundJob struct {
-	ProxyAttemptStarted time.Time               `json:"-"`
-	VerificationOnly    bool                    `json:"verification_only"`
-	TerminalCode        string                  `json:"terminal_code,omitempty"`
-	FallbackPhase       string                  `json:"fallback_phase"`
-	DiagnosticContext   RefundDiagnosticContext `json:"-"`
-	MotherFingerprint   string                  `json:"-"`
-	MotherAttemptKey    string                  `json:"-"`
-	RecoveryMode        string                  `json:"recovery_mode"`
-	PersonalBaseline    *PersonalSnapshot       `json:"personal_baseline"`
-	ID                  string                  `json:"id"`
-	UserID              string                  `json:"-"`
-	LeaseToken          string                  `json:"-"`
-	Step                string                  `json:"step"`
-	ChildUserID         string                  `json:"child_user_id"`
-	Account             refundprovider.Account  `json:"account"`
-	Mother              RefundMother            `json:"mother"`
-	ChildProxy          string                  `json:"child_proxy"`
-	MotherProxy         string                  `json:"mother_proxy"`
-	Settings            RefundSettings          `json:"settings"`
+	ChildProxySessionRef string                  `json:"child_proxy_session_ref,omitempty"`
+	ChildProxyVendor     string                  `json:"child_proxy_vendor,omitempty"`
+	ProxyAttemptStarted  time.Time               `json:"-"`
+	VerificationOnly     bool                    `json:"verification_only"`
+	TerminalCode         string                  `json:"terminal_code,omitempty"`
+	FallbackPhase        string                  `json:"fallback_phase"`
+	DiagnosticContext    RefundDiagnosticContext `json:"-"`
+	MotherFingerprint    string                  `json:"-"`
+	MotherAttemptKey     string                  `json:"-"`
+	RecoveryMode         string                  `json:"recovery_mode"`
+	PersonalBaseline     *PersonalSnapshot       `json:"personal_baseline"`
+	ID                   string                  `json:"id"`
+	UserID               string                  `json:"-"`
+	LeaseToken           string                  `json:"-"`
+	Step                 string                  `json:"step"`
+	ChildUserID          string                  `json:"child_user_id"`
+	Account              refundprovider.Account  `json:"account"`
+	Mother               RefundMother            `json:"mother"`
+	ChildProxy           string                  `json:"child_proxy"`
+	MotherProxy          string                  `json:"mother_proxy"`
+	Settings             RefundSettings          `json:"settings"`
 }
 
 // ClaimRefund serializes allocation in the database, not in process memory.
@@ -250,15 +252,17 @@ func (s *Store) RenewRefundLease(ctx context.Context, j *RefundJob) error {
 }
 
 type Checkpoint struct {
-	Diagnostics []RefundDiagnostic `json:"-"`
-	Diagnostic  *RefundDiagnostic  `json:"diagnostic,omitempty"`
-	Baseline    *PersonalSnapshot  `json:"baseline,omitempty"`
-	TargetEmail string             `json:"target_email"`
-	TargetID    string             `json:"target_id"`
-	TargetKind  string             `json:"target_kind"`
-	Method      string             `json:"method"`
-	TeamID      string             `json:"team_id"`
-	UserID      string             `json:"user_id"`
+	ChildProxyPreviousRef string             `json:"child_proxy_previous_ref,omitempty"`
+	ChildProxyNextRef     string             `json:"child_proxy_next_ref,omitempty"`
+	Diagnostics           []RefundDiagnostic `json:"-"`
+	Diagnostic            *RefundDiagnostic  `json:"diagnostic,omitempty"`
+	Baseline              *PersonalSnapshot  `json:"baseline,omitempty"`
+	TargetEmail           string             `json:"target_email"`
+	TargetID              string             `json:"target_id"`
+	TargetKind            string             `json:"target_kind"`
+	Method                string             `json:"method"`
+	TeamID                string             `json:"team_id"`
+	UserID                string             `json:"user_id"`
 }
 
 // Every upstream mutation is preceded by a committed checkpoint. Accepted facts
@@ -311,6 +315,14 @@ func (s *Store) RefundCheckpoint(ctx context.Context, j *RefundJob, c Checkpoint
 	}
 	next, message := "", ""
 	switch c.Method {
+	case "child_login_session_retry":
+		if c.Diagnostic == nil || !childLoginSessionFailure(step, *c.Diagnostic) || c.ChildProxyPreviousRef == "" || c.ChildProxyNextRef == "" {
+			return ErrState
+		}
+		if _, err = s.refreshChildLoginSession(ctx, tx, j, c.ChildProxyPreviousRef, c.ChildProxyNextRef); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
 	case "child_proxy_network_failure":
 		if c.Diagnostic == nil || !childProxyNetworkFailure(*c.Diagnostic) {
 			return ErrState

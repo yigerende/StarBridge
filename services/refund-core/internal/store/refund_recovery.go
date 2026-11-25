@@ -76,6 +76,7 @@ type RefundDiagnostic struct {
 }
 
 var recoveryReasons = map[string]string{
+	"login_proxy_session_failed":   "登录连接返回403",
 	"mother_capacity":              "母号席位不足，等待清理",
 	"export_verification_required": "提交响应需核验实际结果，不重复提交",
 	"fallback_paid_unconfirmed":    "个人套餐仍为付费，继续核验，不重新提交",
@@ -285,14 +286,17 @@ func (s *Store) FinishRefundAttempt(ctx context.Context, j *RefundJob, d RefundD
 	if err = tx.QueryRow(ctx, "SELECT recovery,retry_seconds,mother_failover,child_proxy_cooldown_seconds FROM refund_settings WHERE id").Scan(&j.Settings.Recovery, &j.Settings.RetrySeconds, &j.Settings.MotherFailover, &j.Settings.ChildProxyCooldownSeconds); err != nil {
 		return err
 	}
-	if childProxyNetworkFailure(d) {
+	refreshLoginSession := childLoginSessionFailure(step, d)
+	if childProxyNetworkFailure(d) && !refreshLoginSession {
 		d.Retryable = true
 	}
 	if err = recordResourceFailure(ctx, tx, j, step, d); err != nil {
 		return err
 	}
-	if err = recordChildProxyFailure(ctx, tx, j, d); err != nil {
-		return err
+	if !refreshLoginSession {
+		if err = recordChildProxyFailure(ctx, tx, j, d); err != nil {
+			return err
+		}
 	}
 	if err = recordInviteAuthorizationFailure(ctx, tx, j, step, d); err != nil {
 		return err
@@ -311,6 +315,17 @@ func (s *Store) FinishRefundAttempt(ctx context.Context, j *RefundJob, d RefundD
 	}
 	if err = scheduleRefundRecovery(ctx, tx, j, step, d); err != nil {
 		return err
+	}
+	if refreshLoginSession {
+		var retry bool
+		if err = tx.QueryRow(ctx, "SELECT NOT released AND recovery_mode='retry' AND step='login' FROM refund_execution WHERE refund_id=$1", j.ID).Scan(&retry); err != nil {
+			return err
+		}
+		if retry {
+			if _, err = s.refreshChildLoginSession(ctx, tx, j, "", ""); err != nil {
+				return err
+			}
+		}
 	}
 	return tx.Commit(ctx)
 }

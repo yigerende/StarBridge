@@ -102,14 +102,14 @@ func childSessionLabel(id string, generation int) string {
 }
 
 // The caller holds the scheduler advisory lock and the execution row lock.
-// Only a recorded network failure may replace an existing binding, including
-// when the same provider becomes usable again. Expiry never silently rotates it.
+// Network failover replaces a binding; a login-session retry is handled separately.
+// Expiry never silently rotates it.
 func (s *Store) bindChildSession(ctx context.Context, tx pgx.Tx, j *RefundJob, proxyID string, replace bool) error {
 	var previous string
 	var generation int
 	var encrypted []byte
-	err := tx.QueryRow(ctx, `SELECT proxy_id,generation,endpoint_secret FROM refund_child_proxy_sessions
- WHERE refund_id=$1 ORDER BY generation DESC LIMIT 1`, j.ID).Scan(&previous, &generation, &encrypted)
+	err := tx.QueryRow(ctx, `SELECT proxy_id,generation,endpoint_secret,vendor,session_ref FROM refund_child_proxy_sessions
+ WHERE refund_id=$1 ORDER BY generation DESC LIMIT 1`, j.ID).Scan(&previous, &generation, &encrypted, &j.ChildProxyVendor, &j.ChildProxySessionRef)
 	if err != nil && err != pgx.ErrNoRows {
 		return err
 	}
@@ -161,6 +161,7 @@ func (s *Store) bindChildSession(ctx context.Context, tx pgx.Tx, j *RefundJob, p
  VALUES($1,$2,$3,$4,$5,$6,$7,$8,now()+$7::integer*interval '1 minute')`, j.ID, generation, proxyID, encrypted, v.Vendor, v.Country, v.SessionMinutes, ref)
 	if err == nil {
 		j.ChildProxy = endpoint
+		j.ChildProxyVendor, j.ChildProxySessionRef = v.Vendor, ref
 	}
 	return err
 }
