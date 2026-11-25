@@ -48,12 +48,14 @@ def listing(page, page_size, search, status, sort_by='created_at', sort_dir='des
     require(status in ('', 'active', 'used', 'disabled', 'expired'), '兑换码状态无效')
     # Escape wildcard characters so searching an identifier means a literal match.
     pattern = '%'+search.strip().replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')+'%'
-    source = f"FROM redeem_codes c LEFT JOIN users u ON c.used_by=u.id WHERE ($1='' OR {EFFECTIVE_STATUS}=$1) AND (c.prefix ILIKE $2 OR c.batch ILIKE $2 OR COALESCE(u.email,'') ILIKE $2)"
+    # Use the same normalization as redemption; never decrypt codes for a search.
+    code_hash = digest(search.strip().upper())
+    source = f"FROM redeem_codes c LEFT JOIN users u ON c.used_by=u.id WHERE ($1='' OR {EFFECTIVE_STATUS}=$1) AND (c.code_hash=$3 OR c.prefix ILIKE $2 OR c.batch ILIKE $2 OR COALESCE(u.email,'') ILIKE $2)"
     ordering=order_by(sort_by,sort_dir,{'prefix':'c.prefix','amount':'c.amount','batch':'c.batch','status':EFFECTIVE_STATUS,'used_by':'u.email','expires_at':'c.expires_at','created_at':'c.created_at'},'created_at','c.id')
     # Count and page share a snapshot, including during concurrent code issuance.
     with transaction(readonly=True) as q:
-        total = q.scalar('SELECT count(*) '+source, status, pattern)
-        items = q.all(f'SELECT c.id,c.prefix,c.amount,c.batch,{EFFECTIVE_STATUS} AS status,c.used_at,c.expires_at,c.created_at,u.email AS used_by '+source+' ORDER BY '+ordering+' LIMIT $3 OFFSET $4', status, pattern, page_size, (page-1)*page_size)
+        total = q.scalar('SELECT count(*) '+source, status, pattern, code_hash)
+        items = q.all(f'SELECT c.id,c.prefix,c.amount,c.batch,{EFFECTIVE_STATUS} AS status,c.used_at,c.expires_at,c.created_at,u.email AS used_by '+source+' ORDER BY '+ordering+' LIMIT $4 OFFSET $5', status, pattern, code_hash, page_size, (page-1)*page_size)
     return {'items': items, 'total': total, 'page': page, 'page_size': page_size, 'has_more': page*page_size < total}
 
 
@@ -63,10 +65,11 @@ def usage(period, anchor, search, page, page_size, sort_by='redeemed_at', sort_d
     ordering=order_by(sort_by,sort_dir,{'redeemed_at':'c.used_at','prefix':'c.prefix','email':'u.email','amount':'c.amount','note':'c.batch'},'redeemed_at','c.id')
     start,end=report_period(period,anchor)
     pattern='%'+search.strip().replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%'
-    where="FROM redeem_codes c LEFT JOIN users u ON u.id=c.used_by WHERE c.used_at >= $1 AND c.used_at < $2 AND c.used_by IS NOT NULL AND (c.prefix ILIKE $3 OR c.batch ILIKE $3 OR u.email ILIKE $3 OR u.name ILIKE $3)"
+    code_hash=digest(search.strip().upper())
+    where="FROM redeem_codes c LEFT JOIN users u ON u.id=c.used_by WHERE c.used_at >= $1 AND c.used_at < $2 AND c.used_by IS NOT NULL AND (c.code_hash=$4 OR c.prefix ILIKE $3 OR c.batch ILIKE $3 OR u.email ILIKE $3 OR u.name ILIKE $3)"
     with transaction(readonly=True) as q:
-        summary=q.one('SELECT count(*) AS redemptions,count(DISTINCT c.id) AS codes,count(DISTINCT c.used_by) AS accounts,COALESCE(sum(c.amount),0) AS amount '+where,start,end,pattern)
-        items=q.all('SELECT c.id,c.id AS code_id,c.prefix,c.used_by AS user_id,u.email,u.name,c.batch AS note,c.amount,c.used_at AS redeemed_at '+where+' ORDER BY '+ordering+' LIMIT $4 OFFSET $5',start,end,pattern,page_size,(page-1)*page_size)
+        summary=q.one('SELECT count(*) AS redemptions,count(DISTINCT c.id) AS codes,count(DISTINCT c.used_by) AS accounts,COALESCE(sum(c.amount),0) AS amount '+where,start,end,pattern,code_hash)
+        items=q.all('SELECT c.id,c.id AS code_id,c.prefix,c.used_by AS user_id,u.email,u.name,c.batch AS note,c.amount,c.used_at AS redeemed_at '+where+' ORDER BY '+ordering+' LIMIT $5 OFFSET $6',start,end,pattern,code_hash,page_size,(page-1)*page_size)
     return {'items':items,'summary':summary,'total':summary['redemptions'],'page':page,'page_size':page_size,'start_date':start.date().isoformat(),'end_date':(end-timedelta(days=1)).date().isoformat(),'timezone':'Asia/Shanghai'}
 
 
