@@ -12,13 +12,12 @@ var loginSessionRef = regexp.MustCompile(`^[a-zA-Z0-9]{8}$`)
 var numericLoginSessionRef = regexp.MustCompile(`^[0-9]{8}$`)
 
 // Only the integration's typed, pre-submission login failure can renew a session.
-// Upstream challenges, explicit account errors and other operations keep their policy.
+// Response markers/reasons do not veto renewal once the login retry is allowed.
 func childLoginSessionFailure(step string, d RefundDiagnostic) bool {
 	d = d.Sanitized()
 	e := d.Evidence
 	return step == "login" && d.Code == "login_proxy_session_failed" && d.Retryable && e != nil &&
-		e.Side == "child" && !e.Challenge && (d.HTTPStatus == 403 || e.ProxyHTTPStatus == 403) &&
-		oneOf(e.Reason, "unknown_error", "network_error", "chatgpt_signin_failed") &&
+		e.Side == "child" && (d.HTTPStatus == 403 || e.ProxyHTTPStatus == 403) &&
 		oneOf(e.Stage, "login", "csrf", "signin", "authorize", "identifier", "auth_session_read", "password", "mfa_challenge", "mfa_verify", "workspace", "callback", "session")
 }
 

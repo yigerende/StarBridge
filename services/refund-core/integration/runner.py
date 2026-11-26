@@ -91,16 +91,17 @@ class ChildProxyBoundary:
                 evidence = detail["evidence"]
                 first = getattr(flow, "first_failed_request", None)
                 first = first if isinstance(first, dict) else {}
-                # Explicit access challenges/account errors are not proxy-session faults.
+                # Response markers remain diagnostic facts, not a veto on a
+                # session renewal that the existing login retry policy permits.
                 challenge = bool(first.get("body_markers")) or (first.get("headers") or {}).get("cf-mitigated") == "challenge"
                 typed403 = isinstance(exc, core.upstream.LoginFlowError) and exc.status == 403 and exc.retryable
                 proxy403 = evidence.get("proxy_http_status") == 403
-                if (typed403 or proxy403) and not challenge and evidence.get("reason") in {
-                    "unknown_error", "network_error", "chatgpt_signin_failed"
-                } and evidence.get("stage") in {
+                if (typed403 or proxy403) and evidence.get("stage") in {
                     "login", "csrf", "signin", "authorize", "identifier", "auth_session_read",
                     "password", "mfa_challenge", "mfa_verify", "workspace", "callback", "session"
                 }:
+                    if challenge:
+                        evidence["challenge"] = True
                     self.login_failure = {"code": "login_proxy_session_failed", "retryable": True, **detail}
                     self.login_error = core.upstream.LoginFlowError(
                         "Login proxy session unavailable", code="login_proxy_session_failed", status=403, retryable=True)

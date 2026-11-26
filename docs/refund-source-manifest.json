@@ -372,8 +372,8 @@
     {
       "path": "integration/runner.py",
       "source_sha256": null,
-      "sha256": "d0f220ad1ed17bba4ac3bb3e0b175be07235bf80eeeb3ae53cbc8aeaad9162ca",
-      "adaptation": "StarBridge child transport boundary and isolated regression coverage; 2026-11-25 login-only 403 same-provider session renewal, persist before retry and reuse newest order binding; original runtime/worker unchanged."
+      "sha256": "e1a36a363857a709a8dba05076696ab95b22e7495dcf1ea82288aeb018a37cbf",
+      "adaptation": "StarBridge child transport boundary; login-only 403 same-provider session renewal persisted before retry and reused by later steps. 2026-11-26 response markers/reasons no longer veto permitted login 403 retries; original runtime/worker unchanged."
     },
     {
       "path": "integration/test_runner.py",

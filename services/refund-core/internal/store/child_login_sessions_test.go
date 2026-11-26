@@ -8,7 +8,7 @@ import (
 
 func loginSession403() RefundDiagnostic {
 	return RefundDiagnostic{Code: "login_proxy_session_failed", HTTPStatus: 403, Retryable: true,
-		Evidence: &RefundEvidence{Side: "child", Stage: "authorize", Reason: "unknown_error", Exception: "LoginFlowError"}}
+		Evidence: &RefundEvidence{Side: "child", Stage: "authorize", Reason: "unknown_error", Exception: "LoginFlowError", BodyKind: "html", Challenge: true}}
 }
 
 func loginSessionFixture(t *testing.T, vendor string) (*Store, string, string, *RefundJob) {
@@ -157,14 +157,23 @@ func TestLoginSession403RequiresExactLoginFailure(t *testing.T) {
 		func(d *RefundDiagnostic) { d.Evidence.Side = "mother" },
 		func(d *RefundDiagnostic) { d.Evidence.Stage = "export" },
 		func(d *RefundDiagnostic) { d.Evidence.Stage = "fallback_plan" },
-		func(d *RefundDiagnostic) { d.Evidence.Reason = "account_disabled" },
-		func(d *RefundDiagnostic) { d.Evidence.Reason = "passkey_or_challenge" },
-		func(d *RefundDiagnostic) { d.Evidence.Challenge = true },
 	} {
 		d := loginSession403()
 		change(&d)
 		if childLoginSessionFailure("login", d) {
 			t.Fatal("unrelated failure accepted", d)
+		}
+	}
+}
+
+func TestLogin403ResponseMarkersDoNotVetoPermittedRetry(t *testing.T) {
+	for _, challenge := range []bool{false, true} {
+		for _, reason := range []string{"unknown_error", "network_error", "chatgpt_signin_failed", "passkey_or_challenge", "login_auth_failed"} {
+			d := loginSession403()
+			d.Evidence.Challenge, d.Evidence.Reason = challenge, reason
+			if !childLoginSessionFailure("login", d) {
+				t.Fatal("permitted login 403 retry rejected", challenge, reason)
+			}
 		}
 	}
 }

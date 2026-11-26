@@ -33,10 +33,27 @@ class LoginSessionTests(unittest.TestCase):
         task["settings"].update(max_attempts=3, recovery={"enabled": recovery})
         return task
 
+    def test_actual_authorize_403_with_response_markers_is_still_a_session_retry(self):
+        task, events = self.task(), []
+        with ProxyFlow(task) as fixture:
+            original_reply = fixture.reply
+            def reply(role, method, url, headers, raw):
+                if role == "child" and url.path == "/authorize":
+                    return 403, {"error": {"message": "just a moment cf-chl- challenge-platform"}}, {"cf-mitigated": "challenge"}
+                return original_reply(role, method, url, headers, raw)
+            fixture.reply = reply
+            result = runner.execute(task, checkpoint=lambda method, *args: events.append(method))
+            self.assertFalse(fixture.errors)
+            self.assertFalse(any("export_and_deactivate" in path for _, _, path, *_ in fixture.records))
+        self.assertEqual(result["code"], "login_proxy_session_failed")
+        self.assertEqual(result["http_status"], 403)
+        self.assertTrue(result["evidence"]["challenge"])
+        self.assertNotIn("child_proxy_network_failure", events)
+
     def error(self, status=403, code="chatgpt_authorize_failed", retryable=True):
         return runner.core.upstream.LoginFlowError("fixture", code=code, status=status, retryable=retryable)
 
-    def run_login(self, task, failures, *, markers=None, ack_error=False, export_error=None):
+    def run_login(self, task, failures, *, markers=None, headers=None, ack_error=False, export_error=None):
         attempts, events, flows = [], [], []
         sleep, mother = Mock(), Mock()
 
@@ -50,7 +67,7 @@ class LoginSessionTests(unittest.TestCase):
             index = len(attempts)
             attempts.append(payload["proxy"])
             flow = Mock(last_stage="oauth_authorize", last_status=403,
-                        first_failed_request={"body_markers": markers or []}, _login_step_evidence=None)
+                        first_failed_request={"body_markers": markers or [], "headers": headers or {}}, _login_step_evidence=None)
             flow.login.side_effect = failures[index] if index < len(failures) else None
             flow.login.return_value = {"access_token": "fixture"}
             if export_error:
@@ -81,7 +98,8 @@ class LoginSessionTests(unittest.TestCase):
         mother.invite.assert_not_called()
 
     def test_local_retry_renews_before_login_and_success_reuses_that_session(self):
-        result, attempts, events, flows, sleep, _ = self.run_login(self.task(False), [self.error(), self.error()])
+        task = self.task(False)
+        result, attempts, events, flows, sleep, _ = self.run_login(task, [self.error(), self.error()], markers=["cf-chl-"])
         self.assertTrue(result["ok"])
         self.assertEqual(len(set(attempts)), 3)
         self.assertTrue(all("_country-ph_session-" in url and "_lifetime-1h@" in url for url in attempts))
@@ -89,13 +107,16 @@ class LoginSessionTests(unittest.TestCase):
         renewals = [p for m, p in events if m == "child_login_session_retry"]
         self.assertEqual(len(renewals), 2)
         self.assertEqual(renewals[1]["child_proxy_previous_ref"], renewals[0]["child_proxy_next_ref"])
+        self.assertEqual(task["child_proxy"], attempts[-1])
+        self.assertEqual(task["child_proxy_session_ref"], renewals[-1]["child_proxy_next_ref"])
+        self.assertTrue(all(p["diagnostic"]["evidence"]["challenge"] for p in renewals))
         self.assertNotIn("child_proxy_network_failure", [m for m, _ in events])
         for flow in flows[:-1]:
             flow.submit_export.assert_not_called()
         flows[-1].submit_export.assert_called_once()
 
     def test_local_retry_exhaustion_does_not_allocate_an_unused_session(self):
-        result, attempts, events, _, sleep, _ = self.run_login(self.task(False), [self.error()] * 3)
+        result, attempts, events, _, sleep, _ = self.run_login(self.task(False), [self.error()] * 3, headers={"cf-mitigated": "challenge"})
         self.assertFalse(result["ok"])
         self.assertEqual(len(set(attempts)), 3)
         self.assertEqual([m for m, _ in events].count("child_login_session_retry"), 2)
@@ -108,14 +129,32 @@ class LoginSessionTests(unittest.TestCase):
         self.assertEqual([m for m, _ in events].count("child_login_session_retry"), 1)
         flows[0].submit_export.assert_not_called()
 
-    def test_explicit_errors_challenges_and_non403_keep_existing_rules(self):
+    def test_response_markers_and_reason_do_not_block_scheduled_403_session_retry(self):
+        for markers, headers, reason in [
+            (["cf-chl-", "challenge-platform", "just a moment"], {}, "chatgpt_authorize_failed"),
+            (["access denied"], {}, "chatgpt_authorize_failed"),
+            ([], {"cf-mitigated": "challenge"}, "chatgpt_authorize_failed"),
+            ([], {}, "passkey_or_challenge"),
+            ([], {}, "login_auth_failed"),
+        ]:
+            with self.subTest(markers=markers, headers=headers, reason=reason):
+                result, attempts, events, flows, _, _ = self.run_login(
+                    self.task(), [self.error(code=reason)], markers=markers, headers=headers)
+                self.assertEqual(result["code"], "login_proxy_session_failed")
+                self.assertEqual(result["http_status"], 403)
+                self.assertTrue(result["retryable"])
+                self.assertEqual(bool(result["evidence"].get("challenge")), bool(markers or headers))
+                self.assertEqual(len(attempts), 1)
+                flows[0].submit_export.assert_not_called()
+                self.assertNotIn("child_proxy_network_failure", [m for m, _ in events])
+
+    def test_explicit_terminal_errors_and_non403_keep_existing_rules(self):
         for error, markers in [
             (self.error(401, "login_auth_failed"), None),
             (self.error(429, "chatgpt_rate_limited"), None),
             (self.error(403, "account_disabled", False), None),
             (self.error(403, "incorrect_password", False), None),
             (self.error(403, "passkey_or_challenge", False), None),
-            (self.error(), ["cf-chl-"]),
         ]:
             with self.subTest(code=error.code, markers=markers):
                 result, attempts, events, _, _, _ = self.run_login(self.task(), [error], markers=markers)
@@ -124,7 +163,7 @@ class LoginSessionTests(unittest.TestCase):
                 self.assertNotIn("child_login_session_retry", [m for m, _ in events])
 
     def test_export_error_with_stale_login_stage_does_not_renew(self):
-        result, attempts, events, _, _, _ = self.run_login(self.task(), [], export_error=self.error())
+        result, attempts, events, _, _, _ = self.run_login(self.task(), [], markers=["cf-chl-"], export_error=self.error())
         self.assertNotEqual(result["code"], "login_proxy_session_failed")
         self.assertEqual(len(attempts), 1)
         self.assertNotIn("child_login_session_retry", [m for m, _ in events])
