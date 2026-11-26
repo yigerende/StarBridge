@@ -150,7 +150,7 @@ func (s *Store) ClaimRefund(ctx context.Context) (*RefundJob, error) {
   AND NOT ((m.id||':'||md5(m.secret)||':'||md5(p.secret))=ANY(COALESCE(e.failed_mothers,'{}'::text[])))
   AND NOT EXISTS(SELECT 1 FROM refund_execution busy JOIN refund_mothers previous ON previous.id=busy.mother_id WHERE previous.team_id=m.team_id AND NOT busy.released AND busy.mother_released_at IS NULL)
   AND NOT EXISTS(SELECT 1 FROM refund_execution done JOIN refund_mothers previous ON previous.id=done.mother_id WHERE previous.team_id=m.team_id AND COALESCE(done.mother_released_at,done.completed_at)>now()-($1 * interval '1 second'))
-  ORDER BY CASE WHEN e.recovery_mode='mother_switch' AND m.id=e.mother_id THEN 1 ELSE 0 END,m.updated_at,m.id LIMIT 1
+  ORDER BY CASE WHEN e.recovery_mode='mother_switch' AND m.id=e.mother_id THEN 1 ELSE 0 END,m.last_assigned_at ASC NULLS FIRST,m.id LIMIT 1
  ) m ON true
  WHERE r.status='queued' AND u.status='active' AND u.deleted_at IS NULL
  AND NOT EXISTS(SELECT 1 FROM refund_resource_health h WHERE h.scope='login' AND h.blocked AND (h.next_at>now() OR EXISTS(SELECT 1 FROM refund_execution probe WHERE probe.refund_id=h.probe_id AND NOT probe.released AND probe.lease_until>now())))
@@ -177,6 +177,12 @@ func (s *Store) ClaimRefund(ctx context.Context) (*RefundJob, error) {
 		if _, err = tx.Exec(ctx, `INSERT INTO refund_execution(refund_id,mother_id,child_proxy_id) VALUES($1,$2,NULLIF($3,''))
  ON CONFLICT(refund_id) DO UPDATE SET mother_id=excluded.mother_id,mother_released_at=NULL,released=false,recovery_mode='',next_attempt_at=NULL
  WHERE refund_execution.released AND refund_execution.step='assigned' AND refund_execution.recovery_mode='mother_switch'`, job.ID, job.Mother.ID, childProxyID); err != nil {
+			return nil, err
+		}
+		// Advance rotation only for a new reservation (including safe reassignment),
+		// under the same scheduler lock and transaction. Retries retain their place.
+		// Use allocation time, not the time this transaction began waiting for a lock.
+		if _, err = tx.Exec(ctx, "UPDATE refund_mothers SET last_assigned_at=clock_timestamp() WHERE id=$1", job.Mother.ID); err != nil {
 			return nil, err
 		}
 	}

@@ -64,6 +64,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS refund_child_proxy_session_reference
 -- Removing a mother hides configuration without deleting historical execution
 -- references or credentials still needed by its reserved task to finish cleanup.
 ALTER TABLE refund_mothers ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+-- Dispatch history is independent of resource editing and survives restarts.
+ALTER TABLE refund_mothers ADD COLUMN IF NOT EXISTS last_assigned_at TIMESTAMPTZ;
 ALTER TABLE refund_mothers DROP CONSTRAINT IF EXISTS refund_mothers_email_key;
 ALTER TABLE refund_mothers DROP CONSTRAINT IF EXISTS refund_mothers_team_id_key;
 CREATE UNIQUE INDEX IF NOT EXISTS refund_mothers_active_email ON refund_mothers(email) WHERE deleted_at IS NULL;
