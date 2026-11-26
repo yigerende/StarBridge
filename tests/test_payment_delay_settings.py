@@ -6,6 +6,29 @@ from backend.common import now
 
 
 class PaymentDelaySettingsTests:
+    def test_initial_checkout_refresh_default_roundtrip_omission_and_permissions(self):
+        key = 'cslive_go_refresh_before_checkout'
+        original = db.scalar("SELECT value FROM settings WHERE key='payment'")
+        legacy = {k:v for k,v in original.items() if k != key}
+        _, _, member = self.new_user()
+        try:
+            db.execute("UPDATE settings SET value=$1 WHERE key='payment'", legacy)
+            self.assertIs(self.ok(self.client.get('/api/admin/settings'))['payment'][key], True)
+            self.assertEqual(db.scalar("SELECT value FROM settings WHERE key='payment'"), legacy)
+            for enabled in (False, True, False):
+                self.ok(self.client.put('/api/admin/settings/payment', json=dict(legacy, **{key:enabled})))
+                self.assertIs(self.ok(self.client.get('/api/admin/settings'))['payment'][key], enabled)
+                self.ok(self.client.put('/api/admin/settings/payment', json=legacy))
+                self.assertIs(self.ok(self.client.get('/api/admin/settings'))['payment'][key], enabled)
+            for invalid in (0, 1, 'false', None, [], {}):
+                self.assertEqual(self.client.put('/api/admin/settings/payment', json=dict(legacy, **{key:invalid})).status_code, 400)
+            self.assertEqual(member.get('/api/admin/settings').status_code, 403)
+            self.assertEqual(member.put('/api/admin/settings/payment', json=dict(legacy, **{key:True})).status_code, 403)
+            self.assertIs(db.scalar("SELECT value FROM settings WHERE key='payment'")[key], False)
+        finally:
+            member.close()
+            db.execute("UPDATE settings SET value=$1 WHERE key='payment'", original)
+
     def test_checkout_restart_settings_roundtrip_validation_and_permissions(self):
         original = db.scalar("SELECT value FROM settings WHERE key='payment'")
         fields = ('checkout_restart_limit', 'checkout_restart_delay_seconds')

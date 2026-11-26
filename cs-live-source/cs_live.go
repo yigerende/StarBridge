@@ -1218,6 +1218,7 @@ type cli_arguments struct {
 	Expected                                                        int64
 	Seats, Seats5x                                                  int
 	Interval                                                        string
+	SkipInitialSessionRefresh                                       bool
 	CancelRenewalOnly                                               bool
 	set                                                             map[string]bool
 }
@@ -1257,6 +1258,7 @@ func cli_parseArguments(argv []string, payment bool, stderr io.Writer) (cli_argu
 		f.StringVar(&a.Checkpoint, "checkpoint", "", "加密恢复文件路径，必须尚不存在")
 		f.Int64Var(&a.Expected, "expected-amount", 0, "可选：必须匹配的含税金额（最小币种单位）")
 	} else {
+		f.BoolVar(&a.SkipInitialSessionRefresh, "skip-initial-session-refresh", false, "Skip proactive Session refresh before checkout; retain account 401 refresh")
 		f.BoolVar(&a.WithPrice, "with-price", false, "读取本次 Checkout 价格快照，不计算税费或付款")
 		f.StringVar(&a.PromoCodeEnv, "promo-code-env", "", "读取指定环境变量中的自定义 Team 优惠码；留空时不传")
 	}
@@ -1469,7 +1471,7 @@ func (r *cli_Runner) CreateCheckout(ctx context.Context, argv []string) (code in
 		sink = diagnostics.event
 		ctx = context.WithValue(ctx, checkoutDiagnosticContextKey{}, diagnostics)
 	}
-	result, err := r.ClientFactory(a.config(), gptpay_ClientOptions{EventSink: sink}).CreateCheckout(ctx, session, gptpay_CreateCheckoutOptions{Country: a.Country, Plan: a.Plan, Seats: a.Seats, Seats5x: a.Seats5x, Interval: a.Interval, CheckoutType: a.CheckoutType, WithPrice: a.WithPrice, FingerprintClockOffsetHours: a.Offset, PromoCode: os.Getenv(a.PromoCodeEnv)})
+	result, err := r.ClientFactory(a.config(), gptpay_ClientOptions{EventSink: sink}).CreateCheckout(ctx, session, gptpay_CreateCheckoutOptions{Country: a.Country, Plan: a.Plan, Seats: a.Seats, Seats5x: a.Seats5x, Interval: a.Interval, CheckoutType: a.CheckoutType, WithPrice: a.WithPrice, FingerprintClockOffsetHours: a.Offset, PromoCode: os.Getenv(a.PromoCodeEnv), SkipInitialSessionRefresh: a.SkipInitialSessionRefresh})
 	if err != nil {
 		output["error_code"] = observability_SafeErrorCode(err)
 		if diagnostics := checkoutHomepageErrorDiagnostics(err); diagnostics != nil {
@@ -9277,6 +9279,7 @@ type gptpay_CreateCheckoutOptions struct {
 	Country, Plan, CheckoutType, Interval string
 	Seats, Seats5x                        int
 	WithPrice                             bool
+	SkipInitialSessionRefresh             bool
 	FingerprintClockOffsetHours           int
 }
 
@@ -9392,6 +9395,7 @@ func (c *gptpay_PaymentClient) CreateCheckout(ctx context.Context, s model_Sessi
 		return model_CheckoutResult{}, e
 	}
 	t.platform.PromoCode = promo
+	t.skipInitialSessionRefresh = o.SkipInitialSessionRefresh
 	return t.createCheckout(o.CheckoutType, o.WithPrice), nil
 }
 
@@ -9528,8 +9532,10 @@ func (t *gptpay_transaction) prepareCheckout(mode string, stripeRequired bool) (
 	if e := t.platform.Homepage(); e != nil {
 		return nil, e
 	}
-	if e := t.platform.Refresh(); e != nil && (protocol_FlowErrorCode(e) != "session_expired" || t.cp.AccessToken == "") {
-		return nil, e
+	if !t.skipInitialSessionRefresh {
+		if e := t.platform.Refresh(); e != nil && (protocol_FlowErrorCode(e) != "session_expired" || t.cp.AccessToken == "") {
+			return nil, e
+		}
 	}
 	account, e := t.platform.Account()
 	if protocol_FlowErrorCode(e) == "http_401" {
@@ -11246,6 +11252,7 @@ func gptpay_subscriptionStatus(baseline, subs protocol_Map) (model_SubscriptionS
 // ---- pkg/gptpay/transaction.go ----
 
 type gptpay_transaction struct {
+	skipInitialSessionRefresh bool
 	providerCode, declineCode string
 	client                    *gptpay_PaymentClient
 	cp                        *model_Checkpoint

@@ -20,6 +20,25 @@ def snapshot(creds, revision):
 
 
 class CheckoutCredentialBackendTests:
+    def test_initial_refresh_switch_forwarded_for_default_on_off_and_link(self):
+        for workflow in ('subscription', 'link'):
+            for enabled in (None, True, False):
+                with self.subTest(workflow=workflow, enabled=enabled), self.retry_fixture(flow,workflow=workflow,fixed_proxy=True) as job, self.retry_network(flow) as (generate,stripe,finish):
+                    cfg=db.scalar("SELECT value FROM settings WHERE key='payment'")
+                    cfg.pop('cslive_go_refresh_before_checkout',None)
+                    if enabled is not None:cfg['cslive_go_refresh_before_checkout']=enabled
+                    db.execute("UPDATE settings SET value=$1 WHERE key='payment'",cfg)
+                    flow.run_subscription(job)
+                    self.assertIs(generate.call_args.kwargs['refresh_before_checkout'],enabled is not False)
+                    self.assertTrue(callable(generate.call_args.kwargs['save_credentials']))
+                    if workflow=='link':
+                        stripe.confirm.assert_not_called()
+                        self.assertEqual(db.scalar('SELECT status FROM orders WHERE id=$1',job['id']),'awaiting_payment')
+                    else:
+                        stripe.confirm.assert_called_once()
+                        finish.assert_called_once()
+                        self.assertEqual(db.scalar("SELECT count(*) FROM ledger WHERE order_id=$1 AND kind='charge'",job['id']),1)
+
     def test_checkout_saved_session_survives_process_crash_or_timeout(self):
         from backend import checkout_process
         for ending in ('os._exit(7)', 'time.sleep(20)'):
@@ -66,12 +85,21 @@ class CheckoutCredentialBackendTests:
             self.assertEqual(db.scalar("SELECT count(*) FROM ledger WHERE order_id=$1 AND kind IN ('charge','unfreeze')",job['id']),0)
 
     def test_checkout_refresh_survives_400_retry_and_settles_once(self):
-        with self.retry_fixture(flow,fixed_proxy=True) as job, self.retry_network(flow) as (generate,stripe,finish):
+        self._checkout_refresh_retry_and_settlement(True)
+
+    def test_checkout_401_refresh_survives_retry_with_initial_refresh_disabled(self):
+        self._checkout_refresh_retry_and_settlement(False)
+
+    def _checkout_refresh_retry_and_settlement(self, enabled):
+        with self.subTest(initial_refresh=enabled), self.retry_fixture(flow,fixed_proxy=True) as job, self.retry_network(flow) as (generate,stripe,finish):
+            cfg=db.scalar("SELECT value FROM settings WHERE key='payment'")
+            db.execute("UPDATE settings SET value=$1 WHERE key='payment'",dict(cfg,cslive_go_refresh_before_checkout=enabled))
             original=json.loads(decrypt(job['credentials_enc']))
             initial_expiry=job['credentials_expires_at']
             seen=[]
             good=generate.return_value
             def checkout(**kwargs):
+                self.assertIs(kwargs['refresh_before_checkout'],enabled)
                 seen.append(kwargs['session'])
                 kwargs['save_credentials'](snapshot(original,str(len(seen))))
                 if len(seen)==1: raise CheckoutError('http_400')
@@ -88,7 +116,7 @@ class CheckoutCredentialBackendTests:
             # The restart releases its proxy. Provide a newly acquired synthetic
             # route without invoking a real national-pool supplier.
             db.execute("INSERT INTO order_proxy_sessions(order_id,resource_id,endpoint_enc,expires_at,source_mode) "
-                       "VALUES($1,'fixture-retry',$2,now()+interval '1 hour','national_pool')",
+                       "VALUES($1,'fixture-retry-'||$1,$2,now()+interval '1 hour','national_pool')",
                        job['id'], encrypt('http://fixture:secret@proxy.example.test:8080'))
             job2=self.ready_retry(flow,job['id'])
             flow.run_subscription(job2)

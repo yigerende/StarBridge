@@ -435,6 +435,7 @@ def _run_subscription(job: dict):
                 currency=currency,
                 with_price=True,
                 save_credentials=saver(job, creds),
+                refresh_before_checkout=cfg.get('cslive_go_refresh_before_checkout', True),
             )
             request_context = link_result.get('request_context') or {}
 

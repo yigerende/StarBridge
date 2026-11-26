@@ -22,7 +22,7 @@ RANGES['payment']['post_payment_delay_seconds'] = (0,MAX_SECONDS)
 RANGES['payment'].update(checkout_restart_limit=(0,5), checkout_restart_delay_seconds=(5,3600))
 from .rate_limits import RANGES as RATE_RANGES, DEFAULTS as RATE_DEFAULTS
 RANGES['risk'].update(RATE_RANGES)
-OPTIONAL = {'site': {'icon','sidebar_default_expanded','telegram_group_url'}, 'proxy': {'global_id','mode','failure_cooldown_seconds','recovery_success_count','recovery_interval_seconds'}, 'payment': {'checkout_flow','subscription_flow','checkout_type','checkout_types','network_restart_limit','post_payment_delay_seconds','cslive_go_visit_return','cslive_go_refresh_before_renewal'}}
+OPTIONAL = {'site': {'icon','sidebar_default_expanded','telegram_group_url'}, 'proxy': {'global_id','mode','failure_cooldown_seconds','recovery_success_count','recovery_interval_seconds'}, 'payment': {'checkout_flow','subscription_flow','checkout_type','checkout_types','network_restart_limit','post_payment_delay_seconds','cslive_go_refresh_before_checkout','cslive_go_visit_return','cslive_go_refresh_before_renewal'}}
 OPTIONAL['payment'].update(('checkout_restart_limit','checkout_restart_delay_seconds'))
 
 
@@ -101,7 +101,7 @@ def validate_config(key, v):
         from .regions import enabled
         require(v['default_country'] in {r['code'] for r in enabled()} and v['link_mode']=='long' and v['engine'] in ('not_connected','checkout'),'调度配置无效')
     if key=='payment':
-        for name in ('cslive_go_visit_return','cslive_go_refresh_before_renewal'):
+        for name in ('cslive_go_refresh_before_checkout','cslive_go_visit_return','cslive_go_refresh_before_renewal'):
             if name in v: require(type(v[name]) is bool, name+' 必须为开关')
         # Retired flow identifiers must not be accepted from older clients.
         for name in ('subscription_flow','checkout_flow'):
@@ -180,7 +180,7 @@ def settings():
         result['payment'].setdefault(name, DEFAULTS['payment'][name])
     if result['payment'].get('subscription_flow') == 'cslive_go_direct_pay':
         result['payment'].setdefault('checkout_types',dict(DEFAULTS['payment']['checkout_types'])).setdefault('promax','hosted')
-    for name in ('cslive_go_visit_return','cslive_go_refresh_before_renewal'):
+    for name in ('cslive_go_refresh_before_checkout','cslive_go_visit_return','cslive_go_refresh_before_renewal'):
         result['payment'].setdefault(name, True)
     result['site'].setdefault('icon','')
     result['site'].setdefault('sidebar_default_expanded',False)

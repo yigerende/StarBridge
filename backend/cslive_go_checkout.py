@@ -112,6 +112,7 @@ def create_checkout(
     timeout_sec: int = 180,
     debug: bool = False,
     save_credentials=None,
+    refresh_before_checkout: bool = True,
 ) -> dict[str, Any]:
     """Run cs_live create-checkout and shape the result for subscription_cslive_go.run.
 
@@ -137,6 +138,8 @@ def create_checkout(
             '--checkout-type', checkout_type,
             '--diagnostics-json',
         ]
+        if refresh_before_checkout is False:
+            args.append('--skip-initial-session-refresh')
         if is_team:
             ordinary, premium = seat_counts(seats, seats_5x)
             args += [
