@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "星桥 API",
-    "version": "2.9.1",
+    "version": "2.9.2",
     "description": "使用同一个 API 密钥查询账户、订阅套餐、代退报价和积分钱包，提交申请并跟踪办理结果。当前可用功能见 GET /api/v1/me 的 features；重置登录密码后需重新创建 API 密钥。 请求按来源 IP 限流，同一出口的账号和密钥共用请求额度；注册、订阅和代退共用下单限额。429 按 Retry-After 等待，重试仍使用原幂等键。"
   },
   "servers": [
@@ -7270,7 +7270,7 @@
           },
           "message": {
             "type": "string",
-            "description": "通用办理进度"
+            "description": "办理进度或失败原因。出现手机验证要求时，请先在官方登录页面完成验证；仅原单已失败且 fee_status=released 时再重新提交，仍在处理时请勿重复下单。"
           },
           "created_at": {
             "type": "string",
@@ -7284,7 +7284,7 @@
           },
           "error_code": {
             "type": "string",
-            "description": "可选业务提示码；login_verification_failed 表示账号登录验证未通过。"
+            "description": "可选业务提示码；login_verification_failed 表示登录验证未通过；phone_verification_required 表示上游要求手机验证。订单状态和费用状态仍以 status、fee_status 为准。"
           },
           "http_status": {
             "type": "integer",

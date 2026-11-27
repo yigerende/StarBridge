@@ -77,9 +77,11 @@ def listing(user,admin=False,search='',business='',state='',start='',end='',page
             attach(result['items'],q=q)
         if customer_messages:
             from .subscription_messages import messages
+            from . import refund_messages
             guidance=messages(result['items'],q=q)
+            refund_guidance=refund_messages.messages([r for r in result['items'] if r['business']=='refund'],q=q)
             for row in result['items']:
-                row['message']=guidance.get(row['id'], '') if row['business']=='subscription' else ''
+                row['message']=(guidance if row['business']=='subscription' else refund_guidance if row['business']=='refund' else {}).get(row['id'], '')
         for row in result['items']:
             row['href']=destination('/admin/orders' if admin else '/orders',row['business'],order_id=row['id']) if admin or flags['orders'] else None
             if row['workflow']=='renewal':row['href']=destination('/renewal',task_id=row['id']) if not admin and flags['renewal'] else None

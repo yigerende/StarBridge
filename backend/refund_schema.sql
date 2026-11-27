@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS refund_execution_diagnostics (
 );
 CREATE INDEX IF NOT EXISTS refund_execution_diagnostics_request ON refund_execution_diagnostics(refund_id,id);
 CREATE INDEX IF NOT EXISTS refund_events_public_time ON refund_events(refund_id,created_at) WHERE NOT internal;
+CREATE INDEX IF NOT EXISTS refund_events_internal_order ON refund_events(refund_id,id) WHERE internal;
 
 
 ALTER TABLE refund_settings ADD COLUMN IF NOT EXISTS accepting boolean NOT NULL DEFAULT false;

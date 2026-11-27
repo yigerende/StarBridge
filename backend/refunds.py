@@ -10,7 +10,7 @@ import httpx
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from cryptography.exceptions import InvalidTag
-from . import db, membership, order_timing
+from . import db, membership, order_timing, refund_messages
 from .common import administrator, audit, body, current, member, require, integer, parsedate, now
 
 router=APIRouter(prefix='/api',dependencies=[Depends(member)])
@@ -93,6 +93,8 @@ async def call(action,actor='',**value):
     except (httpx.HTTPError,ValueError):
         require(False,'代退响应暂未确认，请使用原请求标识查询或重试',503)
     require(result.status_code==200,data.get('error','代退操作失败'),result.status_code)
+    if action in ('list','detail','monitor','admin_detail'):
+        await asyncio.to_thread(refund_messages.project,data)
     return data
 
 def pricing(user):
