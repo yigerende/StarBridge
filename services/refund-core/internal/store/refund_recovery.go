@@ -197,8 +197,16 @@ func scheduleRefundRecovery(ctx context.Context, tx pgx.Tx, j *RefundJob, step s
 		switch {
 		case step == "submitting" && cfg.PlanFallback != nil && cfg.PlanFallback.Enabled:
 			f := cfg.PlanFallback
-			if fallbackAttempts < f.MaxAttempts && (fallbackPhase != "" || fallbackCycles < f.MaxCycles) {
+			// MaxCycles limits re-invitations, not the check after the last POST.
+			if fallbackAttempts < f.MaxAttempts && (fallbackPhase != "" || fallbackCycles <= f.MaxCycles) {
 				nextMode, delay = "fallback", f.RetrySeconds
+				if fallbackPhase == "" && fallbackCycles >= f.MaxCycles {
+					if _, err := tx.Exec(ctx, "UPDATE refund_execution SET fallback_final=true WHERE refund_id=$1", j.ID); err != nil {
+						return err
+					}
+				}
+			} else {
+				return pausePlanVerification(ctx, tx, j, fallbackPhase)
 			}
 		case step == "submitting" && fallbackPhase != "":
 			// A removed child cannot use the old team-only verifier. Keep its phase.

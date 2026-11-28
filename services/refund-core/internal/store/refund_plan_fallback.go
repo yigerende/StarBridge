@@ -28,8 +28,8 @@ func planFallbackCheckpoint(ctx context.Context, tx pgx.Tx, j *RefundJob, c Chec
 	}
 	var phase, child string
 	var cycles int
-	var verificationOnly bool
-	if err := tx.QueryRow(ctx, "SELECT fallback_phase,fallback_cycles,child_user_id,verification_only FROM refund_execution WHERE refund_id=$1", j.ID).Scan(&phase, &cycles, &child, &verificationOnly); err != nil {
+	var verificationOnly, final bool
+	if err := tx.QueryRow(ctx, "SELECT fallback_phase,fallback_cycles,child_user_id,verification_only,fallback_final FROM refund_execution WHERE refund_id=$1", j.ID).Scan(&phase, &cycles, &child, &verificationOnly, &final); err != nil {
 		return err
 	}
 	if child == "" {
@@ -84,6 +84,9 @@ func planFallbackCheckpoint(ctx context.Context, tx pgx.Tx, j *RefundJob, c Chec
 	case "fallback_paid":
 		if phase != "checking" || c.UserID != child || verificationOnly {
 			return ErrState
+		}
+		if final {
+			return finishPaidPlan(ctx, tx, j)
 		}
 		phase, event = "reinvite", "兜底：个人套餐仍为付费，等待重新邀请办理。"
 		// Keep the same mother reservation, proxy, fee and request. A fresh worker

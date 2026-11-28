@@ -288,8 +288,8 @@ func (s *Store) RefundCheckpoint(ctx context.Context, j *RefundJob, c Checkpoint
 		return err
 	}
 	var step, token, status, terminalCode string
-	var live, released, verificationOnly bool
-	err = tx.QueryRow(ctx, `SELECT e.step,e.lease_token,COALESCE(e.lease_until>now(),false),e.released,r.status,e.terminal_code,e.verification_only FROM refunds r JOIN refund_execution e ON e.refund_id=r.id WHERE r.id=$1 FOR UPDATE OF r,e`, j.ID).Scan(&step, &token, &live, &released, &status, &terminalCode, &verificationOnly)
+	var live, released, verificationOnly, finalPlan bool
+	err = tx.QueryRow(ctx, `SELECT e.step,e.lease_token,COALESCE(e.lease_until>now(),false),e.released,r.status,e.terminal_code,e.verification_only,e.fallback_final FROM refunds r JOIN refund_execution e ON e.refund_id=r.id WHERE r.id=$1 FOR UPDATE OF r,e`, j.ID).Scan(&step, &token, &live, &released, &status, &terminalCode, &verificationOnly, &finalPlan)
 	if err != nil {
 		return err
 	}
@@ -299,7 +299,7 @@ func (s *Store) RefundCheckpoint(ctx context.Context, j *RefundJob, c Checkpoint
 	if terminalCode != "" && !oneOf(c.Method, "password_failed", "cleanup_started", "cleanup_completed") {
 		return ErrState
 	}
-	if verificationOnly && oneOf(c.Method, "merge_v2_rejected", "merge_v2_submitting", "inviting", "invited", "login", "merge_v2_ready") {
+	if (verificationOnly || finalPlan) && oneOf(c.Method, "merge_v2_rejected", "merge_v2_submitting", "inviting", "invited", "login", "merge_v2_ready") {
 		return ErrState
 	}
 	if c.Diagnostic != nil {
@@ -596,9 +596,9 @@ func (s *Store) ResumeRefund(ctx context.Context, actor, id, action, note string
 		return err
 	}
 	var step, status, child, recoveryMode, terminalCode string
-	var live, accepted, motherReleased, verificationOnly bool
+	var live, accepted, motherReleased, verificationOnly, finalPlan bool
 	var fallbackPhase string
-	err = tx.QueryRow(ctx, `SELECT e.step,r.status,COALESCE(e.lease_until>now(),false),e.accepted_at IS NOT NULL,e.child_user_id,e.recovery_mode,e.terminal_code,e.mother_released_at IS NOT NULL,e.fallback_phase,e.verification_only FROM refunds r JOIN refund_execution e ON e.refund_id=r.id WHERE r.id=$1 FOR UPDATE OF r,e`, id).Scan(&step, &status, &live, &accepted, &child, &recoveryMode, &terminalCode, &motherReleased, &fallbackPhase, &verificationOnly)
+	err = tx.QueryRow(ctx, `SELECT e.step,r.status,COALESCE(e.lease_until>now(),false),e.accepted_at IS NOT NULL,e.child_user_id,e.recovery_mode,e.terminal_code,e.mother_released_at IS NOT NULL,e.fallback_phase,e.verification_only,e.fallback_final FROM refunds r JOIN refund_execution e ON e.refund_id=r.id WHERE r.id=$1 FOR UPDATE OF r,e`, id).Scan(&step, &status, &live, &accepted, &child, &recoveryMode, &terminalCode, &motherReleased, &fallbackPhase, &verificationOnly, &finalPlan)
 	if err != nil {
 		return ErrNotFound
 	}
@@ -626,7 +626,7 @@ func (s *Store) ResumeRefund(ctx context.Context, actor, id, action, note string
 			return ErrState
 		}
 		mode := "verify"
-		if fallbackPhase != "" {
+		if fallbackPhase != "" || finalPlan {
 			var fallbackEnabled bool
 			if err = tx.QueryRow(ctx, "SELECT COALESCE((recovery->'plan_fallback'->>'enabled')::boolean,false) FROM refund_settings WHERE id").Scan(&fallbackEnabled); err != nil {
 				return err
@@ -650,7 +650,7 @@ func (s *Store) ResumeRefund(ctx context.Context, actor, id, action, note string
 		}
 		message = "管理员已核实停用受理，将继续移出团队。"
 	case "confirm_rejected":
-		if motherReleased || verificationOnly {
+		if motherReleased || verificationOnly || finalPlan {
 			return invalid("本次申请只允许核验结果，不能直接重新提交")
 		}
 		if step != "submitting" || accepted {

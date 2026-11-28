@@ -225,7 +225,7 @@ onUnmounted(()=>{resourcesDisposed=true;clearInterval(resourceTimer);resourceCon
      </div>
      <label class="checkbox-label"><input v-model="settings.recovery.cleanup_failed" type="checkbox"/>明确未受理且重试结束后，自动清理本次资源并释放费用</label>
      <p class="muted">普通重试使用上方重试间隔；每轮核实与清理都从上一轮结束后计时。等待期间不占执行并发，同母号仍保持串行。关闭自动恢复不强行中断在途操作。</p>
-     <p class="muted">关闭套餐兜底时，结果未知只做只读核实。开启后按下方规则移出、登录并核验；查询失败不视为 Free。超过轮次或告警阈值后，请到订单中心的代退页跟进。</p>
+     <p class="muted">关闭套餐兜底时，结果未知只做只读核实。开启后按下方规则移出、登录并核验；查询失败不视为 Free。重办轮次用完后仍会进行最后一次套餐核验；仍为付费则结束并释放费用，核验失败则保留原单待跟进。</p>
     </fieldset>
     <fieldset v-if="settings.recovery.plan_fallback" class="recovery-settings">
      <legend>停用待核实：移出后套餐兜底</legend>

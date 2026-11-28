@@ -81,9 +81,50 @@ class RefundMessageTests(unittest.TestCase):
         self.order('free')
         db.execute("UPDATE refunds SET fee=0 WHERE id='free'")
         self.assertIn('无需服务费',notice.messages(db.all("SELECT * FROM refunds WHERE id='free'"))['free'])
-        for state in ('succeeded','cancelled','queued','banned'):
+        for state in ('succeeded','cancelled','banned'):
             with patch.object(db,'all',side_effect=AssertionError('no query for unrelated states')):
                 self.assertEqual(notice.messages([{'id':'phone','status':state}]),{})
+        self.assertEqual(notice.messages([{'id':'phone','status':'queued'}]),{})
+
+    def test_final_plan_and_queue_blockers_are_private_read_only_and_current(self):
+        self.order('old',status='attention',fee_status='frozen')
+        db.execute("UPDATE refund_execution SET step='submitting',released=false,mother_released_at=now(),fallback_final=true,last_diagnostic=$1 WHERE refund_id='old'",
+                   {'code':'fallback_unavailable','evidence':{'reason':'network_error'}})
+        self.order('next',status='queued',fee_status='frozen')
+        # Keep the second request in another customer scope to exercise the
+        # global target fence without exposing the other customer's identifiers.
+        db.execute("UPDATE refunds SET user_id='v',email='old@example.test' WHERE id='next'")
+        rows=db.all("SELECT id,status,fee_status,updated_at FROM refunds ORDER BY id")
+        guidance=notice.messages(rows)
+        self.assertIn('网络连接失败',guidance['old'])
+        self.assertIn('服务费仍冻结',guidance['old'])
+        self.assertIn('上一笔申请的结果尚待核实',guidance['next'])
+        response=notice.project({'items':[dict(r) for r in rows]})
+        self.assertTrue(all('error_code' not in r for r in response['items']))
+        for private in ('old@example.test','mother','proxy','network_error'):
+            self.assertNotIn(private,str(guidance))
+        old=db.one("SELECT * FROM refunds WHERE id='next'")
+        db.execute("UPDATE refunds SET status='processing',updated_at=now() WHERE id='next'")
+        self.assertNotIn('next',notice.messages([old]))
+        db.execute("UPDATE refunds SET status='queued',updated_at=now() WHERE id='next'")
+        db.execute("UPDATE refund_execution SET released=true WHERE refund_id='old'")
+        db.execute("UPDATE refunds SET status='failed',fee_status='released' WHERE id='old'")
+        db.execute("INSERT INTO refund_resource_tasks(id,refund_id,mother_id,team_id,email,state) VALUES('cleanup','old','m','t','old@example.test','watching')")
+        row=db.one("SELECT * FROM refunds WHERE id='next'")
+        self.assertIn('正在清理团队占用',notice.messages([row])['next'])
+        db.execute("UPDATE refund_resource_tasks SET state='done' WHERE id='cleanup'")
+        self.assertNotIn('next',notice.messages([row]))
+
+    def test_queue_blocker_500_rows_uses_one_batch_query(self):
+        self.order('old',status='failed')
+        db.execute("INSERT INTO refund_resource_tasks(id,refund_id,mother_id,team_id,email,state) VALUES('review','old','m','t','old@example.test','review')")
+        db.execute("INSERT INTO refunds(id,user_id,email,credentials,status,fee,fee_status) SELECT 'queued-'||n,'u',n||'@example.test',$1,'queued',500,'frozen' FROM generate_series(1,500)n",b'fixture')
+        rows=db.all("SELECT id,status,fee_status,updated_at FROM refunds WHERE status='queued'")
+        with patch.object(db,'all',wraps=db.all) as query:
+            self.assertEqual(notice.messages(rows),{})
+            self.assertEqual(query.call_count,1)
+        with ThreadPoolExecutor(max_workers=20) as pool:
+            self.assertTrue(all(pool.map(lambda _:notice.messages(rows)=={},range(40))))
 
     def test_latest_attempt_other_failures_and_async_stale_trace(self):
         row=self.order()
